@@ -1,0 +1,14 @@
+title: Уроборос
+description: Примеры для спецификации добываются из работающей программы, а не пишутся руками
+lang: ru
+
+theme: jekyll-theme-minimal
+
+url: https://digitable-lol.github.io
+baseurl: /ouroboros
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
