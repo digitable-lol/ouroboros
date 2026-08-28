@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# asdf зовёт этот файл, чтобы скачать нужную версию.
+# Скачанное кладётся распакованным в $ASDF_DOWNLOAD_PATH; ставит его bin/install.
+#
+# Что даёт asdf:
+#   ASDF_INSTALL_TYPE     version (обычная версия) или ref (произвольная ветка/тег)
+#   ASDF_INSTALL_VERSION  сам номер версии
+#   ASDF_DOWNLOAD_PATH    куда положить скачанное
+#
+set -euo pipefail
+
+readonly REPO_URL="https://github.com/digitable-lol/ouroboros"
+
+# --- ЧТО ПРОСТАВИТЬ ПРИ ВЫПУСКЕ -------------------------------------------
+#
+# Имя файла, который выкладывается в выпуске. Собранного выпуска ещё не было,
+# поэтому имени пока нет, и выдумано оно здесь не будет: по выдуманному имени
+# скачивание молча уйдёт в 404, и человек будет искать причину не там.
+#
+# Когда выпуск появится, сюда подставляется имя файла из него — со страницы
+# выпуска на GitHub. В имени можно пользоваться подстановками:
+#   ${version}   номер версии без ведущей v
+#   ${platform}  linux или darwin
+#   ${arch}      x86_64 или arm64
+#
+# Пример того, как это выглядит у похожих инструментов (НЕ подставлять вслепую,
+# сверить с настоящим выпуском):
+#   ASSET='ouroboros-${version}-${platform}-${arch}.tar.gz'
+#
+# Если выпуск окажется просто архивом исходников, а не собранным файлом, то
+# вместо ASSET хватит адреса
+#   ${REPO_URL}/archive/refs/tags/v${version}.tar.gz
+# — он у хранилищ на GitHub одинаковый и известен заранее.
+#
+readonly ASSET='TODO(выпуск)'
+# ---------------------------------------------------------------------------
+
+if [[ "$ASSET" == *TODO* ]]; then
+  cat >&2 <<'EOS'
+asdf-ouroboros: ставить пока нечего — выпуска ещё не было.
+
+Плагин написан целиком, но имя файла выпуска в bin/download не проставлено:
+его неоткуда взять, пока выпуск не собран, а выдуманное имя дало бы 404 и
+увело бы поиск причины в сторону.
+
+Что делать сейчас: смотрите docs/install.md в хранилище
+https://github.com/digitable-lol/ouroboros — там способ «из исходников».
+EOS
+  exit 1
+fi
+
+readonly version="${ASDF_INSTALL_VERSION:?asdf не передал ASDF_INSTALL_VERSION}"
+readonly download_path="${ASDF_DOWNLOAD_PATH:?asdf не передал ASDF_DOWNLOAD_PATH}"
+
+if [[ "${ASDF_INSTALL_TYPE:-version}" != "version" ]]; then
+  echo "asdf-ouroboros: установка по ref не поддерживается, назовите версию" >&2
+  exit 1
+fi
+
+case "$(uname -s)" in
+  Linux)  platform="linux" ;;
+  Darwin) platform="darwin" ;;
+  *)      echo "asdf-ouroboros: эта система не поддерживается: $(uname -s)" >&2; exit 1 ;;
+esac
+
+case "$(uname -m)" in
+  x86_64|amd64)  arch="x86_64" ;;
+  arm64|aarch64) arch="arm64" ;;
+  *)             echo "asdf-ouroboros: этот процессор не поддерживается: $(uname -m)" >&2; exit 1 ;;
+esac
+
+asset="${ASSET//\$\{version\}/$version}"
+asset="${asset//\$\{platform\}/$platform}"
+asset="${asset//\$\{arch\}/$arch}"
+
+readonly url="${REPO_URL}/releases/download/v${version}/${asset}"
+readonly archive="${download_path}/${asset}"
+
+mkdir -p "$download_path"
+
+echo "asdf-ouroboros: скачиваю ${url}"
+if ! curl --fail --silent --show-error --location --output "$archive" "$url"; then
+  echo "asdf-ouroboros: не скачалось. Проверьте, что версия ${version} выпущена: ${REPO_URL}/releases" >&2
+  exit 1
+fi
+
+tar -xzf "$archive" -C "$download_path" --strip-components=1
+rm -f "$archive"
