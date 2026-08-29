@@ -1,87 +1,103 @@
 # Формула Homebrew для уробороса.
 #
-# ЧТО ЭТО. Исходник формулы. Работает она не отсюда: чтобы заработала строка
+# ЧТО ЭТО. Исходник формулы. Правится здесь; в хранилище формул
+# (digitable-lol/homebrew-tap, каталог Formula/) он выкладывается копией, и
+# оттуда работает короткая строка
 #
 #     brew install digitable-lol/tap/ouroboros
 #
-# этот файл при выпуске выкладывается в отдельное хранилище формул
-# digitable-lol/homebrew-tap, в его каталог Formula/. Здесь он живёт как
-# источник правды и правится здесь.
+# Пока хранилища формул нет, ставится по прямому адресу этого файла:
 #
-# ЧТО НАДО ПРОСТАВИТЬ ПЕРЕД ВЫПУСКОМ. Ниже стоят пометки TODO(выпуск).
-# Пока хоть одна из них на месте, brew откажется ставить — и это нарочно:
-# придуманный отпечаток хуже отсутствующего, потому что по нему пробуют.
+#     brew install --formula \
+#       https://raw.githubusercontent.com/digitable-lol/ouroboros/main/packaging/homebrew/ouroboros.rb
 #
-#   url      — адрес архива выпуска. Обычный вид для хранилища на GitHub:
-#              https://github.com/digitable-lol/ouroboros/archive/refs/tags/v1.0.0.tar.gz
-#              Точный адрес виден на странице выпуска после его создания.
+# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.2.0. Отпечаток
+# посчитан с того самого архива, который отдаёт GitHub:
 #
-#   sha256   — отпечаток этого архива. Взять так:
-#                  curl -L <адрес> | shasum -a 256
-#              либо (после первой неудачной попытки установки) из сообщения
-#              самого brew: он печатает посчитанный отпечаток.
+#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.0.tar.gz | sha256sum
 #
-#   version  — номер версии. Если url кончается на v<номер>.tar.gz, brew берёт
-#              номер сам и строку version можно удалить. Оставлять её нужно
-#              только там, где из адреса номер не читается.
-#
-#   resource — зависимости Python. Сервера в хранилище пока нет, а значит нет и
-#              списка его зависимостей. Когда он появится, готовые блоки
-#              resource выдаёт `brew update-python-resources Formula/ouroboros.rb`
-#              — руками их не пишут.
+# Установка проверена целиком: brew install из этого файла и brew test.
 #
 class Ouroboros < Formula
   include Language::Python::Virtualenv
 
-  desc "Показывает, как код исполнялся: какие функции звались, с чем и что вернули"
+  desc "Records how code actually ran: calls, arguments, results, exceptions"
   homepage "https://github.com/digitable-lol/ouroboros"
-
-  url "TODO(выпуск)"    # адрес архива выпуска — см. шапку файла
-  sha256 "TODO(выпуск)" # отпечаток этого архива — см. шапку файла
-  version "TODO(выпуск)" # удалить, если номер читается из url
+  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.0.tar.gz"
+  sha256 "75e6e2100232b9c2cc998e3c306f71d53646b62ef782dbad8af18fc1730186d7"
   license "BSD-2-Clause"
 
-  # Навык называет нижнюю границу: Python 3.12 или новее.
+  # Пакет требует Python 3.12 или новее (pyproject.toml, requires-python).
   depends_on "python@3.12"
 
-  # libclang (для C и C++) и Node (для JavaScript и TypeScript) в зависимости
-  # НЕ вынесены нарочно: они нужны не всем, а только тому, кто обмазывает код на
-  # этих языках. Тянуть llvm и node каждому, кто ставит инструмент ради Python,
-  # неправильно. Что доставить руками — сказано в caveats ниже.
-
-  # TODO(выпуск): сюда лягут блоки resource с зависимостями Python.
-  # Их печатает `brew update-python-resources` по метаданным пакета сервера.
-  # Пока сервера нет, список неизвестен, и выдуман он здесь не будет.
-
+  # Что НЕ вынесено в зависимости и почему:
+  #
+  #   libclang       — приходит зависимостью самого пакета, отдельно не нужен;
+  #   @babel/parser  — лежит внутри пакета, npm install не нужен;
+  #   llvm, node,    — нужны, только чтобы СОБРАТЬ и ЗАПУСТИТЬ обмазанный код на
+  #   elixir           C/C++, JavaScript и Elixir. Тянуть их каждому, кто ставит
+  #                    инструмент ради Python, неправильно. См. caveats ниже.
   def install
-    virtualenv_install_with_resources
+    # Пакет ставится в собственное окружение, наружу выносятся только его
+    # команды — ouroboros и ouroboros-mcp.
+    #
+    # Окружение делается обычным venv, а не через virtualenv_install_with_resources,
+    # НАРОЧНО. Штатный путь Homebrew ставит с --no-deps и требует, чтобы каждая
+    # зависимость была расписана блоком resource. Их здесь три десятка, и часть
+    # (pydantic-core, rpds-py, cryptography) собирается из исходников только с
+    # Rust. Обычный pip берёт для них готовые колёса с PyPI: установка выходит
+    # быстрее и без сборочной цепочки. Цена — версии зависимостей не
+    # закреплены отпечатками в самой формуле; закрепление у пакета своё, в
+    # uv.lock.
+    python = Formula["python@3.12"].opt_bin/"python3.12"
+    system python, "-m", "venv", libexec
+    system libexec/"bin/python", "-m", "pip", "install", "--quiet",
+           "--no-cache-dir", "--upgrade", "pip"
+    system libexec/"bin/python", "-m", "pip", "install", "--quiet",
+           "--no-cache-dir", buildpath
+    bin.install_symlink Dir[libexec/"bin/ouroboros*"]
   end
 
   def caveats
     <<~EOS
-      Уроборос работает как сервер MCP: агент запускает его сам. Настройка
-      сервера и места, куда её кладут разные клиенты, — в docs/install.md.
+      Проверить установку:
+        ouroboros languages
+
+      Чтобы инструментом пользовался ИИ-агент, добавьте в настройку клиента:
+        { "mcpServers": { "ouroboros": { "type": "stdio", "command": "ouroboros-mcp" } } }
 
       Доставить отдельно, если будете обмазывать не Python:
-        brew install llvm    # libclang, нужен для C и C++
-        brew install node    # нужен для JavaScript и TypeScript
+        brew install llvm      # clang-tidy и clangd — для команд lint/symbols/refs/callers/describe
+        brew install node      # запустить обмазанный JavaScript и TypeScript
+        brew install elixir    # запустить обмазанный Elixir
+      Компилятор C и C++ берётся системный.
 
-      TODO(выпуск): проверить и дописать сюда готовый кусок настройки MCP для
-      установки через brew. После установки формулой запускатель `uv` не нужен —
-      исполняемый файл лежит на PATH, — но точное имя и доводы запуска
-      подтверждаются на первом выпуске, а не угадываются здесь.
+      Страницы: https://digitable-lol.github.io/ouroboros/
     EOS
   end
 
   test do
-    # Проверка, которую можно написать, не зная поведения выпущенного сервера:
-    # исполняемый файл встал на место. Имя взято из настройки в навыке
-    # (`uv run --directory <path>/ouroboros-src ouroboros-mcp-router`).
-    assert_path_exists bin/"ouroboros-mcp-router"
+    # 1. Обе команды встали на место и запускаются.
+    assert_match "python", shell_output("#{bin}/ouroboros languages")
 
-    # TODO(выпуск): добавить настоящую проверку — запуск с безобидным доводом
-    # (обычно `--version` или `--help`) и сверку вывода. Здесь она не написана
-    # потому, что ни навык, ни контракт логгера не называют ни одного довода
-    # командной строки, а выдуманный довод превратит проверку в ложную.
+    # 2. Инструмент делает своё дело: обмазывает файл, файл запускается,
+    #    записи читаются. Это проверка end-to-end, а не «файл существует».
+    (testpath/"m.py").write <<~PYTHON
+      def add(a, b):
+          return a + b
+
+      print(add(2, 3))
+    PYTHON
+
+    system bin/"ouroboros", "wrap-file", testpath/"m.py"
+    assert_match "_ouro_log", (testpath/"m.py").read
+
+    with_env(OUROBOROS_DEBUG_INFO: testpath/"debug.info") do
+      assert_equal "5\n", shell_output("#{Formula["python@3.12"].opt_bin}/python3.12 #{testpath}/m.py")
+    end
+
+    trace = shell_output("#{bin}/ouroboros trace-stats #{testpath}/debug.info")
+    assert_match "\"total_calls\": 1", trace
+    assert_match "\"name\": \"add\"", trace
   end
 end

@@ -567,7 +567,7 @@ wheels = [
 
 [[package]]
 name = "ouroboros-logger"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "libclang" },
@@ -586,7 +586,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "libclang", specifier = ">=18.1.1" },
-    { name = "mcp", specifier = ">=1.2.0" },
+    { name = "mcp", specifier = ">=1.2.0,<2" },
 ]
 
 [package.metadata.requires-dev]

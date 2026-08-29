@@ -1,12 +1,18 @@
 [project]
 name = "ouroboros-logger"
-version = "0.2.0"
+version = "0.2.1"
 description = "Ouroboros-Logger: guaranteed function-level logging instrumentation for AI-authored code, exposed over MCP."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "libclang>=18.1.1",
-    "mcp>=1.2.0",
+    # Верхняя граница обязательна. В mcp 2.x FastMCP переименован в MCPServer, и
+    # `from mcp.server.fastmcp import FastMCP` в ouroboros/mcp/server.py падает с
+    # ModuleNotFoundError. Без границы любая свежая установка (pip, uv tool
+    # install, Homebrew, asdf) тянет 2.x и получает нерабочий сервер MCP, хотя
+    # командная строка при этом работает — то есть ломается молча и не сразу.
+    # uv.lock этого не спасает: он действует только для `uv sync`.
+    "mcp>=1.2.0,<2",
 ]
 
 [project.scripts]
