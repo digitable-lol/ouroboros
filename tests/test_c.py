@@ -117,11 +117,22 @@ def test_compdb_command_string_form_is_recognized(tmp_path):
     assert compdb_covers(str(f), "c") is True   # recognised despite the command form
 
 
-def test_const_char_pointer_is_guarded_string(tx):
+def test_const_char_pointer_prints_as_an_address_not_a_string(tx):
+    """`%s` on a `const char *` is an out-of-bounds read waiting to happen.
+
+    The type does not promise a NUL-terminated string: `len(&c)` on a single
+    char is ordinary C, and `%s` would read past `c` to the first zero
+    anywhere in memory. That is instrumentation introducing undefined behaviour
+    into a program that had none — proven with AddressSanitizer before this
+    changed. Readability lost to safety, deliberately.
+    """
+
     res = tx.wrap_source(
         'int len(const char *s) {\n    return 0;\n}\n', filename="m.c")
-    assert '"%s"' in res.code
-    assert '(s ? s : "(null)")' in res.code
+
+    assert '"%p"' in res.code
+    assert "%s" not in res.code
+    assert '(s ? s : "(null)")' not in res.code
 
 
 def test_const_return_strips_qualifier(tx):
@@ -220,15 +231,21 @@ def test_c_escapes_special_chars(tmp_path):
     emit a malformed JSON line (data silently lost), not a green-test failure."""
     name, header = CTransformer().runtime_asset()
     (tmp_path / name).write_text(header, encoding="utf-8")
-    src = CTransformer().wrap_source(
-        "int show(const char *s) {\n    return 0;\n}\n", filename="prog.c").code
-    (tmp_path / "prog.c").write_text(src, encoding="utf-8")
+    # Driven through the sink directly with a STRING LITERAL, not through an
+    # instrumented `const char *` parameter. Instrumentation no longer formats
+    # such a parameter with %s — it cannot know the pointer is a string — so the
+    # escaper is no longer reachable that way. A literal is a real string, so
+    # this exercises the escaper without the out-of-bounds read.
     (tmp_path / "main.c").write_text(
-        'int show(const char *);\n'
-        'int main(void){ show("a\\"b\\\\c\\nd"); return 0; }\n', encoding="utf-8")
+        '#include "ouroboros_runtime.h"\n'
+        'static void show(void) {\n'
+        '\tstruct _ouro_call __ouro __attribute__((cleanup(_ouro_emit)));\n'
+        '\t_ouro_enter(&__ouro, "show", "%s", "a\\"b\\\\c\\nd");\n'
+        '}\n'
+        'int main(void){ show(); return 0; }\n', encoding="utf-8")
 
     import subprocess
-    subprocess.run(["gcc", "-std=gnu11", "main.c", "prog.c", "-o", "app"],
+    subprocess.run(["gcc", "-std=gnu11", "-I.", "main.c", "-o", "app"],
                    cwd=tmp_path, check=True, capture_output=True)
     debug = tmp_path / "debug.info"
     subprocess.run(["./app"], cwd=tmp_path, check=True,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 
@@ -135,10 +136,15 @@ def test_cpp_escapes_special_chars(tmp_path):
     loaded = load(debug.read_text(encoding="utf-8"))
     assert loaded.malformed == 0            # quote/backslash/newline didn't break the line
     by_name = {c.name: c for c in loaded.calls}
-    assert 'a"b\\c' in by_name["echo"].args                     # arg repr round-tripped
-    assert 'a"b\\c' in by_name["echo"].outcome                  # and the result too
-    assert "\n" in by_name["echo"].outcome
+    # The escaper is exercised through std::string, which carries its own length
+    # and is therefore safe to read. A `const char *` is NOT read for content any
+    # more — the type does not promise NUL-termination, and reading to the first
+    # zero runs off the end of a pointer-to-one-char. Both its argument and its
+    # result now render as an address.
     assert 'a"b\\c' in by_name["boxed"].args
+    assert "\n" in by_name["boxed"].args
+    assert re.fullmatch(r"0x[0-9a-f]+", by_name["echo"].args)
+    assert re.fullmatch(r"0x[0-9a-f]+", by_name["echo"].outcome)
     # A class type returned BY VALUE is deliberately not captured: routing it
     # through _ouro::capture costs a copy elision, so a program that counted its
     # own constructors would print something it never printed unwrapped. The

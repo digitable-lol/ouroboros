@@ -105,7 +105,10 @@ def test_parameter_types_come_back_as_printf_specifiers():
     assert specs == [
         ("i", "%d", False), ("u", "%u", False), ("l", "%ld", False),
         ("ul", "%lu", False), ("ll", "%lld", False), ("d", "%f", False),
-        ("ld", "%Lf", False), ("s", "%s", True), ("m", "%p", False),
+        # `const char *` is still RECOGNISED as a string type (is_string True),
+        # but its specifier is %p: the type does not promise NUL-termination,
+        # and %s on a pointer that is not a string reads out of bounds.
+        ("ld", "%Lf", False), ("s", "%p", True), ("m", "%p", False),
         ("p", "%p", False),
     ]
 

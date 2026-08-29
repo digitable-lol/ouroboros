@@ -81,9 +81,23 @@ std::string repr(const T &v) {
 	}
 }
 
-// Guard char* so a null pointer does not crash operator<<.
+// A `const char *` prints as its ADDRESS, not its contents.
+//
+// Streaming it would build a std::string from it, which calls strlen, which
+// assumes the pointer is a NUL-terminated string. The type does not say that:
+// `put_one(const char *p)` called as `put_one(&c)` on a single char is ordinary,
+// correct C++. Reading to the first zero then runs off the end of that object —
+// instrumentation introducing undefined behaviour into a program that had none.
+// Proven with AddressSanitizer: unwrapped clean, wrapped `stack-buffer-overflow
+// ... READ of size 2` inside strlen, through this function.
+//
+// The readable rendering is a real loss and cannot be made safe: no type means
+// "really a string". See FEATURE_REQUESTS.md.
 inline std::string repr(const char *s) {
-	return s ? _cap(std::string(s), MAX_VALUE) : std::string("(null)");
+	if (!s) return std::string("(null)");
+	std::ostringstream os;
+	os << static_cast<const void *>(s);
+	return os.str();
 }
 
 // Escape a string for embedding inside a JSON string literal (no surrounding
