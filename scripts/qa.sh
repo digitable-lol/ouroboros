@@ -24,4 +24,10 @@ uv run mypy ouroboros
 echo "== pytest =="
 uv run pytest
 
+# Документация ссылается на исходник с точностью до строки. Такие номера тихо
+# протухают от любой правки выше по файлу, поэтому их проверяет машина, а не
+# внимательность: см. scripts/check_doc_links.py.
+echo "== ссылки документации на строки исходника =="
+uv run python scripts/check_doc_links.py
+
 echo "== all gates passed =="
