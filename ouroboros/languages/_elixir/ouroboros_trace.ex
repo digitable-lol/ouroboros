@@ -59,23 +59,39 @@ defmodule Ouroboros.Trace do
   defp wrap(kind, call, expr), do: quote(do: Kernel.unquote(kind)(unquote(call), unquote(expr)))
 
   # ---- runtime sink --------------------------------------------------------
-  @max 240
+
+  # Per-value ceiling, in bytes — the same 200 the Python (reprlib) and JS
+  # helpers use, so one huge argument costs the same in every language.
+  @max_value 200
+  # Per-record ceiling, in bytes. SPEC.md §1 promises each record is written with
+  # a single append and stays under PIPE_BUF (4096 on Linux), which is what lets
+  # several processes share one debug.info: a line longer than that is torn by
+  # the kernel, and the parser then counts both halves as malformed and drops
+  # them — data lost without a warning.
+  @max_record 4096
 
   def __enter__(name, binding) do
-    args =
-      binding
-      |> Enum.map_join(", ", fn {k, v} -> "#{k}=#{rep(v)}" end)
-      |> cap()
+    # Values only, comma-separated. SPEC.md splits the two fields: `a` carries
+    # positional values, `k` carries name=value pairs (and the BEAM, having no
+    # kwargs, emits `k` empty). Writing "a=1, b=2" into `a` put names in the
+    # field that must not hold them, and made the Elixir trace uncomparable with
+    # the Python and JS ones for the same call.
+    args = Enum.map_join(binding, ", ", fn {_k, v} -> rep(v) end)
 
     ctx = %{
       name: name,
       args: args,
       uuid: uuid(),
-      # Concurrency identity: `th` is the BEAM process (inspect(self())), `ci` the
-      # scheduler running it (≈ logical CPU) — the per-process trace view.
-      th: inspect(self()),
-      ci: :erlang.system_info(:scheduler_id),
-      started: NaiveDateTime.to_iso8601(NaiveDateTime.local_now())
+      # `th` is "<os pid>.<beam process>" — both halves, like every other
+      # backend: the OS pid alone cannot tell two BEAM processes apart, and the
+      # BEAM process alone cannot tell two nodes on one debug.info apart.
+      th: "#{System.pid()}.#{inspect(self())}",
+      # `ci` is a CPU index, and the BEAM will not tell us one. The scheduler id
+      # that used to sit here is a different number that merely looks like a CPU
+      # (schedulers migrate), so a reader comparing it with the other languages'
+      # `ci` was comparing two unrelated things. -1 is the contract's "unknown".
+      ci: -1,
+      started: now_iso()
     }
 
     # `p:in` entry event, then start the monotonic duration clock AFTER it
@@ -94,21 +110,38 @@ defmodule Ouroboros.Trace do
   # and the instrumentation stays transparent (clean under `--warnings-as-errors`).
   def __run__(body) when is_function(body, 0), do: body.()
 
-  def __leave__(ctx, result), do: emit(ctx, "r", cap(rep(result)))
-  def __raise__(ctx, kind, value), do: emit(ctx, "x", "#{kind}: " <> cap(rep(value)))
+  def __leave__(ctx, result), do: emit(ctx, "r", rep(result))
+
+  # `x` is "<Type>: <message>" (SPEC.md). A rescued exception knows both; a
+  # thrown or exited value has no type of its own, so the catch kind stands in.
+  def __raise__(ctx, :error, e) when is_exception(e),
+    do: emit(ctx, "x", "#{inspect(e.__struct__)}: #{cap(Exception.message(e), @max_value)}")
+
+  def __raise__(ctx, kind, value), do: emit(ctx, "x", "#{kind}: " <> rep(value))
 
   defp path, do: System.get_env("OUROBOROS_DEBUG_INFO") || "debug.info"
 
+  # Local ISO-8601 with millisecond precision, matching the Python helper's
+  # datetime.now().isoformat(timespec="milliseconds"). NaiveDateTime.local_now/0
+  # resolves to whole seconds, which silently dropped the millisecond field the
+  # schema promises — enough to make two calls in the same second unorderable.
+  defp now_iso do
+    ms = System.os_time(:millisecond)
+    {{y, mo, d}, {h, mi, s}} = :calendar.system_time_to_local_time(ms, :millisecond)
+
+    :io_lib.format("~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B.~3..0B",
+      [y, mo, d, h, mi, s, Integer.mod(ms, 1000)])
+    |> to_string()
+  end
+
   # `p:in` entry event. `a` carries the rendered args; `k` is "" for schema
-  # parity with the kwargs-bearing languages (the BEAM has no kwargs). `ci`/`th`
-  # are the scheduler id and the process (inspect(self())) — concurrency identity.
+  # parity with the kwargs-bearing languages (the BEAM has no kwargs).
   defp emit_entry(ctx) do
-    line =
+    write(fn a ->
       ~s({"p":"in","t":#{jstr(ctx.started)},"id":#{jstr(ctx.uuid)},) <>
         ~s("ci":#{ctx.ci},"th":#{jstr(ctx.th)},) <>
-        ~s("fn":#{jstr(ctx.name)},"a":#{jstr(ctx.args)},"k":""}\n)
-
-    File.write(path(), line, [:append])
+        ~s("fn":#{jstr(ctx.name)},"a":#{jstr(a)},"k":""}\n)
+    end, ctx.args)
   end
 
   # `p:out` completion event. `key` is "r" (result) or "x" (raised); `d` is the
@@ -117,14 +150,39 @@ defmodule Ouroboros.Trace do
     secs = (System.monotonic_time(:nanosecond) - ctx.t0) / 1_000_000_000
     duration = :erlang.float_to_binary(secs, decimals: 6)
 
-    line =
+    write(fn o ->
       ~s({"p":"out","id":#{jstr(ctx.uuid)},"fn":#{jstr(ctx.name)},) <>
-        ~s("#{key}":#{jstr(outcome)},"d":#{duration}}\n)
-
-    File.write(path(), line, [:append])
+        ~s("#{key}":#{jstr(o)},"d":#{duration}}\n)
+    end, outcome)
   end
 
-  defp rep(v), do: inspect(v, limit: 10, printable_limit: 200)
+  # Build the line and append it. Exactly one field per record varies in length,
+  # so halving that one until the whole line fits is enough to keep the
+  # single-append promise — and it handles both shapes of overflow: one enormous
+  # argument, or thirty ordinary ones.
+  defp write(build, value), do: File.write(path(), bounded(build, value), [:append])
+
+  defp bounded(build, value) do
+    line = build.(value)
+
+    if byte_size(line) <= @max_record or byte_size(value) == 0 do
+      line
+    else
+      bounded(build, halve(value))
+    end
+  end
+
+  defp halve(v) do
+    base = String.replace_suffix(v, "…", "")
+
+    if byte_size(base) == 0 do
+      ""
+    else
+      utf8_prefix(base, div(byte_size(base), 2)) <> "…"
+    end
+  end
+
+  defp rep(v), do: cap(inspect(v, limit: 10, printable_limit: @max_value), @max_value)
 
   # Emit `v` (atom or binary) as a JSON string literal, escaping the mandatory
   # control chars plus \ and ".
@@ -142,8 +200,20 @@ defmodule Ouroboros.Trace do
     "\"" <> inner <> "\""
   end
 
-  defp cap(s) when byte_size(s) > @max, do: binary_part(s, 0, @max) <> "…"
-  defp cap(s), do: s
+  defp cap(s, max) when byte_size(s) > max, do: utf8_prefix(s, max) <> "…"
+  defp cap(s, _max), do: s
+
+  # Longest prefix of at most `n` BYTES that is still valid UTF-8. Slicing on a
+  # raw byte count can cut a character in half, and half a character makes the
+  # whole JSON line undecodable — losing the record the cap exists to save.
+  defp utf8_prefix(s, n) when byte_size(s) <= n, do: s
+
+  defp utf8_prefix(_s, n) when n <= 0, do: ""
+
+  defp utf8_prefix(s, n) do
+    candidate = binary_part(s, 0, n)
+    if String.valid?(candidate), do: candidate, else: utf8_prefix(s, n - 1)
+  end
 
   defp uuid do
     <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
