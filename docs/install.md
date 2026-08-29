@@ -86,17 +86,28 @@ brew uninstall ouroboros
 
 ```sh
 asdf plugin add ouroboros https://github.com/digitable-lol/ouroboros.git
-asdf install ouroboros 0.2.0
-asdf set ouroboros 0.2.0
+asdf install ouroboros latest
+asdf set ouroboros latest
 ```
 
-Версии берутся с тегов хранилища, поэтому `asdf list all ouroboros` работает
-сразу. В asdf старее 0.16 последняя строка пишется как
-`asdf local ouroboros 0.2.0`.
+Версии берутся прямо с тегов хранилища:
+
+```sh
+asdf list all ouroboros
+```
+
+```
+0.2.0
+0.2.1
+```
+
+В asdf старее 0.16 последняя строка пишется как `asdf local ouroboros latest`.
 
 > **Про короткое имя.** `asdf plugin add ouroboros` без адреса ищет плагин в
 > общем списке плагинов asdf; попасть туда — отдельный шаг, который ещё не
 > сделан. До тех пор адрес хранилища указывают явно, как выше.
+
+Наружу плагин выносит ровно две команды — `ouroboros` и `ouroboros-mcp`.
 
 Устройство плагина —
 [`packaging/asdf/README.md`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/asdf/README.md).
