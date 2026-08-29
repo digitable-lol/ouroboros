@@ -16,6 +16,7 @@ up gracefully (partial results are still useful) rather than hanging.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import queue
@@ -75,6 +76,11 @@ class _Clangd:
         self._inbox: queue.Queue[dict[str, Any] | None] = queue.Queue()
         self._next_id = 0
         self.index_done = False  # set when clangd reports background indexing finished
+        # Why the polite exit failed, if it did. `shutdown` must never RAISE (it
+        # runs on error paths, where a second exception would mask the first), but
+        # staying silent about it is how an orphaned clangd goes unnoticed — so the
+        # reason is recorded here instead of thrown away.
+        self.shutdown_error: str | None = None
         self._reader = threading.Thread(target=self._drain, daemon=True)
         self._reader.start()
 
@@ -87,11 +93,24 @@ class _Clangd:
                 return
 
     def _send(self, payload: dict[str, Any]) -> None:
+        """Write one framed message to clangd.
+
+        A clangd that has died leaves us writing into a closed pipe, which raises
+        BrokenPipeError (an OSError). Every caller in this module handles
+        ``TimeoutError`` and ``RuntimeError`` and converts them into an error
+        dict — an OSError would sail straight past all of them and out of the
+        tool. So a dead pipe is reported as the RuntimeError it amounts to: clangd
+        is gone.
+        """
         assert self._proc.stdin is not None
         data = json.dumps(payload).encode("utf-8")
-        self._proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii"))
-        self._proc.stdin.write(data)
-        self._proc.stdin.flush()
+        try:
+            self._proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii"))
+            self._proc.stdin.write(data)
+            self._proc.stdin.flush()
+        except (OSError, ValueError) as e:
+            # ValueError is what a closed (rather than broken) pipe raises.
+            raise RuntimeError(f"clangd is no longer accepting input: {e}") from e
 
     def notify(self, method: str, params: dict[str, Any]) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params})
@@ -159,48 +178,215 @@ class _Clangd:
             self._handle_incidental(msg)
 
     def shutdown(self) -> None:
-        try:
-            self.request("shutdown", {}, timeout=5.0)
-            self.notify("exit", {})
-        except (TimeoutError, RuntimeError, OSError, BrokenPipeError):
-            pass
+        """Ask clangd to exit, then GUARANTEE it is gone and reaped.
+
+        The polite path (LSP ``shutdown`` + ``exit``) may legitimately fail —
+        clangd can already be dead, or the pipe closed. That is not a reason to
+        act as though nothing happened: the cause lands in ``shutdown_error``
+        while termination itself is unconditional. Killing without the following
+        ``wait`` would leave a zombie child, so the reap is not optional.
+        """
+        # Attempt the polite exit whenever the channel is still open. Gating on
+        # "is the process alive" instead would race: clangd can die between the
+        # check and the write. Gating on the pipe also makes a second shutdown
+        # (the `_prepare` cleanup path can overlap a caller's own) a no-op.
+        if self._proc.stdin is not None and not self._proc.stdin.closed:
+            try:
+                self.request("shutdown", {}, timeout=5.0)
+                self.notify("exit", {})
+            except (TimeoutError, RuntimeError, OSError) as e:
+                # BrokenPipeError is an OSError; listing it separately added
+                # nothing. We narrow to the failures a dying clangd really
+                # produces — anything else is a bug and must not be swallowed.
+                self.shutdown_error = f"{type(e).__name__}: {e}"
         try:
             self._proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
+            self.shutdown_error = "clangd ignored the exit request; killed"
             self._proc.kill()
+            self._proc.wait()  # reap, or the child lingers as a zombie
+        # The reader thread ends on its own once stdout hits EOF, which the dead
+        # process guarantees. Join before closing so we never yank the pipe out
+        # from under a blocked `readline`.
+        self._reader.join(timeout=5.0)
+        for pipe in (self._proc.stdin, self._proc.stdout):
+            assert pipe is not None  # both were created as pipes in __init__
+            with contextlib.suppress(OSError):
+                pipe.close()
+
+
+# --------------------------------------------------------------------------- #
+# Pure helpers. Everything below this comment is a plain value->value function:
+# it builds a request or reshapes a reply, and touches neither the subprocess nor
+# the network. That is the whole point of the split — the LSP wire shapes clangd
+# can legally send (a WorkspaceSymbol with no range, a hover with a list body, a
+# definition returned bare instead of in a list) are the fiddly part, and they are
+# cheap to test exhaustively here instead of by coaxing a real server into
+# producing each one.
+# --------------------------------------------------------------------------- #
 
 
 def _root_uri(root: str) -> str:
     return "file://" + os.path.abspath(os.path.expanduser(root))
 
 
+def _uri(path: Path) -> str:
+    return "file://" + str(path)
+
+
+def _loc(node: dict[str, Any]) -> dict[str, Any]:
+    """An LSP Location or LocationLink -> ``{file, line}`` with a 1-based line.
+    A LocationLink names its target under ``targetUri``/``targetSelectionRange``
+    rather than ``uri``/``range``, and either may be missing entirely."""
+    uri = node.get("uri") or node.get("targetUri") or ""
+    rng = node.get("range") or node.get("targetSelectionRange") or node.get("targetRange") or {}
+    return {"file": _path_from_uri(uri), "line": _one_based(rng.get("start", {}).get("line"))}
+
+
+def _path_from_uri(uri: str) -> str:
+    """``file:///a/b.c`` -> ``/a/b.c``; anything else is passed through unchanged."""
+    return uri[len("file://"):] if uri.startswith("file://") else uri
+
+
+def _extra_args(compile_commands_dir: str | None) -> list[str]:
+    """The clangd command-line arguments implied by ``compile_commands_dir``."""
+    if not compile_commands_dir:
+        return []
+    return [f"--compile-commands-dir={Path(compile_commands_dir).expanduser()}"]
+
+
+def _kind_name(kind: Any) -> str:
+    """An LSP SymbolKind number -> a readable name, or the number as text when it
+    is a kind we do not name."""
+    return _SYMBOL_KINDS.get(kind, str(kind))
+
+
+def _one_based(line: Any) -> int | None:
+    """An LSP 0-based line -> a 1-based one; None when clangd omitted it."""
+    return (line + 1) if isinstance(line, int) else None
+
+
+def _compdb_seed_candidate(entries: Any, cc_dir: Path) -> Path | None:
+    """The file named by the FIRST compile-DB entry, resolved against ``cc_dir``
+    when it is relative — or None when the parsed DB has no usable first entry.
+    Takes already-parsed JSON and touches no disk, so every shape a real
+    ``compile_commands.json`` can have (not a list, empty, entry not an object,
+    no ``file`` key, relative path, absolute path) is testable directly."""
+    if not isinstance(entries, list) or not entries:
+        return None
+    first = entries[0]
+    if not isinstance(first, dict):
+        return None
+    name = first.get("file", "")
+    if not name:
+        return None
+    f = Path(name)
+    return f if f.is_absolute() else cc_dir / f
+
+
+def _symbols_from_workspace(raw: Any) -> list[dict[str, Any]]:
+    """A ``workspace/symbol`` reply -> our symbol rows. A WorkspaceSymbol may carry
+    only ``{uri}`` while a SymbolInformation carries a full range, so the line can
+    legitimately be absent; a non-list reply yields no symbols."""
+    out: list[dict[str, Any]] = []
+    for sym in raw if isinstance(raw, list) else []:
+        loc = sym.get("location", {})
+        out.append({
+            "name": sym.get("name", ""),
+            "kind": _kind_name(sym.get("kind")),
+            "container": sym.get("containerName") or "",
+            "file": _path_from_uri(loc.get("uri", "")),
+            "line": _one_based(loc.get("range", {}).get("start", {}).get("line")),
+        })
+    return out
+
+
+def _calls_from_hierarchy(raw: Any, direction: str) -> list[dict[str, Any]]:
+    """A ``callHierarchy/{in,out}goingCalls`` reply -> call rows. Incoming calls
+    name the caller under ``from``, outgoing calls name the callee under ``to``."""
+    key = "from" if direction == "incoming" else "to"
+    calls: list[dict[str, Any]] = []
+    for c in raw if isinstance(raw, list) else []:
+        item = c.get(key, {})
+        loc = _loc(item)
+        calls.append({"name": item.get("name", ""), "kind": _kind_name(item.get("kind")),
+                      "file": loc["file"], "line": loc["line"]})
+    return calls
+
+
+def _definition_from(defn: Any) -> dict[str, Any] | None:
+    """A ``textDocument/definition`` reply -> ``{file, line}``. clangd may answer
+    with a list of locations, a single bare location, or null."""
+    if isinstance(defn, list):
+        return _loc(defn[0]) if defn else None
+    if isinstance(defn, dict):
+        return _loc(defn)
+    return None
+
+
+def _hover_text(hov: Any) -> str:
+    """A ``textDocument/hover`` reply -> plain text. ``contents`` is a MarkupContent
+    object, a list of marked strings, a bare string, or null, depending on the
+    server and the LSP version it speaks."""
+    contents = hov.get("contents") if isinstance(hov, dict) else None
+    if isinstance(contents, dict):
+        text = contents.get("value", "")
+    elif isinstance(contents, list):
+        text = "\n".join(c.get("value", "") if isinstance(c, dict) else str(c)
+                         for c in contents)
+    else:
+        text = contents or ""
+    return str(text).strip()
+
+
+def _is_unsupported_method(error_text: str) -> bool:
+    """Whether a clangd error means "this build has no such request". Older builds
+    (clangd 18) implement incoming call hierarchy but not outgoing, and answer
+    JSON-RPC ``-32601``; that is a version limit, not a defect on our side."""
+    return "-32601" in error_text or "method not found" in error_text.lower()
+
+
 _LANG_ID = {".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
             ".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp"}
 
 
-def _seed_file(root: Path, compile_commands_dir: str | None) -> Path | None:
-    """A source file to ``didOpen`` so clangd starts indexing. clangd indexes the
-    whole ``compile_commands.json`` in the background only once a file is opened —
-    so we open the FIRST compile-DB entry (or, failing that, the first source file
-    under ``root``); that one open kicks off the tree-wide index that
-    ``workspace/symbol`` then answers from."""
+def _seed_file(root: Path,
+               compile_commands_dir: str | None) -> tuple[Path | None, str | None]:
+    """A source file to ``didOpen`` so clangd starts indexing, plus a warning when
+    the compile database could not be used.
+
+    clangd indexes the whole ``compile_commands.json`` in the background only once
+    a file is opened — so we open the FIRST compile-DB entry (or, failing that, the
+    first source file under ``root``); that one open kicks off the tree-wide index
+    that ``workspace/symbol`` then answers from.
+
+    A malformed or unreadable ``compile_commands.json`` still falls back to any
+    source file under ``root``, but it is REPORTED rather than passed over in
+    silence: seeding from an arbitrary file indexes far less of the tree, and a
+    user whose build file is broken should learn that from the result instead of
+    wondering why their symbol is missing."""
     cc_dir = Path(compile_commands_dir).expanduser() if compile_commands_dir else root
     cc = cc_dir / "compile_commands.json"
+    warning: str | None = None
     if cc.is_file():
         try:
             entries = json.loads(cc.read_text(encoding="utf-8"))
-            if isinstance(entries, list) and entries:
-                f = Path(entries[0].get("file", ""))
-                target = f if f.is_absolute() else cc_dir / f
-                if target.is_file():
-                    return target
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as e:
+            warning = f"ignored unusable compile database {cc}: {e}"
+            entries = None
+        if entries is not None:
+            candidate = _compdb_seed_candidate(entries, cc_dir)
+            if candidate is None:
+                warning = f"compile database {cc} named no usable first entry"
+            elif candidate.is_file():
+                return candidate, warning
+            else:
+                warning = f"compile database {cc} names a missing file: {candidate}"
     for ext in _LANG_ID:
         found = next(iter(sorted(root.rglob(f"*{ext}"))), None)
         if found is not None:
-            return found
-    return None
+            return found, warning
+    return None, warning
 
 
 def symbol_search(query: str, root: str, compile_commands_dir: str | None = None,
@@ -220,9 +406,8 @@ def symbol_search(query: str, root: str, compile_commands_dir: str | None = None
     if not root_path.is_dir():
         return {"ok": False, "error": f"root is not a directory: {root}"}
 
-    extra = [f"--compile-commands-dir={Path(compile_commands_dir).expanduser()}"] \
-        if compile_commands_dir else []
-    client = _Clangd(binary, extra)
+    client = _Clangd(binary, _extra_args(compile_commands_dir))
+    seed_warning: str | None = None
     try:
         client.request("initialize", {
             "processId": os.getpid(),
@@ -235,7 +420,7 @@ def symbol_search(query: str, root: str, compile_commands_dir: str | None = None
         client.notify("initialized", {})
         # Open one file so clangd starts indexing the whole compile DB (it won't
         # without an open file); workspace/symbol then answers tree-wide.
-        seed = _seed_file(root_path, compile_commands_dir)
+        seed, seed_warning = _seed_file(root_path, compile_commands_dir)
         if seed is not None:
             ext = seed.suffix.lower()
             client.notify("textDocument/didOpen", {"textDocument": {
@@ -259,21 +444,8 @@ def symbol_search(query: str, root: str, compile_commands_dir: str | None = None
         return {"ok": False, "error": str(e)}
     client.shutdown()
 
-    raw = result if isinstance(result, list) else []
-    symbols: list[dict[str, Any]] = []
-    for s in raw:
-        loc = s.get("location", {})
-        # WorkspaceSymbol may carry only {uri}; SymbolInformation carries a range.
-        uri = loc.get("uri", "")
-        line = loc.get("range", {}).get("start", {}).get("line")
-        symbols.append({
-            "name": s.get("name", ""),
-            "kind": _SYMBOL_KINDS.get(s.get("kind"), str(s.get("kind"))),
-            "container": s.get("containerName") or "",
-            "file": uri[len("file://"):] if uri.startswith("file://") else uri,
-            "line": (line + 1) if isinstance(line, int) else None,  # LSP is 0-based
-        })
-    return {
+    symbols = _symbols_from_workspace(result)
+    out: dict[str, Any] = {
         "ok": True,
         "query": query,
         "root": str(root_path),
@@ -285,6 +457,9 @@ def symbol_search(query: str, root: str, compile_commands_dir: str | None = None
         "returned": min(len(symbols), limit),
         "symbols": symbols[:limit],
     }
+    if seed_warning is not None:
+        out["seed_warning"] = seed_warning
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -294,21 +469,6 @@ def symbol_search(query: str, root: str, compile_commands_dir: str | None = None
 # Resolving a name to a position means callers pass a SYMBOL NAME, never raw
 # line/col — the position is an LSP implementation detail we hide.
 # --------------------------------------------------------------------------- #
-
-
-def _uri(path: Path) -> str:
-    return "file://" + str(path)
-
-
-def _loc(node: dict[str, Any]) -> dict[str, Any]:
-    """A LSP Location/LocationLink → ``{file, line}`` (1-based line)."""
-    uri = node.get("uri") or node.get("targetUri") or ""
-    rng = node.get("range") or node.get("targetSelectionRange") or node.get("targetRange") or {}
-    line = rng.get("start", {}).get("line")
-    return {
-        "file": uri[len("file://"):] if uri.startswith("file://") else uri,
-        "line": (line + 1) if isinstance(line, int) else None,
-    }
 
 
 def _flatten_symbols(nodes: Any) -> list[dict[str, Any]]:
@@ -323,7 +483,7 @@ def _flatten_symbols(nodes: Any) -> list[dict[str, Any]]:
             rng = n.get("selectionRange") or n.get("range") or {}
         out.append({
             "name": n.get("name", ""),
-            "kind": _SYMBOL_KINDS.get(n.get("kind"), str(n.get("kind"))),
+            "kind": _kind_name(n.get("kind")),
             "line": (rng.get("start", {}).get("line", 0)) + 1,
             "_pos": rng.get("start", {"line": 0, "character": 0}),
         })
@@ -333,19 +493,25 @@ def _flatten_symbols(nodes: Any) -> list[dict[str, Any]]:
 
 def _connect(binary: str, root: str, compile_commands_dir: str | None,
              timeout: float) -> _Clangd:
-    """Spawn clangd and complete the LSP handshake (initialize + initialized)."""
-    extra = [f"--compile-commands-dir={Path(compile_commands_dir).expanduser()}"] \
-        if compile_commands_dir else []
-    client = _Clangd(binary, extra)
-    client.request("initialize", {
-        "processId": os.getpid(),
-        "rootUri": _root_uri(root),
-        "capabilities": {
-            "textDocument": {"documentSymbol": {"hierarchicalDocumentSymbolSupport": True}},
-            "window": {"workDoneProgress": True},
-        },
-    }, timeout=timeout)
-    client.notify("initialized", {})
+    """Spawn clangd and complete the LSP handshake (initialize + initialized).
+
+    The subprocess exists from the moment ``_Clangd`` is constructed, so a
+    handshake that fails must take it down here — otherwise the caller receives an
+    exception with no object to shut down, and clangd survives as an orphan."""
+    client = _Clangd(binary, _extra_args(compile_commands_dir))
+    try:
+        client.request("initialize", {
+            "processId": os.getpid(),
+            "rootUri": _root_uri(root),
+            "capabilities": {
+                "textDocument": {"documentSymbol": {"hierarchicalDocumentSymbolSupport": True}},
+                "window": {"workDoneProgress": True},
+            },
+        }, timeout=timeout)
+        client.notify("initialized", {})
+    except BaseException:
+        client.shutdown()
+        raise
     return client
 
 
@@ -389,16 +555,29 @@ def _prepare(path: str, symbol: str | None, *, need_index: bool,
     root = compile_commands_dir or str(p.parent)
     try:
         client = _connect(binary, root, compile_commands_dir, timeout)
+    except (TimeoutError, RuntimeError) as e:
+        # `_connect` already killed its own client before re-raising.
+        return {"ok": False, "error": str(e)}
+    # From here a live clangd exists, so EVERY exit must shut it down. `handed_off`
+    # flips only once the client becomes the caller's responsibility; the `finally`
+    # covers the error returns below and any exception we do not convert to a dict
+    # (an OSError from reading the file, KeyboardInterrupt) — each of which used to
+    # leave clangd running with nobody holding a reference to it.
+    handed_off = False
+    try:
         uri = _open(client, p)
         if need_index:
             client.wait_index(timeout)
         position = _resolve(client, uri, symbol, timeout) if symbol is not None else None
+        if symbol is not None and position is None:
+            return {"ok": False, "error": f"symbol not found in file: {symbol!r}"}
+        handed_off = True
+        return client, uri, position
     except (TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": str(e)}
-    if symbol is not None and position is None:
-        client.shutdown()
-        return {"ok": False, "error": f"symbol not found in file: {symbol!r}"}
-    return client, uri, position
+    finally:
+        if not handed_off:
+            client.shutdown()
 
 
 def document_symbols(path: str, timeout: float = 30.0) -> dict[str, Any]:
@@ -483,22 +662,15 @@ def call_hierarchy(path: str, symbol: str, direction: str = "incoming",
         # Older clangd (e.g. 18) implements incomingCalls but NOT outgoingCalls →
         # -32601 method not found. Report that honestly instead of a raw protocol
         # error, so the caller knows it's a clangd-version limit, not a bug.
-        if "-32601" in str(e) or "method not found" in str(e):
+        if _is_unsupported_method(str(e)):
             return {"ok": False, "error": f"this clangd build does not support "
                     f"{direction} call hierarchy (needs a newer clangd)"}
         return {"ok": False, "error": str(e)}
     index_complete = client.index_done
     client.shutdown()
-    key = "from" if direction == "incoming" else "to"
-    calls: list[dict[str, Any]] = []
-    for c in raw if isinstance(raw, list) else []:
-        item = c.get(key, {})
-        loc = _loc(item)
-        calls.append({"name": item.get("name", ""),
-                      "kind": _SYMBOL_KINDS.get(item.get("kind"), str(item.get("kind"))),
-                      "file": loc["file"], "line": loc["line"]})
     return {"ok": True, "symbol": symbol, "direction": direction,
-            "index_complete": index_complete, "calls": calls}
+            "index_complete": index_complete,
+            "calls": _calls_from_hierarchy(raw, direction)}
 
 
 def describe_symbol(path: str, symbol: str,
@@ -521,18 +693,5 @@ def describe_symbol(path: str, symbol: str,
         client.shutdown()
         return {"ok": False, "error": str(e)}
     client.shutdown()
-    definition = None
-    if isinstance(defn, list) and defn:
-        definition = _loc(defn[0])
-    elif isinstance(defn, dict):
-        definition = _loc(defn)
-    contents = hov.get("contents") if isinstance(hov, dict) else None
-    if isinstance(contents, dict):
-        hover_text = contents.get("value", "")
-    elif isinstance(contents, list):
-        hover_text = "\n".join(c.get("value", "") if isinstance(c, dict) else str(c)
-                               for c in contents)
-    else:
-        hover_text = contents or ""
-    return {"ok": True, "symbol": symbol, "definition": definition,
-            "hover": hover_text.strip()}
+    return {"ok": True, "symbol": symbol, "definition": _definition_from(defn),
+            "hover": _hover_text(hov)}
