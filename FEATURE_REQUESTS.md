@@ -21,6 +21,36 @@ the history of what the tools learned to do stays visible.
 
 ---
 
+## Readable `const char *` arguments in C/C++ traces, without the out-of-bounds read
+
+**What was lost and why.** C and C++ used to print a `const char *` argument as
+its contents (`%s` in C, `std::string(s)` in C++). That was the single most
+useful thing in a C trace — and it was an out-of-bounds read whenever the
+pointer was not a NUL-terminated string. `put_one(const char *p)` called as
+`put_one(&c)` on one char is ordinary, correct C; the wrapped copy read past `c`
+to the first zero anywhere in memory. Proven with AddressSanitizer: the
+unwrapped program is clean, the wrapped one reports
+`stack-buffer-overflow ... READ of size 2` inside `vsnprintf` (C) and inside
+`strlen` (C++). Instrumentation was introducing undefined behaviour into a
+program that had none — the one thing this tool promises not to do — and it also
+broke anyone running their tests under a sanitizer, which then reports the
+wrapped program instead of their bug.
+
+Both now print the address. Safe, and much less useful.
+
+**Why it cannot simply be made safe.** No C type means "really a
+NUL-terminated string". Bounding the read (`%.200s`, `strnlen`) does not help:
+it still reads up to the bound, which is still past the end of a one-byte
+object. Probing to the end of the page is practically safe but formally still
+undefined, and a sanitizer still reports it — which defeats the point.
+
+**What would actually work: make it opt-in.** A wrap-time flag (alongside
+`minimal`) that turns string rendering back on, for a caller who knows their
+`const char *` are strings. Default stays the safe rendering. The cost is
+plumbing a second flag through `Transformer.wrap_source`, all five backends, the
+CLI and the MCP tools — which is why it is written down here rather than done in
+passing.
+
 ## More clangd LSP capabilities for navigation (candidate — we use only workspace/symbol so far)
 - **Date:** 2026-06-15
 - **Observed:** clangd's `initialize` advertises ~30 capabilities; we drive ONE

@@ -193,8 +193,17 @@ static const char *scalar_spec(int kind)
     }
 }
 
-/* spec = printf conversion or NULL (unprintable); is_string = `const char *`,
- * which the caller must guard against NULL before handing it to %s. */
+/* spec = printf conversion or NULL (unprintable); is_string = the type IS
+ * `const char *`.
+ *
+ * is_string is reported as a type fact, but it does NOT make the spec `%s`.
+ * Printing a `const char *` with `%s` assumes the pointer is a NUL-terminated
+ * string, and the type does not say that: `put_one(const char *p)` called as
+ * `put_one(&c)` on a single char is ordinary, correct C. Formatting it with %s
+ * reads past the end of that object — instrumentation introducing undefined
+ * behaviour into a program that had none. Proven with AddressSanitizer:
+ * unwrapped clean, wrapped `stack-buffer-overflow ... READ of size 2` inside
+ * vsnprintf. So every pointer prints as %p. */
 static void spec_for(CXType t, const char **spec, int *is_string)
 {
     CXType canon = clang_getCanonicalType(t);
@@ -205,9 +214,8 @@ static void spec_for(CXType t, const char **spec, int *is_string)
         int chars = pcanon.kind == CXType_Char_S || pcanon.kind == CXType_Char_U ||
                     pcanon.kind == CXType_SChar || pcanon.kind == CXType_UChar;
         if (chars && clang_isConstQualifiedType(pointee)) {
-            *spec = "%s";
+            /* Type fact recorded; the spec stays %p — see the comment above. */
             *is_string = 1;
-            return;
         }
         *spec = "%p";
         return;

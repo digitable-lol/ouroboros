@@ -94,10 +94,19 @@ class CTransformer(ClangTransformer):
             pname = p.name or "_"
             if p.spec is None:
                 fmt_parts.append("<...>")
-            elif p.is_string:
-                fmt_parts.append("%s")
-                arg_exprs.append(f'({pname} ? {pname} : "(null)")')
             else:
+                # Pointers print as %p, including `const char *`. Printing that
+                # one with %s used to give a readable string, and was a real
+                # out-of-bounds read whenever the pointer was not a
+                # NUL-terminated string — `put_one(&c)` on a single char is
+                # ordinary C, and the wrapped copy reads past `c` until it meets
+                # a zero. That is instrumentation introducing undefined
+                # behaviour into a program that had none, which is the one thing
+                # this tool promises not to do. It also broke anyone running
+                # their tests under AddressSanitizer, which reports the wrapped
+                # program and not the bug. There is no type that means "really a
+                # string", so the readable rendering cannot be made safe and is
+                # gone; see FEATURE_REQUESTS.md.
                 fmt_parts.append(p.spec)
                 arg_exprs.append(pname)
         fmt = ", ".join(fmt_parts)
