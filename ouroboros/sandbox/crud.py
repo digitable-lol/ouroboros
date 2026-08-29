@@ -54,11 +54,22 @@ def write_file(project: Project, rel_path: str, content: str) -> WriteOutcome:
 
     # Ensure the language's runtime helper is present so the wrapped code can
     # run (e.g. ouroboros_runtime.js for a first .js write). Idempotent.
+    #
+    # NEXT TO THE FILE, not at the draft root. The wrapped source refers to the
+    # helper by a path relative to ITSELF — C/C++ `#include "ouroboros_runtime.h"`
+    # and the JS `import ... from "./ouroboros_runtime.js"` both resolve against
+    # the including file's directory. With the helper parked at the root, a write
+    # to `src/main.c` produced a file that could not compile
+    # (`ouroboros_runtime.h: No such file or directory`) and a `.mjs` that could
+    # not load — while write_file answered ok: true. Measured across the five
+    # backends: C, C++ and JavaScript broke on a nested path, Python did not.
+    # This also matches what wrap_file already does (`_drop_runtime_asset` writes
+    # beside its target), so the two ways into the same tree now agree.
     if tx is not None:
         asset = tx.runtime_asset()
         if asset is not None:
             asset_name, asset_src = asset
-            asset_path = project.draft / asset_name
+            asset_path = target.parent / asset_name
             if not asset_path.exists():
                 asset_path.write_text(asset_src, encoding="utf-8")
 
