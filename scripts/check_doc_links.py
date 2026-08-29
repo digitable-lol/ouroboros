@@ -110,8 +110,8 @@ def main() -> int:
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
             text_refs = {(m.group(1), m.group(2), m.group(3)) for m in REF.finditer(line)}
             url_refs = {(m.group(1), m.group(2), m.group(3)) for m in URL.finditer(line)}
-            # URL-совпадения ловятся и REF-ом тоже; сравниваем только то, что
-            # осталось после вычитания, иначе каждая строка выглядела бы разной.
+            # То, что нашлось по ссылке, находится и по тексту; сравниваем
+            # только остаток, иначе разной выглядела бы каждая строка.
             if url_refs and not url_refs <= text_refs:
                 problems.append(
                     f"{doc.relative_to(root)}:{lineno}: номер в тексте и номер в "
