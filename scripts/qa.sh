@@ -41,4 +41,10 @@ uv run python scripts/state_numbers.py
 echo "== слова со смешанными алфавитами =="
 uv run python scripts/check_no_mixed_script.py
 
+# Таблица полей записи в docs/languages.md печатается прогоном пяти языков.
+# Она однажды стала ложью от правки в обработчиках, а не в странице: см.
+# scripts/schema_facts.py.
+echo "== таблица полей записи =="
+uv run python scripts/schema_facts.py
+
 echo "== all gates passed =="
