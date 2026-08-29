@@ -121,10 +121,13 @@ def apply_marks(state: dict[str, Any]) -> list[str]:
         path = ROOT / name
         text = path.read_text(encoding="utf-8")
 
-        def swap(m: re.Match[str]) -> str:
+        # `page=name` связывает имя страницы СЕЙЧАС, а не при вызове: без этого
+        # замыкание смотрело бы на переменную цикла, и в сообщении об ошибке
+        # стояла бы последняя страница, а не та, в которой беда.
+        def swap(m: re.Match[str], page: str = name) -> str:
             key = m.group(1)
             if key not in state:
-                raise SystemExit(f"{name}: пометка {key!r} — такого числа не измеряют")
+                raise SystemExit(f"{page}: пометка {key!r} — такого числа не измеряют")
             return f"<!--state:{key}-->{state[key]}<!--/state-->"
 
         new = MARK.sub(swap, text)

@@ -18,20 +18,19 @@ async def main() -> None:
         command=sys.argv[1] if len(sys.argv) > 1 else "ouroboros-mcp",
         args=sys.argv[2:],
     )
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            init = await session.initialize()
-            tools = await session.list_tools()
-            out = {
-                "server_name": init.serverInfo.name,
-                "server_version": init.serverInfo.version,
-                "protocol_version": init.protocolVersion,
-                "instructions": init.instructions,
-                "capabilities": init.capabilities.model_dump(exclude_none=True),
-                "tool_count": len(tools.tools),
-                "tools": [t.model_dump(exclude_none=True) for t in tools.tools],
-            }
-            print(json.dumps(out, ensure_ascii=False, indent=2))
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        init = await session.initialize()
+        tools = await session.list_tools()
+        out = {
+            "server_name": init.serverInfo.name,
+            "server_version": init.serverInfo.version,
+            "protocol_version": init.protocolVersion,
+            "instructions": init.instructions,
+            "capabilities": init.capabilities.model_dump(exclude_none=True),
+            "tool_count": len(tools.tools),
+            "tools": [t.model_dump(exclude_none=True) for t in tools.tools],
+        }
+        print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
 asyncio.run(main())

@@ -110,8 +110,8 @@ paths; the corruption gate rejects on Error-severity diagnostics. Real NetBSD-tr
 files need that tree's `-I/-D` flags + target headers (validate on `ssh netbsd`)
 — the validated path here is AI-authored self-contained userland code.
 
-Suite: <!--state:tests-->441<!--/state--> tests,
-<!--state:coverage_percent-->95<!--/state-->% coverage (statements **and**
+Suite: <!--state:tests-->580<!--/state--> tests,
+<!--state:coverage_percent-->94<!--/state-->% coverage (statements **and**
 branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir
 (all by compile+run where applicable). MCP tools declared by the server:
 <!--state:mcp_tools-->17<!--/state-->.
@@ -135,9 +135,20 @@ no amount of work on the untested part could have produced it.
 That ceiling has since been passed, because the parts it was computed over were
 tested rather than argued about. At 100% of statements and branches: `clangtools/`
 (all three modules), `treeflags.py`, the new `toolchain.py`, `mcp/server.py`, and
-`sandbox/`. Named honestly, the gap that is left is `cli.py` at 75% and the five
-language backends at 87–95%; `cli.py` is argument plumbing, the backends are not,
-and they are the honest next target.
+`sandbox/`.
+
+Named honestly, what is left: `runtime.py` 72%, `cli.py` 75%, `trace.py` 90%, and
+the five language backends 87–95%.
+
+`runtime.py` needs a caveat rather than a target. The record-ceiling code added
+with the equivalence work is exercised end to end — `tests/test_schema_parity.py`
+builds a 30-argument call and runs it on all five backends — but through a
+SUBPROCESS, which `pytest --cov` does not follow. So the file's number understates
+what is actually tested. The pure part of it (`_bounded`) is now tested in-process
+as well, which is why the figure moved from 59.6%; the rest of the gap is the
+decorator body, only ever reached from a wrapped program in another process.
+Reading 72% as "28% untested" would be wrong, and reporting it without saying so
+would be the same sin as the 91% above.
 
 `clangtools/` reaching 100% required installing the binaries it wraps — clangd and
 clang-tidy — without which eight of its tests skip and the package sits at 22%.
