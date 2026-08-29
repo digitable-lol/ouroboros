@@ -327,3 +327,105 @@ def test_tool_read_trace_tail_larger_than_match_count(tmp_path):
     r = tool_read_trace(str(f), tail=99)
 
     assert r["ok"] is True and r["returned"] == 3
+
+
+# --------------------------------------------------------------------------- #
+# What the parser does with lines that are not whole records.
+#
+# The sink promises one record per append, under PIPE_BUF, so several processes
+# can share one debug.info. When that promise is broken — an older capture, a
+# serial console, a writer that is not ours — the parser has to say how many
+# lines it could not use, not quietly drop them: a silent drop reads exactly
+# like "the function was never called".
+# --------------------------------------------------------------------------- #
+
+def test_a_torn_line_is_counted_not_dropped():
+    loaded = load(SAMPLE + '{"p":"out","id":"44444444-4444-4444-8444-4444444')
+
+    assert len(loaded.calls) == 3
+    assert loaded.malformed == 1
+
+
+def test_blank_lines_are_not_malformed():
+    """A trailing newline, or the blank line a shell adds, is not a lost record."""
+
+    loaded = load("\n   \n\t\n" + SAMPLE + "\n\n")
+
+    assert len(loaded.calls) == 3
+    assert loaded.malformed == 0
+
+
+def test_an_out_record_that_says_neither_result_nor_exception():
+    """A completion carrying no `r` and no `x` — a truncated write, or a sink
+    that stopped mid-record. The call did finish, so it is a call; what it
+    answered is unknown, and `unknown` is what the aggregate must say."""
+
+    text = (_in("2026-06-15T10:00:00.001", "55555555-5555-4555-8555-555555555555", "f")
+            + json.dumps({"p": "out", "id": "55555555-5555-4555-8555-555555555555",
+                          "fn": "f", "d": 0.1}) + "\n")
+
+    loaded = load(text)
+
+    assert loaded.malformed == 0
+    assert loaded.calls[0].outcome_kind == "" and loaded.calls[0].outcome == ""
+    stats = aggregate(loaded.calls)
+    assert stats["by_function"][0]["unknown"] == 1
+    assert stats["by_function"][0]["result"] == 0
+
+
+def test_an_unparseable_uptime_is_no_timestamp_rather_than_a_crash():
+    """The kernel sink writes `uptime+SEC.MS`. A capture that lost the digits
+    still has usable call records; only its place on the clock is gone."""
+
+    assert parse_timestamp("uptime+5.5") == 5.5
+    assert parse_timestamp("uptime+") is None
+    assert parse_timestamp("uptime+later") is None
+
+
+def test_contains_can_be_a_regular_expression():
+    """`--contains` searches args, kwargs and outcome. As a regex it is the way
+    to ask for a shape — a pointer, an errno — rather than a literal."""
+
+    recs = parse(SAMPLE)
+
+    hits = query(recs, contains=r"0x[0-9a-f]+", regex=True)
+
+    assert [r.name for r in hits] == ["pmap_segtab_activate"]
+    assert query(recs, contains=r"0x[0-9a-f]+", regex=False) == []
+
+
+def test_a_function_whose_calls_carry_no_duration_gets_no_duration_block():
+    """`d` is missing in traces from a sink that predates it. Reporting a
+    made-up zero there would read as "instant", which is a different claim."""
+
+    text = (_in("2026-06-15T10:00:00.001", "66666666-6666-4666-8666-666666666666", "f")
+            + json.dumps({"p": "out", "id": "66666666-6666-4666-8666-666666666666",
+                          "fn": "f", "r": "1"}) + "\n")
+
+    stats = aggregate(load(text).calls)
+
+    assert stats["by_function"][0]["count"] == 1
+    assert stats["by_function"][0]["duration_seconds"] is None
+    assert stats["duration_seconds"] is None
+
+
+def test_a_thread_that_reported_no_cpu_is_still_grouped():
+    """`ci` is absent on every platform without `sched_getcpu`. The thread view
+    is still the point; the CPU column is simply empty."""
+
+    text = _call("2026-06-15T10:00:00.001", "77777777-7777-4777-8777-777777777777",
+                 "f", r="1", d=0.1, th="10.20")
+
+    stats = aggregate(load(text).calls)
+
+    assert stats["by_thread"] == [
+        {"thread": "10.20", "count": 1, "functions": 1, "cpus": []}]
+
+
+def test_no_timespan_when_nothing_carries_a_readable_timestamp():
+    text = _call("", "88888888-8888-4888-8888-888888888888", "f", r="1", d=0.1)
+
+    stats = aggregate(load(text).calls)
+
+    assert stats["total_calls"] == 1
+    assert stats["timespan"] is None

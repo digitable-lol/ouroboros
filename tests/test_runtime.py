@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import inspect
 import json
 import re
 
@@ -214,3 +216,205 @@ def test_every_shortened_field_is_marked_and_untouched_ones_are_not():
 
     assert got["a"].endswith(runtime._ELLIPSIS)
     assert got["k"] == "k=1"
+
+
+# --------------------------------------------------------------------------- #
+# The four flavours of wrapper.
+#
+# A single plain-function wrapper would be simpler, but it makes
+# `inspect.iscoroutinefunction` and friends answer False for a function that
+# plainly is one — and frameworks decide whether to `await` a handler by asking
+# exactly that. Losing the answer changes what the program does, which is the
+# one thing instrumentation must never do. So each flavour is checked twice:
+# the trace it writes, and the question introspection still answers about it.
+# --------------------------------------------------------------------------- #
+
+def _drive(gen):
+    """Run a generator to exhaustion; return (yielded items, return value)."""
+
+    items = []
+    while True:
+        try:
+            items.append(next(gen))
+        except StopIteration as stop:
+            return items, stop.value
+
+
+async def _drain(agen):
+    return [item async for item in agen]
+
+
+def test_a_coroutine_is_still_a_coroutine_after_wrapping(debug_info):
+    @runtime.log
+    async def fetch(n):
+        return n * 2
+
+    assert inspect.iscoroutinefunction(fetch)
+    assert asyncio.run(fetch(21)) == 42
+    c = _calls(debug_info)[0]
+    assert c.name.endswith("fetch") and c.args == "21"
+    assert c.outcome_kind == "result" and c.outcome == "42"
+
+
+def test_a_coroutine_that_raises_is_logged_and_re_raised(debug_info):
+    @runtime.log
+    async def fail():
+        raise RuntimeError("async nope")
+
+    with pytest.raises(RuntimeError, match="async nope"):
+        asyncio.run(fail())
+    c = _calls(debug_info)[0]
+    assert c.outcome_kind == "raised" and c.outcome == "RuntimeError: async nope"
+
+
+def test_a_generator_is_still_a_generator_after_wrapping(debug_info):
+    @runtime.log
+    def counter(n):
+        total = 0
+        for i in range(n):
+            total += i
+            yield i
+        return f"summed {total}"
+
+    assert inspect.isgeneratorfunction(counter)
+    items, returned = _drive(counter(3))
+    assert items == [0, 1, 2]
+    assert returned == "summed 3"      # the value `yield from` hands back
+    c = _calls(debug_info)[0]
+    assert c.outcome_kind == "result" and c.outcome == "'summed 3'"
+
+
+def test_a_generator_is_logged_when_it_runs_not_when_it_is_created(debug_info):
+    """For a generator function, "called" and "the body ran" are different
+    moments, and only the second one means anything in a trace."""
+
+    @runtime.log
+    def counter():
+        yield 1
+
+    gen = counter()
+    assert not debug_info.exists()                        # nothing has run yet
+
+    next(gen)
+    assert [ln["p"] for ln in _lines(debug_info)] == ["in"]  # entered, not done
+
+
+def test_a_generator_that_raises_is_logged_and_re_raised(debug_info):
+    @runtime.log
+    def counter():
+        yield 1
+        raise ValueError("mid-stream")
+
+    gen = counter()
+    assert next(gen) == 1
+    with pytest.raises(ValueError, match="mid-stream"):
+        next(gen)
+    c = _calls(debug_info)[0]
+    assert c.outcome_kind == "raised" and c.outcome == "ValueError: mid-stream"
+
+
+def test_an_async_generator_is_still_an_async_generator_after_wrapping(debug_info):
+    @runtime.log
+    async def stream(n):
+        for i in range(n):
+            yield i
+
+    assert inspect.isasyncgenfunction(stream)
+    assert asyncio.run(_drain(stream(3))) == [0, 1, 2]
+    c = _calls(debug_info)[0]
+    # An async generator carries no return value, so there is none to log.
+    assert c.outcome_kind == "result" and c.outcome == "None"
+
+
+def test_an_async_generator_that_raises_is_logged_and_re_raised(debug_info):
+    @runtime.log
+    async def stream():
+        yield 1
+        raise KeyError("async mid-stream")
+
+    with pytest.raises(KeyError):
+        asyncio.run(_drain(stream()))
+    c = _calls(debug_info)[0]
+    assert c.outcome_kind == "raised" and c.outcome.startswith("KeyError:")
+
+
+def test_a_plain_function_is_not_mistaken_for_any_of_the_three(debug_info):
+    @runtime.log
+    def plain():
+        return 1
+
+    assert not inspect.iscoroutinefunction(plain)
+    assert not inspect.isgeneratorfunction(plain)
+    assert not inspect.isasyncgenfunction(plain)
+
+
+@pytest.mark.parametrize("flavour", ["plain", "coroutine", "generator", "asyncgen"])
+def test_the_wrapper_keeps_the_defaults_the_caller_can_read(debug_info, flavour):
+    """`functools.update_wrapper` copies name/doc/module but NOT `__defaults__`
+    or `__kwdefaults__`, so code that reads them off a function — argparse-style
+    helpers, serializers, test tooling — saw None on every wrapped function."""
+
+    def plain(a, b=2, *, c=3):
+        return a
+
+    async def coroutine(a, b=2, *, c=3):
+        return a
+
+    def generator(a, b=2, *, c=3):
+        yield a
+
+    async def asyncgen(a, b=2, *, c=3):
+        yield a
+
+    original = {"plain": plain, "coroutine": coroutine,
+                "generator": generator, "asyncgen": asyncgen}[flavour]
+    wrapped = runtime.log(original)
+
+    assert wrapped.__defaults__ == (2,)
+    assert wrapped.__kwdefaults__ == {"c": 3}
+    assert wrapped.__name__ == flavour
+    assert inspect.signature(wrapped) == inspect.signature(original)
+
+
+# --------------------------------------------------------------------------- #
+# Two record-ceiling cases the direct `_bounded` tests above do not reach,
+# because both need a real call to produce them.
+# --------------------------------------------------------------------------- #
+
+def test_a_long_exception_message_is_shortened(debug_info):
+    """`x` is the one value that does NOT go through the short-repr: it is built
+    as "Type: message", and the message is whatever the exception carries — a
+    dumped structure, a diff, a kernel string. Nothing bounds it but this."""
+
+    @runtime.log
+    def boom():
+        raise ValueError("z" * 10_000)
+
+    with pytest.raises(ValueError):
+        boom()
+
+    out = _lines(debug_info)[1]
+    assert len(runtime._encode(out).encode("utf-8")) <= runtime.MAX_RECORD_BYTES
+    assert out["x"].startswith("ValueError: ") and out["x"].endswith(runtime._ELLIPSIS)
+
+
+def test_the_name_wins_when_nothing_else_can_be_cut(debug_info):
+    """When the qualified name alone overruns the record, the record goes over
+    the ceiling rather than losing the one field that makes it identifiable. A
+    too-long record can still be attributed to its call; a nameless one cannot
+    be attributed at all."""
+
+    scope: dict[str, object] = {"log": runtime.log}
+    name = "N" * 4200
+    exec(f"class {name}:\n"
+         f"    @log\n"
+         f"    def m(self):\n"
+         f"        return 1\n", scope)
+    scope[name]().m()
+
+    entry = _lines(debug_info)[0]
+    assert entry["fn"].startswith(name)              # kept whole, ceiling or no
+    # `a` held the instance repr; halved away to nothing, it keeps only the mark
+    # that says something was there. `k` was empty all along and is left alone.
+    assert entry["a"] == runtime._ELLIPSIS and entry["k"] == ""
+    assert len(runtime._encode(entry).encode("utf-8")) > runtime.MAX_RECORD_BYTES

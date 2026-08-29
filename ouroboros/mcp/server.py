@@ -888,9 +888,8 @@ def transport_from_env() -> Literal["stdio", "sse", "streamable-http"]:
 
     The SDK accepts exactly these three; validating here stops a typo from
     failing deep inside the server with an unreadable message. Separate from
-    :func:`main` so the check is testable — ``main`` itself only starts a server
-    that then blocks, so it cannot be measured. The equality chain also narrows
-    the value to the ``Literal`` ``run`` expects (no cast)."""
+    :func:`main` so the check can be made without starting anything. The equality
+    chain also narrows the value to the ``Literal`` ``run`` expects (no cast)."""
     transport = os.environ.get("OUROBOROS_MCP_TRANSPORT", "stdio")
     if transport == "sse":
         return "sse"
@@ -904,7 +903,18 @@ def transport_from_env() -> Literal["stdio", "sse", "streamable-http"]:
     )
 
 
-def main() -> None:  # pragma: no cover - process entrypoint; run() blocks
+def main() -> None:
+    """Start the server on the transport the environment asks for.
+
+    This carried a ``no cover`` note for a long time, saying ``run()`` blocks so
+    the entry point cannot be measured. It does not block forever: over stdio it
+    returns when the client closes the input, which is how an ordinary session
+    ends. The note hid the entry point, and with it the fact that nothing
+    checked the chosen transport ever reached ``run``. A whole session now goes
+    through here in ``tests/test_cli.py`` — a real request in, a real answer
+    out, exit 0 at end of input.
+    """
+
     build_server().run(transport=transport_from_env())
 
 
