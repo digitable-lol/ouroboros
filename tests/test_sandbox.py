@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -438,3 +439,51 @@ def test_finish_treats_an_unreadable_file_as_not_built(project, monkeypatch):
     reason = _exclusion_reason(Path("mystery"), target)
 
     assert reason is None
+
+
+# --------------------------------------------------------------------------- #
+# The runtime helper must land where the wrapped source looks for it.
+#
+# Wrapped C/C++ says `#include "ouroboros_runtime.h"` and wrapped JS says
+# `from "./ouroboros_runtime.js"`; both resolve against the INCLUDING FILE's
+# directory. Parking the helper at the draft root therefore produced a file that
+# could not build, while write_file answered ok: true.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize(
+    ("rel_path", "source", "helper"),
+    [
+        ("src/deep/m.c", "int f(int n) { return n; }\n", "ouroboros_runtime.h"),
+        ("src/deep/m.cpp", "int f(int n) { return n; }\n", "ouroboros_runtime.hpp"),
+        ("src/deep/m.mjs", "function f(n) { return n; }\n", "ouroboros_runtime.js"),
+        ("src/deep/m.py", "def f(n):\n    return n\n", "ouroboros_runtime.py"),
+    ],
+)
+def test_helper_lands_beside_a_nested_file(tmp_path, rel_path, source, helper):
+    proj = Project.create(tmp_path / "site")
+
+    write_file(proj, rel_path, source)
+
+    beside = proj.draft / Path(rel_path).parent / helper
+    assert beside.is_file(), f"helper must sit next to {rel_path}, not at the draft root"
+    assert not (proj.draft / helper).exists(), "and not be duplicated at the root"
+
+
+def test_nested_c_file_actually_compiles(tmp_path):
+    """The end-to-end claim: the nested tree builds, not merely looks right."""
+
+    if shutil.which("gcc") is None:
+        pytest.skip("gcc not installed")
+    proj = Project.create(tmp_path / "site")
+    write_file(
+        proj, "src/deep/main.c",
+        '#include <stdio.h>\nint add(int a, int b) { return a + b; }\n'
+        'int main(void) { printf("%d\\n", add(2, 3)); return 0; }\n',
+    )
+
+    built = execute(proj, ["gcc", "-o", "src/deep/prog", "src/deep/main.c"], timeout=120.0)
+
+    assert built.returncode == 0, built.stderr
+    ran = execute(proj, ["./src/deep/prog"], timeout=60.0)
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.strip() == "5"
