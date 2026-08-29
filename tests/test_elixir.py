@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 
@@ -110,15 +111,21 @@ def test_end_to_end_compile_and_run(tmp_path):
 
     assert "24" in outcomes("fact")              # fact(4)
     addmul = [c for c in loaded.calls if c.name == "addmul"]
-    assert any("c=10" in c.args for c in addmul)  # default arg applied
+    # `a` carries values only (SPEC.md); the default arg shows up as the
+    # trailing 10 of "8, 2, 10", not as "c=10".
+    assert any(c.args.endswith(", 10") for c in addmul)  # default arg applied
     assert {"16", "106"} <= {c.outcome for c in addmul}
     assert any(c.name == "helper" for c in loaded.calls)  # defp wrapped
     boom = [c for c in loaded.calls if c.name == "boom"]
-    assert any(c.outcome_kind == "raised" and c.outcome.startswith("error:")
+    # `x` is "<Type>: <message>" (SPEC.md), not the catch kind plus a struct repr.
+    assert any(c.outcome_kind == "raised" and c.outcome == "RuntimeError: neg"
                for c in boom)                    # boom(-1)
     # every completed call carries a real duration
     assert all(c.duration is not None for c in loaded.calls)
-    # concurrency identity: th is the BEAM process (inspect(self())) and ci the
-    # scheduler id (>=1 — a real "CPU", parsed off `ci`, not None)
-    assert all(c.thread.startswith("#PID<") for c in loaded.calls)
-    assert all(isinstance(c.cpu, int) and c.cpu >= 1 for c in loaded.calls)
+    # Concurrency identity: `th` is "<os pid>.<beam process>" — both halves, the
+    # same shape every other backend emits, so a reader can tell two BEAM nodes
+    # sharing one debug.info apart. `ci` is -1: the scheduler id that used to sit
+    # there is not a CPU index (schedulers migrate), and passing it off as one
+    # made the field mean something different in Elixir than in the other four.
+    assert all(re.fullmatch(r"\d+\.#PID<[\d.]+>", c.thread) for c in loaded.calls)
+    assert all(c.cpu is None for c in loaded.calls)

@@ -19,7 +19,13 @@ language; this file defines the *log sink and record schema* they all share.
   backends ship a tiny runtime helper (the analogue of `ouroboros_runtime.py`)
   that appends records directly to `OUROBOROS_DEBUG_INFO`.
 - Each record is written with a single `O_APPEND` write and bounded well under
-  `PIPE_BUF`, so concurrent processes/threads cannot interleave one line.
+  `PIPE_BUF` (4096 bytes on Linux), so concurrent processes/threads cannot
+  interleave one line. Per-value short reprs are not enough to guarantee this —
+  a call with thirty arguments overruns it — so every helper also enforces a
+  per-record ceiling: if the assembled line is too long, it shortens the value
+  fields (`a`, `k`, `r`, `x`, never `fn`/`id`/`t`) until the line fits and marks
+  each shortened one with a trailing `…`. Truncation never splits a UTF-8
+  character, because half a character would make the whole line undecodable.
 
 ## 2. The record schema (two lines per call)
 
@@ -98,6 +104,34 @@ are counted as `malformed`.
 - **Return value captured before it leaves the wrapper** — the Python analogue
   of example.md's `return (__result = expr)` invariant. The decorator captures
   `result` and logs it before returning to the caller.
+- **C++ gives up `r` for class types returned by value.** Routing such a return
+  through a capture helper costs the copy elision C++17 guarantees: a program
+  that counts its own constructors then prints a move it never printed
+  unwrapped, and a type with copy and move both `= delete` stops compiling
+  outright. Observability loses to transparency here — the record still carries
+  the arguments, the duration and whether the call threw; only the returned
+  object's repr is `(no value)`. Scalars, pointers and references are captured
+  normally.
+- **`x` is filled from a `catch (...)` clause in C++, not from the scope
+  guard.** During stack unwinding `std::current_exception()` is null, so a
+  destructor cannot say which exception left the function; a clause that records
+  and immediately rethrows can, and leaves control flow unchanged.
+- **Parameter NAMES are not recorded, in any language.** `a` carries values only
+  (`"2, 3"`), because that is what the table above says it is, and the split
+  between `a` and `k` is the thing that lets one schema describe five languages.
+  C, C++ and Elixir build the record at wrap time, where the signature is parsed
+  and the names ARE known, and earlier wrote `"a=2, b=3"` into `a`; that made
+  those three disagree with Python and JS about what the field means, and the
+  cross-language comparison could not be written. The names are not lost to the
+  reader — `fn` identifies the function, and its signature is in the source — but
+  they are genuinely absent from the trace, and a tool reading only the trace
+  cannot recover them.
+- **The Python decorator costs one stack frame per wrapped call.** The wrapper
+  sits between caller and callee, so recursion that fitted before the wrap can
+  overflow after it. Measured with `setrecursionlimit(200)`: greatest reachable
+  depth 198 unwrapped, 95 wrapped — 2.08x shallower. This is not removable while
+  the mechanism is a decorator. Deep recursion should be wrapped with
+  `wrap_functions` on the non-recursive callers, not on the recursive function.
 - **Duration clock starts AFTER the entry write**, so the entry-write overhead is
   excluded from the measured call duration.
 

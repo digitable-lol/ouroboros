@@ -18,6 +18,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -27,9 +28,40 @@
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <typeinfo>
+#include <unistd.h>
 #include <utility>
 
+#if defined(__GNUC__)
+#include <cxxabi.h>	// demangle typeid().name() so `x` reads as the source type
+#endif
+
 namespace _ouro {
+
+// Per-value ceiling, in bytes — the same 200 the Python (reprlib) and JS helpers
+// use, so one huge argument costs the same everywhere.
+inline constexpr std::size_t MAX_VALUE = 200;
+// Per-record ceiling, in bytes. SPEC.md §1 promises each record is written with
+// a single append and stays under PIPE_BUF (4096 on Linux) so processes sharing
+// one debug.info cannot interleave a line. Per-value caps alone do not deliver
+// it: a call with 30 arguments produced a 12310-byte line, the kernel tore it,
+// and the parser silently counted both halves as malformed and dropped them.
+// The field budgets below are chosen so the longest possible record fits.
+inline constexpr std::size_t MAX_NAME = 200;
+inline constexpr std::size_t MAX_ARGS = 3000;
+inline constexpr std::size_t MAX_OUTCOME = 600;
+
+// Truncate to at most `n` bytes without splitting a UTF-8 character in half —
+// a half character makes the whole JSON line undecodable, i.e. loses the record
+// this cap exists to save.
+inline std::string _cap(const std::string &s, std::size_t n) {
+	if (s.size() <= n)
+		return s;
+	std::size_t cut = n;
+	while (cut > 0 && ((unsigned char)s[cut] & 0xc0) == 0x80)
+		cut--;	// step back off continuation bytes to a character boundary
+	return s.substr(0, cut) + "\xe2\x80\xa6";	// U+2026 HORIZONTAL ELLIPSIS
+}
 
 template <class T, class = void>
 struct is_streamable : std::false_type {};
@@ -43,36 +75,59 @@ std::string repr(const T &v) {
 	if constexpr (is_streamable<T>::value) {
 		std::ostringstream os;
 		os << v;
-		return os.str();
+		return _cap(os.str(), MAX_VALUE);
 	} else {
 		return "<...>";
 	}
 }
 
 // Guard char* so a null pointer does not crash operator<<.
-inline std::string repr(const char *s) { return s ? std::string(s) : std::string("(null)"); }
+inline std::string repr(const char *s) {
+	return s ? _cap(std::string(s), MAX_VALUE) : std::string("(null)");
+}
 
 // Escape a string for embedding inside a JSON string literal (no surrounding
-// quotes added). Handles the mandatory control chars and \ ".
-inline std::string _jesc(const std::string &s) {
+// quotes added), stopping at `max_bytes` of OUTPUT. Handles the mandatory
+// control chars and \ ". It advances one whole UTF-8 character at a time and
+// only appends a piece that fits, so the cap can never leave half an escape
+// sequence or half a character behind — either would make the line undecodable
+// and cost the record the cap exists to save.
+inline std::string _jesc(const std::string &s, std::size_t max_bytes) {
 	std::string o;
-	o.reserve(s.size() + 8);
-	for (unsigned char c : s) {
-		switch (c) {
-		case '"': o += "\\\""; break;
-		case '\\': o += "\\\\"; break;
-		case '\n': o += "\\n"; break;
-		case '\r': o += "\\r"; break;
-		case '\t': o += "\\t"; break;
-		default:
-			if (c < 0x20) {
-				char b[8];
-				std::snprintf(b, sizeof b, "\\u%04x", c);
-				o += b;
-			} else {
-				o += (char)c;
+	o.reserve(s.size() < max_bytes ? s.size() + 8 : max_bytes);
+	std::size_t i = 0;
+	while (i < s.size()) {
+		unsigned char c = (unsigned char)s[i];
+		std::size_t width = 1;
+		if (c >= 0xf0) width = 4;
+		else if (c >= 0xe0) width = 3;
+		else if (c >= 0xc0) width = 2;
+		if (i + width > s.size())
+			width = 1;	// truncated input: copy the stray byte
+		std::string piece;
+		if (width == 1) {
+			switch (c) {
+			case '"': piece = "\\\""; break;
+			case '\\': piece = "\\\\"; break;
+			case '\n': piece = "\\n"; break;
+			case '\r': piece = "\\r"; break;
+			case '\t': piece = "\\t"; break;
+			default:
+				if (c < 0x20) {
+					char b[8];
+					std::snprintf(b, sizeof b, "\\u%04x", c);
+					piece = b;
+				} else {
+					piece = std::string(1, (char)c);
+				}
 			}
+		} else {
+			piece = s.substr(i, width);
 		}
+		if (o.size() + piece.size() > max_bytes)
+			break;
+		o += piece;
+		i += width;
 	}
 	return o;
 }
@@ -82,11 +137,13 @@ inline const char *_path() {
 	return p ? p : "debug.info";
 }
 
-// Thread token for `th`: a stable per-thread id (std::thread::id streamed). The
-// concurrency signal — distinguishes threads sharing one debug.info.
+// Thread token for `th`: "<pid>.<thread>" — the same two-part shape the Python
+// and JS helpers emit. Both halves are needed: the pid alone cannot tell two
+// threads apart, the thread id alone cannot tell two processes apart, and
+// SPEC.md lets several processes append to one debug.info.
 inline std::string _thread_token() {
 	std::ostringstream os;
-	os << std::this_thread::get_id();
+	os << (long)getpid() << "." << std::this_thread::get_id();
 	return os.str();
 }
 
@@ -103,11 +160,22 @@ inline std::string _now() {
 
 inline std::string _uuid() {
 	static bool seeded = false;
+	unsigned char u[16];
 	if (!seeded) {
-		std::srand((unsigned)std::time(nullptr));
+		// Seeded from the clock ALONE, two processes started in the same second
+		// drew the same sequence and produced the same call ids — measured: two
+		// runs both emitted e7711583-517b-40f4-994c-7c40ce9d2d93. SPEC.md lets
+		// several processes append to one debug.info, and duplicate ids there
+		// pair the wrong `in` with the wrong `out`, which destroys exactly what
+		// two records per call were for: a call that entered and never returned
+		// stops being visible. Mixing in addresses (which ASLR varies per
+		// process) and the pid separates them, the same way the C helper does.
+		std::srand((unsigned)std::time(nullptr)
+		    ^ (unsigned)(std::uintptr_t)&seeded
+		    ^ (unsigned)(std::uintptr_t)u
+		    ^ ((unsigned)getpid() << 16));
 		seeded = true;
 	}
-	unsigned char u[16];
 	for (int i = 0; i < 16; i++)
 		u[i] = (unsigned char)(std::rand() & 0xff);
 	u[6] = (u[6] & 0x0f) | 0x40;
@@ -120,8 +188,27 @@ inline std::string _uuid() {
 	return b;
 }
 
+// Demangled name of a C++ type, so `x` reads "std::runtime_error: bad" rather
+// than the ABI's "St13runtime_error".
+inline const std::string &_unknown_exception() {
+	static const std::string s = "unknown: (exception)";
+	return s;
+}
+
+inline std::string _type_name(const std::type_info &ti) {
+#if defined(__GNUC__)
+	int status = 0;
+	char *dem = abi::__cxa_demangle(ti.name(), nullptr, nullptr, &status);
+	std::string out = (status == 0 && dem != nullptr) ? dem : ti.name();
+	std::free(dem);
+	return out;
+#else
+	return ti.name();
+#endif
+}
+
 struct Scope {
-	std::string name, started, uuid, args, result, th;
+	std::string name, started, uuid, args, result, th, exc;
 	int entry_uncaught;
 	std::chrono::steady_clock::time_point t0;	// monotonic, for duration
 
@@ -137,13 +224,32 @@ struct Scope {
 			std::fprintf(f,
 			    "{\"p\":\"in\",\"t\":\"%s\",\"id\":\"%s\",\"ci\":-1,\"th\":\"%s\","
 			    "\"fn\":\"%s\",\"a\":\"%s\",\"k\":\"\"}\n",
-			    started.c_str(), uuid.c_str(), _jesc(th).c_str(),
-			    _jesc(name).c_str(), _jesc(args).c_str());
+			    started.c_str(), uuid.c_str(), _jesc(th, MAX_NAME).c_str(),
+			    _jesc(name, MAX_NAME).c_str(), _jesc(args, MAX_ARGS).c_str());
 			std::fclose(f);
 		}
 		// start the duration clock AFTER logging entry, so the entry-write
 		// overhead is not counted in the measured call duration.
 		t0 = std::chrono::steady_clock::now();
+	}
+
+	// Called from the `catch (...)` clause the transformer splices around the
+	// body. It has to be there and not in this destructor: during stack
+	// unwinding std::current_exception() is null (measured — the exception is
+	// being thrown, not yet handled), so a destructor-only design can never say
+	// WHICH exception left the function. Inside a catch clause it is available,
+	// and the clause rethrows unchanged, so control flow is untouched.
+	void note() {
+		std::exception_ptr ep = std::current_exception();
+		if (!ep)
+			return;
+		try {
+			std::rethrow_exception(ep);
+		} catch (const std::exception &e) {
+			exc = _type_name(typeid(e)) + ": " + _cap(e.what(), MAX_VALUE);
+		} catch (...) {
+			exc = "unknown: (exception not derived from std::exception)";
+		}
 	}
 
 	~Scope() {
@@ -153,13 +259,19 @@ struct Scope {
 		if (f == nullptr)
 			return;
 		if (std::uncaught_exceptions() > entry_uncaught) {
+			// `note` (called from the catch clause the transformer splices in)
+			// is what knows the type and message; without it all this frame can
+			// say is that SOMETHING was thrown.
+			const std::string &x = exc.empty() ? _unknown_exception() : exc;
 			std::fprintf(f,
-			    "{\"p\":\"out\",\"id\":\"%s\",\"fn\":\"%s\",\"x\":\"(exception)\",\"d\":%.6f}\n",
-			    uuid.c_str(), _jesc(name).c_str(), dur);
+			    "{\"p\":\"out\",\"id\":\"%s\",\"fn\":\"%s\",\"x\":\"%s\",\"d\":%.6f}\n",
+			    uuid.c_str(), _jesc(name, MAX_NAME).c_str(),
+			    _jesc(x, MAX_OUTCOME).c_str(), dur);
 		} else {
 			std::fprintf(f,
 			    "{\"p\":\"out\",\"id\":\"%s\",\"fn\":\"%s\",\"r\":\"%s\",\"d\":%.6f}\n",
-			    uuid.c_str(), _jesc(name).c_str(), _jesc(result).c_str(), dur);
+			    uuid.c_str(), _jesc(name, MAX_NAME).c_str(),
+			    _jesc(result, MAX_OUTCOME).c_str(), dur);
 		}
 		std::fclose(f);
 	}

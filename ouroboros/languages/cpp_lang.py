@@ -105,6 +105,54 @@ def _returns(cindex: Any, fn: Cursor) -> list[Cursor]:
     return out
 
 
+def _is_constexpr(fn: Cursor, body: Cursor) -> bool:
+    """True if the declaration carries ``constexpr`` / ``consteval``.
+
+    Such a function must remain usable in a constant expression, and the entry
+    block this backend splices in cannot be: it builds a ``std::ostringstream``
+    and writes a file. Instrumenting one turns ``constexpr int v = sq(5);`` into
+    a compile error, so these functions are left alone entirely.
+
+    Read off the tokens ahead of the body rather than a cursor flag: libclang
+    exposes no ``is_constexpr`` on the Python binding.
+    """
+
+    limit = body.extent.start.offset
+    for tok in fn.get_tokens():
+        if tok.extent.start.offset >= limit:
+            break
+        if tok.spelling in ("constexpr", "consteval"):
+            return True
+    return False
+
+
+def _captures_safely(cindex: Any, fn: Cursor, value: Cursor) -> bool:
+    """May the returned expression be routed through ``_ouro::capture``?
+
+    ``capture`` takes the expression by forwarding reference and hands it back,
+    which is transparent for scalars and references but NOT for a class type
+    returned by value. There, the extra function call:
+
+    * destroys guaranteed copy elision — a program that counted one constructor
+      before now runs a move constructor it never ran, so instrumentation is
+      visible in the program's own output;
+    * fails outright for a type with copy and move both ``= delete``, which is
+      legal to return by value in C++17 and now stops compiling;
+    * cannot be written at all around a braced initialiser (``return {1,2};``),
+      because ``(...)`` around a braced-init-list is not an expression.
+
+    So class/struct/union return values are recorded as "(no value)". The entry
+    record, the arguments, the duration and the exception flag are all still
+    logged; only the returned object's repr is given up — the price of not
+    changing the program being observed.
+    """
+
+    if _safe_kind(value) == cindex.CursorKind.INIT_LIST_EXPR:
+        return False
+    canonical = fn.result_type.get_canonical()
+    return bool(canonical.kind != cindex.TypeKind.RECORD)
+
+
 _SKIP: Any = None
 
 
@@ -169,6 +217,8 @@ class CppTransformer(Transformer):
             # our __ouro scope guard so an incremental call only adds new functions.
             if b"__ouro" in raw[body.extent.start.offset:body.extent.end.offset]:
                 continue
+            if _is_constexpr(fn, body):
+                continue
             wrapped += 1
             edits.extend(self._instrument(cindex, fn, body))
 
@@ -187,20 +237,35 @@ class CppTransformer(Transformer):
         names = [p.spelling for p in fn.get_arguments() if p.spelling]
         open_off = body.extent.start.offset + 1
         if names:
-            pieces = ' << ", " << '.join(f'"{n}=" << _ouro::repr({n})' for n in names)
+            # Values only, comma-separated. SPEC.md splits the two fields: `a`
+            # carries positional values, `k` carries name=value pairs. Emitting
+            # "a=2, b=3" into `a` put names in the field that must not hold them,
+            # and made the C++ trace uncomparable with the Python and JS ones.
+            pieces = ' << ", " << '.join(f"_ouro::repr({n})" for n in names)
             entry = (
                 f"\n\tstd::ostringstream __ouro_args; __ouro_args << {pieces};"
                 f'\n\t_ouro::Scope __ouro("{qname}", __ouro_args.str());'
             )
         else:
             entry = f'\n\t_ouro::Scope __ouro("{qname}", "");'
+        # The scope guard alone cannot name the exception that left the function:
+        # during unwinding std::current_exception() is null. A catch clause that
+        # records and immediately rethrows can, and leaves control flow exactly
+        # as it was — the guard is declared OUTSIDE the try so its destructor
+        # still runs after the rethrow and writes the completion record.
+        entry += "\n\ttry {"
         edits.append(Edit(open_off, open_off, (entry + "\n").encode("utf-8")))
+        close_off = body.extent.end.offset - 1  # the body's closing "}"
+        edits.append(Edit(close_off, close_off,
+                          b"\n\t} catch (...) { __ouro.note(); throw; }\n"))
 
         for ret in _returns(cindex, fn):
             kids = list(ret.get_children())
             if not kids:
                 continue  # bare `return;`
             val = kids[0]
+            if not _captures_safely(cindex, fn, val):
+                continue  # would cost a copy elision or fail to compile
             a0, a1 = val.extent.start.offset, val.extent.end.offset
             edits.append(Edit(a0, a0, b"_ouro::capture(__ouro, ("))
             edits.append(Edit(a1, a1, b"))"))

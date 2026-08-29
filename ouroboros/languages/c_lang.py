@@ -291,16 +291,21 @@ class CTransformer(Transformer):
 
         # ---- argument format (type-directed) ----
         fmt_parts, arg_exprs = [], []
+        # Values only, comma-separated. SPEC.md splits the two fields: `a` carries
+        # positional values, `k` carries name=value pairs (and C, having no named
+        # arguments, emits `k` empty). Writing "a=2, b=3" into `a` put names in
+        # the field that must not hold them, and made the C trace uncomparable
+        # with the Python and JS ones for the same call.
         for p in fn.get_arguments():
             pname = p.spelling or "_"
             spec = _spec_for(p.type)
             if spec.fmt is None:
-                fmt_parts.append(f"{pname}=<...>")
+                fmt_parts.append("<...>")
             elif spec.is_string:
-                fmt_parts.append(f"{pname}=%s")
+                fmt_parts.append("%s")
                 arg_exprs.append(f'({pname} ? {pname} : "(null)")')
             else:
-                fmt_parts.append(f"{pname}={spec.fmt}")
+                fmt_parts.append(spec.fmt)
                 arg_exprs.append(pname)
         fmt = ", ".join(fmt_parts)
         tail = ("" if not arg_exprs else ", " + ", ".join(arg_exprs))

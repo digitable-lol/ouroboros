@@ -107,7 +107,7 @@ def test_schema_matches_spec(tmp_path):
                 ev[k] = "<X>"
     assert lines == [
         {"p": "in", "t": "<X>", "id": "<X>", "ci": "<X>", "th": "<X>",
-         "fn": "add", "a": "a=2, b=3", "k": ""},
+         "fn": "add", "a": "2, 3", "k": ""},
         {"p": "out", "id": "<X>", "fn": "add", "r": "5", "d": "<X>"},
     ]
 
@@ -121,9 +121,11 @@ def test_cpp_escapes_special_chars(tmp_path):
     (tmp_path / name).write_text(header, encoding="utf-8")
     src = CppTransformer().wrap_source(
         "#include <string>\n"
-        "std::string echo(std::string s) {\n    return s;\n}\n",
+        "const char *echo(const char *s) {\n    return s;\n}\n"
+        "std::string boxed(std::string s) {\n    return s;\n}\n",
         filename="prog.cpp").code
-    src += '\nint main(){ echo(std::string("a\\"b\\\\c\\nd")); return 0; }\n'
+    src += ('\nint main(){ const char *p = "a\\"b\\\\c\\nd";'
+            " echo(p); boxed(std::string(p)); return 0; }\n")
     (tmp_path / "prog.cpp").write_text(src, encoding="utf-8")
     subprocess.run(["g++", "-std=c++17", "prog.cpp", "-o", "app"],
                    cwd=tmp_path, check=True, capture_output=True)
@@ -132,9 +134,17 @@ def test_cpp_escapes_special_chars(tmp_path):
                    env={"OUROBOROS_DEBUG_INFO": str(debug), "PATH": "/usr/bin:/bin"})
     loaded = load(debug.read_text(encoding="utf-8"))
     assert loaded.malformed == 0            # quote/backslash/newline didn't break the line
-    c = loaded.calls[0]
-    assert 'a"b\\c' in c.outcome and "\n" in c.outcome  # return value round-tripped
-    assert 'a"b\\c' in c.args                           # arg repr round-tripped too
+    by_name = {c.name: c for c in loaded.calls}
+    assert 'a"b\\c' in by_name["echo"].args                     # arg repr round-tripped
+    assert 'a"b\\c' in by_name["echo"].outcome                  # and the result too
+    assert "\n" in by_name["echo"].outcome
+    assert 'a"b\\c' in by_name["boxed"].args
+    # A class type returned BY VALUE is deliberately not captured: routing it
+    # through _ouro::capture costs a copy elision, so a program that counted its
+    # own constructors would print something it never printed unwrapped. The
+    # arguments, duration and outcome kind are still recorded; only the returned
+    # object's repr is given up. See cpp_lang._captures_safely.
+    assert by_name["boxed"].outcome == "(no value)"
 
 
 @pytest.mark.skipif(not has_gxx, reason="g++ not available")

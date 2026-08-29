@@ -65,9 +65,50 @@ function shortRepr(v) {
   return s;
 }
 
+// Hard ceiling on one record, in bytes including the newline. PIPE_BUF is 4096
+// on Linux, and SPEC.md §1 promises each record is written with a single append
+// and stays under it — that promise is what lets several processes share one
+// debug.info. The per-value MAX_REPR alone does not deliver it: a call with 30
+// arguments produced a 6314-byte line, the kernel tore it, and the parser
+// silently counted both halves as malformed and dropped them.
+const MAX_RECORD_BYTES = 4096;
+
+// Fields that may be shortened to fit. `fn`/`id`/`t` are what makes a torn
+// record identifiable at all, so they are never touched.
+const SHRINKABLE = ["a", "k", "r", "x"];
+
+function encode(obj) {
+  return JSON.stringify(obj) + "\n";
+}
+
+// Halve the longest value field until the line fits — the overflow can come
+// from one enormous argument or from thirty ordinary ones, and the same rule
+// handles both. Every field touched ends in an ellipsis, so a reader can tell a
+// shortened value from a complete one.
+function bounded(obj) {
+  let line = encode(obj);
+  if (Buffer.byteLength(line, "utf8") <= MAX_RECORD_BYTES) return line;
+  obj = Object.assign({}, obj);
+  const trimmed = new Set();
+  const budget = MAX_RECORD_BYTES - 64; // headroom for the ellipsis markers
+  for (let i = 0; i < 64; i++) {
+    let field = SHRINKABLE[0];
+    for (const f of SHRINKABLE) {
+      if ((obj[f] || "").length > (obj[field] || "").length) field = f;
+    }
+    const value = obj[field] || "";
+    if (!value) break;
+    obj[field] = value.slice(0, Math.floor(value.length / 2));
+    trimmed.add(field);
+    if (Buffer.byteLength(encode(obj), "utf8") <= budget) break;
+  }
+  for (const f of trimmed) obj[f] += "…";
+  return encode(obj);
+}
+
 function writeln(obj) {
   // One JSON object per line; a single appendFileSync carries a whole record.
-  fs.appendFileSync(debugInfoPath(), JSON.stringify(obj) + "\n", "utf8");
+  fs.appendFileSync(debugInfoPath(), bounded(obj), "utf8");
 }
 
 function emitEntry(ctx) {
