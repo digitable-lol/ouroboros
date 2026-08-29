@@ -1,22 +1,21 @@
 # Формула Homebrew для уробороса.
 #
 # ЧТО ЭТО. Исходник формулы. Правится здесь; в хранилище формул
-# (digitable-lol/homebrew-tap, каталог Formula/) он выкладывается копией, и
-# оттуда работает короткая строка
+# (digitable-lol/homebrew-tap, файл Formula/ouroboros.rb) он выкладывается
+# копией, и оттуда работает короткая строка
 #
 #     brew install digitable-lol/tap/ouroboros
 #
-# Пока хранилища формул нет, ставится по прямому адресу этого файла:
-#
-#     brew install --formula \
-#       https://raw.githubusercontent.com/digitable-lol/ouroboros/main/packaging/homebrew/ouroboros.rb
+# Хранилище формул заведено, копия там лежит, короткая строка проверена
+# прогоном: brew подключает хранилище сам, отдельная команда brew tap не нужна.
 #
 # ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.2.1. Отпечаток
 # посчитан с того самого архива, который отдаёт GitHub:
 #
 #     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.1.tar.gz | sha256sum
 #
-# Установка проверена целиком: brew install из этого файла и brew test.
+# Установка проверена целиком: короткая строка выше на машине без Homebrew и без
+# хранилищ формул, затем brew test, затем обмазка файла, запуск и чтение записей.
 #
 class Ouroboros < Formula
   include Language::Python::Virtualenv

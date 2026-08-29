@@ -108,9 +108,9 @@ ouroboros trace debug.info --outcome raised
 прогонов на обычной машине с Linux; выводы всех пяти языков сняты по отдельности.
 
 Установка проверена целиком, а не «по виду правильно»: `uv tool install`,
-`brew install` вместе с `brew test`, `asdf plugin add` вместе с `asdf install` —
-и после каждой поставленный инструмент обмазывал файл, запускал его и читал
-записи.
+`brew install digitable-lol/tap/ouroboros` вместе с `brew test`,
+`asdf plugin add` вместе с `asdf install` — и после каждой поставленный
+инструмент обмазывал файл, запускал его и читал записи.
 
 Чего здесь **нет**: моста, который превращает записи в готовые примеры для
 спецификации (`fts_extract_examples`, `fts-gate`). Он описан в навыке
