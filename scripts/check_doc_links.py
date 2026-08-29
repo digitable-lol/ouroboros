@@ -36,6 +36,9 @@ ANCHORS: list[tuple[str, str]] = [
     ("ouroboros/runtime.py", 'return os.environ.get("OUROBOROS_DEBUG_INFO"'),
     ("ouroboros/runtime.py", "def _cpu() -> int:"),
     ("ouroboros/runtime.py", "t0 = time.perf_counter()"),
+    # Строка обёртки, которая видна в отслеживании стека обмазанной программы:
+    # страницы показывают настоящий вывод с её номером, и он протухает так же.
+    ("ouroboros/runtime.py", "result = fn(*args, **kwargs)"),
     ("ouroboros/languages/base.py", "class CorruptedSourceError(Exception):"),
     ("ouroboros/sandbox/sync.py", "never carried into the output tree"),
     ("ouroboros/mcp/server.py", "_READ_ONLY = ToolAnnotations("),
@@ -47,6 +50,16 @@ REF = re.compile(r"(ouroboros/[A-Za-z0-9_/]*\.py):(\d+)(?:-(\d+))?")
 
 #: `…/blob/main/ouroboros/путь.py#L12` или `#L12-L34` в ссылке.
 URL = re.compile(r"blob/main/(ouroboros/[A-Za-z0-9_/]*\.py)#L(\d+)(?:-L(\d+))?")
+
+#: Строка помощника в отслеживании стека, вставленном в страницу как есть:
+#: `File ".../ouroboros_runtime.py", line 228, in wrapper`. Номер тут протухает
+#: точно так же, но ни на текст, ни на ссылку не похож — и потому раньше не
+#: проверялся ничем. Ровно на этом README и разошёлся с делом: помощник подрос,
+#: обёртка уехала со 144-й строки на 228-ю, а в странице осталась 144-я.
+TRACEBACK = re.compile(r'ouroboros_runtime\.py", line (\d+)')
+
+#: Какому файлу исходника отвечает имя помощника, скопированного в проект.
+COPIED_AS = {"ouroboros_runtime.py": "ouroboros/runtime.py"}
 
 
 def anchor_lines(root: Path) -> tuple[dict[str, dict[int, str]], list[str]]:
@@ -104,6 +117,24 @@ def main() -> int:
                             f"{doc.relative_to(root)}:{lineno} ссылается на {rel}:{start}, "
                             f"а там сейчас не опора. Опоры в этом файле: {where}"
                         )
+
+    # Отслеживание стека, вставленное в страницу как есть: номер строки помощника.
+    for doc in docs:
+        for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            for m in TRACEBACK.finditer(line):
+                rel = COPIED_AS["ouroboros_runtime.py"]
+                start = int(m.group(1))
+                checked += 1
+                valid = anchors.get(rel, {})
+                if start not in valid:
+                    where = ", ".join(
+                        f"{n} ({needle!r})" for n, needle in sorted(valid.items())
+                    )
+                    problems.append(
+                        f"{doc.relative_to(root)}:{lineno}: во вставленном отслеживании "
+                        f"стека стоит ouroboros_runtime.py строка {start}, а опоры "
+                        f"{rel} сейчас на строках: {where}"
+                    )
 
     # Номер в тексте и номер в ссылке должны совпадать — обычная описка при правке.
     for doc in docs:

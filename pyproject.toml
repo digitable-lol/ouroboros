@@ -54,6 +54,12 @@ source = ["ouroboros"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Подопытные программы замеров — это ВХОДНЫЕ ДАННЫЕ, а не код проекта. Они
+# нарочно написаны так, как пишет обычный человек (`try/except/pass`, а не
+# `contextlib.suppress`), потому что их текст показан в docs/measurements.md и
+# обмазывается как есть. Причёсывать их под правила проекта значило бы мерять не
+# то, что читатель у себя запустит.
+extend-exclude = ["scripts/measure/samples"]
 
 [tool.ruff.lint]
 # pycodestyle(E/W), pyflakes(F), isort(I), pyupgrade(UP), bugbear(B),
