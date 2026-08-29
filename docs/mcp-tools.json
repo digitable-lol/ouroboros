@@ -1,11 +1,11 @@
 {
-  "taken_at": "2026-08-29T00:35:41",
+  "taken_at": "2026-08-29T01:16:20",
   "how": "живой разговор с `ouroboros-mcp` по стандартному вводу-выводу",
   "server_name": "ouroboros-logger",
   "server_version": "1.27.2",
   "protocol_version": "2025-11-25",
   "entry_point": "ouroboros-mcp (pyproject [project.scripts])",
-  "instructions": "Ouroboros-Logger: guaranteed function-level logging instrumentation for code.\n\nThe loop is instrument -> run -> observe:\n  1. instrument: wrap_code_snippet (in memory), wrap_file (whole file in place),\n     or wrap_functions (only named functions — for hot/kernel paths). Or work in\n     a sandbox: create_project, then write_file (wrap-on-save), execute, finish.\n  2. run: execute the instrumented code (execute, or run it yourself); every\n     wrapped call appends `in`/`out` JSONL records to a debug.info trace.\n  3. observe: read_trace (structural query + pagination) and trace_stats\n     (per-function counts + real durations). min_duration finds slow calls;\n     in_flight surfaces hung/crashed ones.\n\nFilesystem effects: wrap_file/wrap_functions overwrite the target file in place;\nwrite_file/finish mutate the sandbox tree; execute runs arbitrary commands. The\nread_* / list_files / trace tools never write. See SPEC.md for the trace schema.\n",
+  "instructions": "Ouroboros-Logger: guaranteed function-level logging instrumentation for code.\n\nThe loop is instrument -> run -> observe:\n  1. instrument: wrap_code_snippet (in memory), wrap_file (whole file in place),\n     or wrap_functions (only named functions — for hot/kernel paths). Or work in\n     a sandbox: create_project, then write_file (wrap-on-save), execute, finish.\n  2. run: execute the instrumented code (execute, or run it yourself); every\n     wrapped call appends `in`/`out` JSONL records to a debug.info trace.\n  3. observe: read_trace (structural query + pagination) and trace_stats\n     (per-function counts + real durations). min_duration finds slow calls;\n     in_flight surfaces hung/crashed ones.\n\nChoosing WHAT to instrument in a large C/C++ tree — six clangd/clang-tidy tools,\nlisted here because a tool absent from these instructions does not get chosen:\nsymbol_search (find a name across the tree), document_symbols (what one file\ndefines), references (who uses it), call_hierarchy (who calls whom, transitively),\ndescribe_symbol (where it is defined, with what signature), lint_file (clang-tidy\nfindings). Use them BEFORE wrap_functions to pick the functions worth wrapping,\ninstead of wrapping a whole hot file. They need `clangd` and `clang-tidy` on PATH\nand, for anything cross-file, a compile_commands.json; without those they return\n{ok: false} explaining what is missing, so it is safe to try one and read the answer.\n\nFilesystem effects: wrap_file/wrap_functions overwrite the target file in place;\nwrite_file/finish mutate the sandbox tree; execute runs arbitrary commands. The\nread_* / list_files / trace / clangd tools never write. See SPEC.md for the trace\nschema.\n",
   "declared_tool_count": 17,
   "tools_declared_but_not_called": [],
   "tools": [
@@ -284,8 +284,9 @@
           "main.py",
           "... ещё 1"
         ],
+        "skipped": [],
         "instrumentation_removed": false,
-        "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Build output (__pycache__, *.pyc, *.beam, tool caches), .git and debug.info are left behind."
+        "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Left behind: .git, debug.info, tool caches, and anything that looks built (compiled binaries, object files, c... (+125 символов)"
       },
       "example_is_error": false
     },

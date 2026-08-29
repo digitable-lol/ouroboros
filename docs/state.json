@@ -1,0 +1,8 @@
+{
+  "tests": 441,
+  "coverage_percent": 95,
+  "coverage_exact": 94.71,
+  "mcp_tools": 17,
+  "languages": 5,
+  "measured_with": "pytest --cov (statements and branches)"
+}

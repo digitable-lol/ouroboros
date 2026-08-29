@@ -30,4 +30,10 @@ uv run pytest
 echo "== ссылки документации на строки исходника =="
 uv run python scripts/check_doc_links.py
 
+# Числа состояния (сколько проверок, какое покрытие, сколько средств) вписаны в
+# страницы машиной и сверяются машиной. Оба раза, когда они разошлись с делом,
+# их вписал человек и никто не пересчитал: см. scripts/state_numbers.py.
+echo "== числа состояния в README и ARCHITECTURE =="
+uv run python scripts/state_numbers.py
+
 echo "== all gates passed =="

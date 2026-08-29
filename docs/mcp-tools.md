@@ -18,7 +18,7 @@ scripts/probe/build-reference.sh
 | правила разговора | `2025-11-25` |
 | чем запускается | `ouroboros-mcp (pyproject [project.scripts])` |
 | средств объявлено | **17** |
-| снято | 2026-08-29T00:35:41 |
+| снято | 2026-08-29T01:16:20 |
 
 Средств, объявленных но не вызванных при съёмке, нет: настоящий ответ есть на каждое.
 
@@ -39,9 +39,20 @@ The loop is instrument -> run -> observe:
      (per-function counts + real durations). min_duration finds slow calls;
      in_flight surfaces hung/crashed ones.
 
+Choosing WHAT to instrument in a large C/C++ tree — six clangd/clang-tidy tools,
+listed here because a tool absent from these instructions does not get chosen:
+symbol_search (find a name across the tree), document_symbols (what one file
+defines), references (who uses it), call_hierarchy (who calls whom, transitively),
+describe_symbol (where it is defined, with what signature), lint_file (clang-tidy
+findings). Use them BEFORE wrap_functions to pick the functions worth wrapping,
+instead of wrapping a whole hot file. They need `clangd` and `clang-tidy` on PATH
+and, for anything cross-file, a compile_commands.json; without those they return
+{ok: false} explaining what is missing, so it is safe to try one and read the answer.
+
 Filesystem effects: wrap_file/wrap_functions overwrite the target file in place;
 write_file/finish mutate the sandbox tree; execute runs arbitrary commands. The
-read_* / list_files / trace tools never write. See SPEC.md for the trace schema.
+read_* / list_files / trace / clangd tools never write. See SPEC.md for the trace
+schema.
 ```
 
 ## Дописать запись о вызовах
@@ -556,8 +567,9 @@ tool caches). Wipes the output tree first, then rebuilds it.
     "main.py",
     "... ещё 1"
   ],
+  "skipped": [],
   "instrumentation_removed": false,
-  "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Build output (__pycache__, *.pyc, *.beam, tool caches), .git and debug.info are left behind."
+  "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Left behind: .git, debug.info, tool caches, and anything that looks built (compiled binaries, object files, c... (+125 символов)"
 }
 ```
 

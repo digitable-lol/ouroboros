@@ -196,10 +196,9 @@ printf 'def broken(:\n    return 1\n' | ouroboros write /srv/tmp/разбор ba
 ## Что `finish` переносит, а что оставляет
 
 Проверено прогоном, а не выведено из описания. `finish` копирует черновик в
-чистовик, оставляя позади служебное и произведённое машиной: имена `.git`,
-`debug.info`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache` и файлы
-с расширениями `.pyc`, `.pyo`, `.beam`
-([`ouroboros/sandbox/sync.py:27-40`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/sandbox/sync.py#L27-L40)).
+чистовик, оставляя позади то, что заново делает машина: `.git`, `debug.info`,
+кэши инструментов, собранные двоичные файлы и слепки памяти после аварии
+([`ouroboros/sandbox/sync.py:29-82`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/sandbox/sync.py#L29-L82)).
 
 Дословный ответ на том же проекте, что и выше:
 
@@ -208,8 +207,9 @@ printf 'def broken(:\n    return 1\n' | ouroboros write /srv/tmp/разбор ba
   "ok": true,
   "clean": "…/чистовик",
   "synced": [".gitignore", "ouroboros_runtime.py", "stats.py"],
+  "skipped": [],
   "instrumentation_removed": false,
-  "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Build output (__pycache__, *.pyc, *.beam, tool caches), .git and debug.info are left behind."
+  "note": "The copy is instrumented, exactly like the draft: …"
 }
 ```
 
@@ -226,8 +226,29 @@ printf 'def broken(:\n    return 1\n' | ouroboros write /srv/tmp/разбор ba
    своей системы контроля версий или руками.
 2. **Помощник `ouroboros_runtime.py` едет вместе с кодом** — и правильно, без
    него обмазанный файл не запустится.
-3. **Всё прочее едет тоже.** Отбрасывается только перечисленное выше — то, что
-   заново делает машина. Ваш файл с данными, даже двоичный, поедет.
+3. **Что не поехало, названо в `skipped`.** Если собрать программу прямо в
+   черновике, двоичный файл останется там, а не уедет в чистовик. Правило не
+   умеет отличить итог работы компилятора от файла, который программу просили
+   сделать: и то и другое произведено машиной. Поэтому оно отбрасывает и
+   **называет** отброшенное — посмотрите список и заберите руками то, что вам
+   было нужно.
+
+Тот же проект, но программа собрана в черновике, и рядом положена картинка:
+
+```json
+{
+  "synced": [".gitignore", "notes.csv", "ouroboros_runtime.h", "prog.c", "run"],
+  "skipped": [
+    {"path": "prog", "reason": "looks built (compiled-format signature, or a NUL byte in the first 8 KiB) and has no source extension"},
+    {"path": "prog.o", "reason": ".o: build output, remade by rebuilding"},
+    {"path": "real.png", "reason": "looks built (compiled-format signature, or a NUL byte in the first 8 KiB) and has no source extension"}
+  ]
+}
+```
+
+Обратите внимание: `run` — сценарий оболочки без расширения и с правом на
+запуск — уехал. Право на запуск признаком не считается, потому что оно есть и у
+обычного сценария; смотрят на содержимое.
 
 ## Две вещи, на которых спотыкаются в первый раз
 

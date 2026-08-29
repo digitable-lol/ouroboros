@@ -110,8 +110,42 @@ paths; the corruption gate rejects on Error-severity diagnostics. Real NetBSD-tr
 files need that tree's `-I/-D` flags + target headers (validate on `ssh netbsd`)
 — the validated path here is AI-authored self-contained userland code.
 
-Suite: ~105 tests, 91% coverage. Validated languages: Python, JS/TS, C, C++,
-Elixir (all by compile+run where applicable).
+Suite: <!--state:tests-->441<!--/state--> tests,
+<!--state:coverage_percent-->95<!--/state-->% coverage (statements **and**
+branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir
+(all by compile+run where applicable). MCP tools declared by the server:
+<!--state:mcp_tools-->17<!--/state-->.
+
+Those numbers are written by `scripts/state_numbers.py --measure`, not by hand,
+and `scripts/qa.sh` fails if they drift from `docs/state.json`. Both wrong
+figures described below got in because a person typed them and no one recomputed
+them; typing them is now not how they get here.
+
+Coverage is measured with branches, which is the number that means something
+here: line coverage counts an `if` as covered once either side runs, and most of
+what can go wrong in this codebase is a side that never ran.
+
+An earlier revision of this file claimed 91%. That figure was never reachable.
+Measured on the tree as it then stood, coverage was 66.3%, and `clangtools/`
+alone accounted for 387 of the 859 uncovered statement-and-branch units — so even
+with `clangtools/` at a perfect 100%, the whole product topped out at **81.5%**.
+The 91% was 9.5 points above the ceiling, not 25 points above the current state:
+no amount of work on the untested part could have produced it.
+
+That ceiling has since been passed, because the parts it was computed over were
+tested rather than argued about. At 100% of statements and branches: `clangtools/`
+(all three modules), `treeflags.py`, the new `toolchain.py`, `mcp/server.py`, and
+`sandbox/`. Named honestly, the gap that is left is `cli.py` at 75% and the five
+language backends at 87–95%; `cli.py` is argument plumbing, the backends are not,
+and they are the honest next target.
+
+`clangtools/` reaching 100% required installing the binaries it wraps — clangd and
+clang-tidy — without which eight of its tests skip and the package sits at 22%.
+**The tests are only meaningful with those binaries present**: this package is a
+wrapper around two external programs, so a run with them absent measures almost
+nothing. CI must install them, not skip. `packaging/Dockerfile` installs both and
+fails the build if either is missing — before that it shipped neither, so six of
+the seventeen tools were declared by the server and broken in every built image.
 
 ## Run
 
