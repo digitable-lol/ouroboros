@@ -13,9 +13,9 @@ found by walking up from the file (clangd/clang-tidy style):
 2. **Static ``cflags``** (fallback for files not in the db / small trees): a
    literal argument list.
 
-In both cases the target compiler's predefined macros are appended (harvested via
-``predef_cc -dM -E``) so the parse matches the real toolchain, and ``--target`` is
-added if absent (host libclang must be told the target). All lookups are cached.
+In both cases the target compiler's include dirs are added (harvested from the
+compiler itself, see ``toolchain.py``) so the parse matches the real toolchain,
+and ``--target`` is added if absent (host libclang must be told the target).
 
 Config schema (per language key, e.g. "c")::
 
@@ -23,9 +23,25 @@ Config schema (per language key, e.g. "c")::
       "c": {
         "compdb":    "/home/u/netbsd/obj/compile_commands.json",
         "cflags":    ["-std=gnu11", "--sysroot=...", "-I...", "-D..."],
-        "predef_cc": ["/.../riscv64--netbsd-gcc", "-std=gnu11"]
+        "predef_cc": ["/.../riscv64--netbsd-gcc", "-std=gnu11"],
+        "sysroot":   "/home/u/netbsd/dest",
+        "target":    "riscv64-unknown-netbsd"
       }
     }
+
+Two rules shape the layout of this file.
+
+**Core and edge are separated, and the separation is the point.** Everything
+above the "edge" banner is pure: values in, values out. It opens no file and
+starts no program, so every branch of it is reachable from a dict written in a
+test. Below the banner sit the few functions that must read a config, index a
+compile database, or run a compiler.
+
+**Nothing is cached invisibly.** What the edge reads is held in an explicit
+`TreeSnapshot` that the caller can hold, pass and drop. The nine ``lru_cache``
+decorators this replaces made an edited ``.ouroboros.json`` take no effect until
+the process was restarted, and made two tests in the same process see each
+other's answers, so the order they ran in changed the result.
 """
 
 from __future__ import annotations
@@ -33,25 +49,12 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import subprocess
-from functools import lru_cache
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
-
-def _entry_args(entry: dict[str, Any]) -> list[str] | None:
-    """Compile args for a compile_commands.json entry. The clang JSON-compilation-
-    database spec allows EITHER ``arguments`` (a list, preferred) OR ``command`` (a
-    single shell string). Accept both — a build that emits only ``command`` would
-    otherwise make EVERY entry invisible, silently degrading the whole tree to
-    fallback flags."""
-    args = entry.get("arguments")
-    if isinstance(args, list):
-        return args
-    command = entry.get("command")
-    if isinstance(command, str):
-        return shlex.split(command)
-    return None
+from . import toolchain
 
 CONFIG_NAME = ".ouroboros.json"
 
@@ -90,6 +93,53 @@ _KEEP_F = {
 _KEEP_F_PREFIX = ("-fno-builtin-", "-fexec-charset=", "-finput-charset=",
                   "-fextended-identifiers")
 
+_CXX_EXTS = (".cc", ".cpp", ".cxx", ".c++", ".hpp", ".hh", ".hxx")
+
+#: target assumed when a config names none.
+DEFAULT_TARGET = "riscv64-unknown-netbsd"
+
+#: per-language config keys and the JSON type each must have.
+_CONFIG_TYPES: tuple[tuple[str, type], ...] = (
+    ("compdb", str), ("sysroot", str), ("target", str),
+    ("cflags", list), ("predef_cc", list),
+)
+
+
+class TreeConfigError(Exception):
+    """A tree's settings file, or the compile database it names, cannot be used.
+
+    Raised rather than quietly falling back to an empty config. That fallback
+    was how trees lost code: with no settings the file is parsed with the *host*
+    compiler's flags instead of the build's, every ``#ifdef`` gated on a build
+    ``-D`` takes the other branch, and the functions inside those branches are
+    never seen — so they are missing from the instrumented output, with nothing
+    printed to say so. A broken config has to stop the run, not shrink it.
+    """
+
+    def __init__(self, path: str, reason: str) -> None:
+        super().__init__(f"{path}: {reason}")
+        self.path = path
+        self.reason = reason
+
+
+# --------------------------------------------------------------------------- #
+# core — pure. No file is opened and no program is run below this line.
+# --------------------------------------------------------------------------- #
+
+def entry_args(entry: dict[str, Any]) -> list[str] | None:
+    """Compile args for a compile_commands.json entry. The clang JSON-compilation-
+    database spec allows EITHER ``arguments`` (a list, preferred) OR ``command`` (a
+    single shell string). Accept both — a build that emits only ``command`` would
+    otherwise make EVERY entry invisible, silently degrading the whole tree to
+    fallback flags."""
+    args = entry.get("arguments")
+    if isinstance(args, list):
+        return args
+    command = entry.get("command")
+    if isinstance(command, str):
+        return shlex.split(command)
+    return None
+
 
 def _abspath(path: str, directory: str) -> str:
     """Resolve ``path`` against the compile entry's ``directory`` (where the
@@ -100,155 +150,7 @@ def _abspath(path: str, directory: str) -> str:
     return os.path.normpath(os.path.join(directory, path))
 
 
-@lru_cache(maxsize=512)
-def _find_config(start: str) -> str | None:
-    p = Path(start).resolve()
-    for d in (p, *p.parents):
-        candidate = d / CONFIG_NAME
-        if candidate.is_file():
-            return str(candidate)
-    return None
-
-
-@lru_cache(maxsize=64)
-def _load(config_path: str) -> dict[str, Any]:
-    try:
-        data = json.loads(Path(config_path).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-@lru_cache(maxsize=1)
-def _clang_builtin_include() -> tuple[str, ...]:
-    """``-isystem <resource>/include`` for clang's *builtin* headers (stdatomic.h,
-    stddef.h, stdarg.h, intrinsics...). The pip ``libclang`` wheel ships only the
-    shared lib, not these headers, so a tree parse that pulls in e.g. <stdatomic.h>
-    fails unless we point libclang at a real resource dir. Probe the clang on PATH
-    (unversioned first, then common Debian/Ubuntu versioned names)."""
-    for cc in ("clang", "clang-20", "clang-19", "clang-18", "clang-17", "clang-16"):
-        try:
-            rd = subprocess.run([cc, "-print-resource-dir"],
-                                capture_output=True, text=True, timeout=10).stdout.strip()
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if rd and os.path.isdir(os.path.join(rd, "include")):
-            return ("-isystem", os.path.join(rd, "include"))
-    return ()
-
-
-@lru_cache(maxsize=32)
-def _harvest_include_dirs(cc_cmd: tuple[str, ...], lang_x: str,
-                          sysroot: str = "") -> tuple[str, ...]:
-    """The cross compiler's *implicit* system include search path as ``-isystem``
-    flags. gcc adds these silently (libstdc++ ``<cstdio>``, fixed-includes,
-    target headers); libclang knows nothing of them, so a tree parse that pulls
-    in a C++ stdlib header fails. We read the search list gcc prints with
-    ``-E -v`` (between the two marker lines) for the given ``-x`` language.
-
-    ``sysroot`` MUST be the build's sysroot: a cross gcc with no ``--sysroot``
-    falls back to the *host* ``/usr/include`` (glibc), which then poisons the
-    parse. We pass it through and keep only dirs under the sysroot or the
-    compiler's own install prefix, so no host header path can leak in."""
-    cmd = list(cc_cmd)
-    if sysroot:
-        cmd.append(f"--sysroot={sysroot}")
-    try:
-        proc = subprocess.run(
-            [*cmd, "-E", "-v", "-x", lang_x, "/dev/null"],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ()
-    # compiler install prefix: .../tools/bin/<cc>  ->  .../tools
-    prefix = os.path.dirname(os.path.dirname(os.path.abspath(cc_cmd[0])))
-    roots = tuple(os.path.realpath(r) for r in (sysroot, prefix) if r)
-    out: list[str] = []
-    collecting = False
-    for line in proc.stderr.splitlines():
-        if "#include <...> search starts here:" in line:
-            collecting = True
-            continue
-        if "End of search list." in line:
-            break
-        if collecting:
-            d = line.strip()
-            if not d or not os.path.isdir(d):
-                continue
-            if roots and not os.path.realpath(d).startswith(roots):
-                continue  # drop host paths — only sysroot / toolchain dirs
-            out.append("-isystem")
-            out.append(os.path.normpath(d))
-    return tuple(out)
-
-
-@lru_cache(maxsize=32)
-def _harvest_predefs(cc_cmd: tuple[str, ...]) -> tuple[str, ...]:
-    """Object-like predefined macros of ``cc_cmd``, as ``-D`` flags. Cached."""
-    try:
-        proc = subprocess.run(
-            [*cc_cmd, "-dM", "-E", "-x", "c", "/dev/null"],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ()
-    if proc.returncode != 0:
-        return ()
-    defs: list[str] = []
-    for line in proc.stdout.splitlines():
-        parts = line.split(None, 2)
-        if len(parts) < 2 or parts[0] != "#define" or "(" in parts[1]:
-            continue
-        name = parts[1]
-        value = parts[2] if len(parts) == 3 else ""
-        defs.append(f"-D{name}={value}" if value != "" else f"-D{name}")
-    return tuple(defs)
-
-
-@lru_cache(maxsize=8)
-def _clang_macro_names(target: str) -> frozenset[str]:
-    """Names of macros clang predefines for ``target`` (so we don't re-add them
-    and reintroduce gcc/clang conflicts). Empty set if no clang on PATH."""
-    for cc in ("clang", "clang-20", "clang-19", "clang-18", "clang-17", "clang-16"):
-        try:
-            proc = subprocess.run(
-                [cc, f"--target={target}", "-dM", "-E", "-x", "c", "/dev/null"],
-                capture_output=True, text=True, timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if proc.returncode != 0:
-            continue
-        names = set()
-        for line in proc.stdout.splitlines():
-            parts = line.split(None, 2)
-            if len(parts) >= 2 and parts[0] == "#define":
-                names.add(parts[1].split("(", 1)[0])
-        return frozenset(names)
-    return frozenset()
-
-
-@lru_cache(maxsize=32)
-def _missing_predefs(cc_cmd: tuple[str, ...], target: str) -> tuple[str, ...]:
-    """gcc predefined macros that clang does NOT define for ``target`` — the
-    compatibility macros NetBSD headers need (``__WCHAR_MIN__``, ``__WINT_MIN__``,
-    ``__SIG_ATOMIC_TYPE__``...). We add only the *difference*: macros clang
-    already defines keep clang's own self-consistent values, so we don't drag a
-    header onto its gcc-builtin branch (the cause of the _Atomic/__restrict
-    breakage when the full gcc dump was injected)."""
-    gcc = _harvest_predefs(cc_cmd)
-    clang_names = _clang_macro_names(target)
-    if not clang_names:
-        return ()
-    out = []
-    for d in gcc:
-        name = d[2:].split("=", 1)[0]
-        if name not in clang_names:
-            out.append(d)
-    return tuple(out)
-
-
-def _ast_args(arguments: list[str], directory: str = "") -> list[str]:
+def ast_args(arguments: list[str], directory: str = "") -> list[str]:
     """Keep only the arguments that affect parsing (includes/defines/std/sysroot/
     target/freestanding...); drop the compiler, output, deps, warnings, codegen.
 
@@ -288,29 +190,7 @@ def _ast_args(arguments: list[str], directory: str = "") -> list[str]:
     return out
 
 
-@lru_cache(maxsize=8)
-def _load_compdb(compdb_path: str) -> dict[str, Any]:
-    """Index a compile_commands.json as {abs_source_path: tuple(ast_args)}."""
-    try:
-        data = json.loads(Path(compdb_path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    index: dict[str, tuple[str, ...]] = {}
-    for entry in data:
-        f = entry.get("file")
-        args = _entry_args(entry)
-        if not f or args is None:
-            continue
-        directory = entry.get("directory", "")
-        absf = os.path.normpath(os.path.join(directory, f))
-        index[absf] = tuple(_ast_args(args, directory))
-    return index
-
-
-_CXX_EXTS = (".cc", ".cpp", ".cxx", ".c++", ".hpp", ".hh", ".hxx", ".hpp")
-
-
-def _detect_lang(arguments: list[str], ext: str = "") -> str:
+def detect_lang(arguments: list[str], ext: str = "") -> str:
     """Language a compile entry actually used — ``"cpp"`` or ``"c"``. A definitive
     C++ extension wins outright. Otherwise some trees compile ``.c`` files with the
     C++ driver (gdb, parts of gcc); the extension lies, the compile command tells
@@ -321,7 +201,7 @@ def _detect_lang(arguments: list[str], ext: str = "") -> str:
         return "cpp"
     if arguments:
         comp = os.path.basename(arguments[0])
-        if "++" in comp or "g++" in comp or comp.endswith("CC"):
+        if "++" in comp or comp.endswith("CC"):
             return "cpp"
     expect_x = False
     for a in arguments:
@@ -336,25 +216,340 @@ def _detect_lang(arguments: list[str], ext: str = "") -> str:
     return "c"
 
 
-@lru_cache(maxsize=8)
-def _compdb_lang_index(compdb_path: str) -> dict[str, str]:
-    """Index a compile_commands.json as {abs_source_path: "c"|"cpp"}."""
-    try:
-        data = json.loads(Path(compdb_path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    index: dict[str, str] = {}
-    for entry in data:
+@dataclass(frozen=True)
+class CompDb:
+    """One compile database, indexed by absolute source path.
+
+    Both maps are built in a single pass over the entries: the flag lookup and
+    the language lookup used to parse and walk the same JSON file twice.
+    """
+
+    args: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    languages: dict[str, str] = field(default_factory=dict)
+
+
+def index_compdb(data: Any, path: str = "<compdb>") -> CompDb:
+    """Index a parsed compile_commands.json.
+
+    The document as a whole must be a JSON array; anything else means this is
+    not a compile database at all, and going on without one would hand every
+    file in the tree the host compiler's flags — so it raises. *Entries* are
+    treated more gently: one with no ``file``, or with neither ``arguments`` nor
+    ``command``, is skipped, because a database that does not cover every file
+    is a normal state and `compdb_covers` already reports the files it misses.
+    """
+    if not isinstance(data, list):
+        raise TreeConfigError(
+            path, f"expected a JSON array of compile commands, got {type(data).__name__}")
+    db = CompDb()
+    for pos, entry in enumerate(data):
+        if not isinstance(entry, dict):
+            raise TreeConfigError(
+                path, f"entry {pos} is a {type(entry).__name__}, not an object")
         f = entry.get("file")
-        args = _entry_args(entry)
-        if not f or args is None:
+        args = entry_args(entry)
+        directory = entry.get("directory", "")
+        if not isinstance(f, str) or not f or args is None \
+                or not isinstance(directory, str):
             continue
-        absf = os.path.normpath(os.path.join(entry.get("directory", ""), f))
-        index[absf] = _detect_lang(args, os.path.splitext(f)[1])
-    return index
+        absf = os.path.normpath(os.path.join(directory, f))
+        db.args[absf] = tuple(ast_args(args, directory))
+        db.languages[absf] = detect_lang(args, os.path.splitext(f)[1])
+    return db
 
 
-def compdb_covers(filename: str | None, language: str) -> bool | None:
+def language_config(config: dict[str, Any], language: str,
+                    path: str = CONFIG_NAME) -> dict[str, Any] | None:
+    """The per-language block of a settings file, checked over.
+
+    ``None`` means the file simply says nothing about this language — a config
+    with only a ``"cpp"`` key has nothing to offer a ``.c`` file, and that is
+    not an error. An exception means the file *does* say something and what it
+    says is unusable, which must not be read as "no config".
+    """
+    if language not in config:
+        return None
+    block = config[language]
+    if not isinstance(block, dict):
+        raise TreeConfigError(
+            path, f'"{language}" must be an object, got {type(block).__name__}')
+    for key, want in _CONFIG_TYPES:
+        if key in block and not isinstance(block[key], want):
+            raise TreeConfigError(
+                path,
+                f'"{language}.{key}" must be a JSON {want.__name__}, '
+                f"got {type(block[key]).__name__}")
+    return block
+
+
+def base_flags(lang_cfg: dict[str, Any],
+               compdb_args: tuple[str, ...] | None) -> list[str] | None:
+    """The tree's own arguments for one file, before the toolchain's are added.
+
+    The compile database entry wins when there is one; otherwise the config's
+    static ``cflags``. ``None`` when the config holds nothing that could shape a
+    parse at all, which is the caller's signal to use its self-contained
+    defaults instead.
+
+    A few compile entries carry no ``--sysroot`` (NetBSD's rump ``*_user.c``
+    hypercall shims, for one): without one, ``<sys/cdefs.h>`` and friends are
+    not found, so the config's default sysroot is filled in.
+    """
+    if compdb_args is not None:
+        flags = list(compdb_args)
+    else:
+        flags = list(lang_cfg.get("cflags", []))
+        if not flags and not lang_cfg.get("predef_cc"):
+            return None
+    if not any(a.startswith("--sysroot") for a in flags):
+        default_sysroot = lang_cfg.get("sysroot")
+        if default_sysroot:
+            flags.append(f"--sysroot={default_sysroot}")
+    return flags
+
+
+def sysroot_of(flags: list[str]) -> str:
+    """The sysroot an argument list settles on — the last ``--sysroot=`` wins,
+    as it does on a real command line. ``""`` when there is none."""
+    sysroot = ""
+    for a in flags:
+        if a.startswith("--sysroot="):
+            sysroot = a[len("--sysroot="):]
+    return sysroot
+
+
+def extra_predefs(gcc_defs: Sequence[str], clang_names: frozenset[str]
+                  ) -> tuple[str, ...]:
+    """The gcc predefined macros clang does NOT define for the target — the
+    compatibility macros NetBSD headers need (``__WCHAR_MIN__``, ``__WINT_MIN__``,
+    ``__SIG_ATOMIC_TYPE__``...).
+
+    Only the *difference* is added. Macros clang already defines keep clang's
+    own self-consistent values, so a header is not dragged onto its gcc-builtin
+    branch — the cause of the ``_Atomic``/``__restrict`` breakage when the full
+    gcc dump was injected. An empty ``clang_names`` means clang could not be
+    asked, which is "unknown", not "clang defines nothing": add nothing.
+    """
+    if not clang_names:
+        return ()
+    return tuple(d for d in gcc_defs
+                 if d[2:].split("=", 1)[0] not in clang_names)
+
+
+def finish_flags(flags: list[str], *, target: str,
+                 builtin_include: Sequence[str] = (),
+                 include_dirs: Sequence[str] = (),
+                 predefs: Sequence[str] = ()) -> list[str]:
+    """Assemble the final libclang argument list.
+
+    Order matters. clang's own builtin headers come first, so libstdc++'s
+    ``#include_next <stddef.h>`` chains onto clang's header and not gcc's; then
+    the toolchain's implicit include dirs; then the gcc compatibility macros;
+    then ``--target``, unless the tree already named one.
+    """
+    out = [*flags, *builtin_include, *include_dirs, *predefs]
+    if not any(a.startswith(("--target", "-target")) for a in out):
+        out.append(f"--target={target}")
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# edge — reads files, runs compilers. Everything it learns lands in a snapshot.
+# --------------------------------------------------------------------------- #
+
+#: what a file looked like when we read it. Cheap enough to take on every
+#: lookup, and strong enough for the case that matters: an operator fixing a
+#: config while the run is going. ``st_ctime_ns`` moves on any write, including
+#: one that leaves the size alone and one whose mtime was set back by hand.
+#: Two writes inside the same nanosecond that leave the size and inode
+#: unchanged would still slip past — the same bound every mtime-based tool has.
+Stamp = tuple[int, int, int, int]  #: (mtime_ns, ctime_ns, size, inode)
+
+
+class Probe(Protocol):
+    """The compiler questions a snapshot asks. `toolchain` satisfies it; a test
+    passes a stand-in so the orchestration can be checked without a toolchain."""
+
+    def clang_builtin_include(self) -> tuple[str, ...]: ...
+
+    def include_search_dirs(self, cc_cmd: Sequence[str], lang_x: str,
+                            sysroot: str = "") -> tuple[str, ...]: ...
+
+    def predef_macros(self, cc_cmd: Sequence[str]) -> tuple[str, ...]: ...
+
+    def clang_macro_names(self, target: str) -> frozenset[str]: ...
+
+
+def _stamp(path: str) -> Stamp | None:
+    """How a file looks right now, or ``None`` if it cannot be stat'ed (which is
+    itself a change worth noticing: the config was deleted)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_ctime_ns, st.st_size, st.st_ino)
+
+
+def read_json(path: str) -> Any:
+    """Parse a JSON file, or say why not.
+
+    Both failures — unreadable and unparseable — used to return an empty dict.
+    See `TreeConfigError` for what that cost.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        raise TreeConfigError(path, f"cannot be read ({e.strerror or e})") from e
+    try:
+        return json.loads(text)
+    except ValueError as e:
+        raise TreeConfigError(path, f"is not valid JSON ({e})") from e
+
+
+def find_config(start: str) -> str | None:
+    """The nearest ``.ouroboros.json`` at or above ``start``, clangd-style."""
+    p = Path(start).resolve()
+    for d in (p, *p.parents):
+        candidate = d / CONFIG_NAME
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+class TreeSnapshot:
+    """Everything one run has read from disk and asked of the compilers.
+
+    Explicit on purpose. The nine ``lru_cache`` decorators this replaces were
+    invisible: no caller could refresh them after fixing a config, and two tests
+    in one process shared them, so the order the tests ran in changed their
+    answers. A snapshot is made, passed and dropped by whoever owns the run, and
+    a test makes its own.
+
+    Every config and compile database is remembered together with its
+    `Stamp`; `recheck` forgets the ones whose file changed underneath,
+    so editing an ``.ouroboros.json`` mid-run takes effect on the next lookup.
+    Which config applies to a directory is settled once per snapshot: a config
+    file *appearing* or *disappearing* mid-run needs a fresh snapshot, not a
+    recheck.
+
+    Compiler answers are keyed by the exact command asked, and are not
+    rechecked — a toolchain binary does not change under a running instrument.
+    """
+
+    def __init__(self, probe: Probe | None = None) -> None:
+        self._probe: Probe = probe if probe is not None else toolchain
+        self._config_of: dict[str, str | None] = {}
+        self._configs: dict[str, tuple[Stamp | None, dict[str, Any]]] = {}
+        self._compdbs: dict[str, tuple[Stamp | None, CompDb]] = {}
+        self._builtin: tuple[str, ...] | None = None
+        self._include_dirs: dict[tuple[tuple[str, ...], str, str], tuple[str, ...]] = {}
+        self._predefs: dict[tuple[tuple[str, ...], str], tuple[str, ...]] = {}
+
+    # -- files ------------------------------------------------------------- #
+
+    def recheck(self) -> None:
+        """Forget every config and compile database whose file changed on disk."""
+        for path in [p for p, (s, _) in self._configs.items() if _stamp(p) != s]:
+            del self._configs[path]
+        for path in [p for p, (s, _) in self._compdbs.items() if _stamp(p) != s]:
+            del self._compdbs[path]
+
+    def config_path_for(self, filename: str) -> str | None:
+        """The config that governs ``filename``, searched once per directory."""
+        key = os.path.dirname(filename) or "."
+        if key not in self._config_of:
+            self._config_of[key] = find_config(key)
+        return self._config_of[key]
+
+    def config(self, path: str) -> dict[str, Any]:
+        """The parsed settings file at ``path``. Raises if it is unusable."""
+        hit = self._configs.get(path)
+        if hit is None:
+            stamp = _stamp(path)
+            data = read_json(path)
+            if not isinstance(data, dict):
+                raise TreeConfigError(
+                    path, f"must be a JSON object, got {type(data).__name__}")
+            hit = (stamp, data)
+            self._configs[path] = hit
+        return hit[1]
+
+    def compdb(self, path: str) -> CompDb:
+        """The indexed compile database at ``path``. Raises if it is unusable."""
+        hit = self._compdbs.get(path)
+        if hit is None:
+            stamp = _stamp(path)
+            hit = (stamp, index_compdb(read_json(path), path))
+            self._compdbs[path] = hit
+        return hit[1]
+
+    # -- compilers --------------------------------------------------------- #
+
+    def builtin_include(self) -> tuple[str, ...]:
+        if self._builtin is None:
+            self._builtin = self._probe.clang_builtin_include()
+        return self._builtin
+
+    def include_dirs(self, cc_cmd: Sequence[str], lang_x: str,
+                     sysroot: str) -> tuple[str, ...]:
+        key = (tuple(cc_cmd), lang_x, sysroot)
+        if key not in self._include_dirs:
+            self._include_dirs[key] = self._probe.include_search_dirs(
+                cc_cmd, lang_x, sysroot)
+        return self._include_dirs[key]
+
+    def missing_predefs(self, cc_cmd: Sequence[str], target: str) -> tuple[str, ...]:
+        key = (tuple(cc_cmd), target)
+        if key not in self._predefs:
+            self._predefs[key] = extra_predefs(
+                self._probe.predef_macros(cc_cmd),
+                self._probe.clang_macro_names(target))
+        return self._predefs[key]
+
+    # -- the three questions callers ask ------------------------------------ #
+
+    def language_block(self, filename: str, language: str) -> dict[str, Any] | None:
+        """The validated per-language config governing ``filename``, or ``None``
+        when no config applies or it says nothing about this language."""
+        config_path = self.config_path_for(filename)
+        if config_path is None:
+            return None
+        return language_config(self.config(config_path), language, config_path)
+
+
+_snapshot: TreeSnapshot | None = None
+
+
+def current_snapshot() -> TreeSnapshot:
+    """The snapshot the module-level helpers use, made on first need."""
+    global _snapshot
+    if _snapshot is None:
+        _snapshot = TreeSnapshot()
+    return _snapshot
+
+
+def set_snapshot(snapshot: TreeSnapshot | None) -> TreeSnapshot | None:
+    """Install ``snapshot`` (``None`` to drop the current one) and return the
+    one it replaced, so a caller can put it back."""
+    global _snapshot
+    previous = _snapshot
+    _snapshot = snapshot
+    return previous
+
+
+def _snap(snapshot: TreeSnapshot | None) -> TreeSnapshot:
+    """The snapshot to use for one lookup, brought up to date with the disk."""
+    snap = current_snapshot() if snapshot is None else snapshot
+    snap.recheck()
+    return snap
+
+
+def _key(filename: str) -> str:
+    return os.path.normpath(os.path.abspath(filename))
+
+
+def compdb_covers(filename: str | None, language: str, *,
+                  snapshot: TreeSnapshot | None = None) -> bool | None:
     """Whether the tree's compile database has an exact entry for ``filename``.
 
     ``True``  — covered: the parse gets the build's exact flags (incl. ``-D`` defines).
@@ -365,104 +560,70 @@ def compdb_covers(filename: str | None, language: str) -> bool | None:
     """
     if not filename:
         return None
-    config_path = _find_config(filename)
-    if config_path is None:
+    snap = _snap(snapshot)
+    lang_cfg = snap.language_block(filename, language)
+    if lang_cfg is None or "compdb" not in lang_cfg:
         return None
-    lang_cfg = _load(config_path).get(language)
-    if not isinstance(lang_cfg, dict) or not isinstance(lang_cfg.get("compdb"), str):
-        return None
-    key = os.path.normpath(os.path.abspath(filename))
-    return key in _load_compdb(lang_cfg["compdb"])
+    return _key(filename) in snap.compdb(lang_cfg["compdb"]).args
 
 
-def compdb_language_for(filename: str | None) -> str | None:
+def compdb_language_for(filename: str | None, *,
+                        snapshot: TreeSnapshot | None = None) -> str | None:
     """The language a tree's compile database recorded for ``filename`` (``"c"``
     or ``"cpp"``), or ``None`` if no compdb covers it. Lets the dispatcher route
     a ``.c`` that was actually compiled as C++ to the C++ backend."""
     if not filename:
         return None
-    config_path = _find_config(filename)
-    if config_path is None:
-        return None
-    cfg = _load(config_path)
-    key = os.path.normpath(os.path.abspath(filename))
-    for lang in ("c", "cpp"):
-        lc = cfg.get(lang)
-        if isinstance(lc, dict) and isinstance(lc.get("compdb"), str):
-            detected = _compdb_lang_index(lc["compdb"]).get(key)
-            if detected:
-                return detected
+    snap = _snap(snapshot)
+    key = _key(filename)
+    for language in ("c", "cpp"):
+        lang_cfg = snap.language_block(filename, language)
+        if lang_cfg is None or "compdb" not in lang_cfg:
+            continue
+        detected = snap.compdb(lang_cfg["compdb"]).languages.get(key)
+        if detected:
+            return detected
     return None
 
 
-def tree_flags_for(filename: str | None, language: str) -> list[str] | None:
+def tree_flags_for(filename: str | None, language: str, *,
+                   snapshot: TreeSnapshot | None = None) -> list[str] | None:
     """libclang args for ``filename`` from the discovered config, or ``None`` when
     no config applies. Prefers the compile_commands.json entry; falls back to
-    static ``cflags``; always appends the toolchain predefs + a ``--target``."""
+    static ``cflags``; always appends the toolchain's include dirs + a ``--target``."""
     if not filename:
         return None
-    config_path = _find_config(filename)
-    if config_path is None:
-        return None
-    lang_cfg = _load(config_path).get(language)
-    if not isinstance(lang_cfg, dict):
+    snap = _snap(snapshot)
+    lang_cfg = snap.language_block(filename, language)
+    if lang_cfg is None:
         return None
 
-    flags: list[str] | None = None
+    compdb_args = None
+    if "compdb" in lang_cfg:
+        compdb_args = snap.compdb(lang_cfg["compdb"]).args.get(_key(filename))
 
-    compdb = lang_cfg.get("compdb")
-    if isinstance(compdb, str):
-        entry = _load_compdb(compdb).get(os.path.normpath(os.path.abspath(filename)))
-        if entry is not None:
-            flags = list(entry)
-
+    flags = base_flags(lang_cfg, compdb_args)
     if flags is None:
-        flags = list(lang_cfg.get("cflags", []))
-        if not flags and not lang_cfg.get("predef_cc"):
-            return None
+        return None
 
-    # A few compile entries carry no --sysroot (e.g. NetBSD's rump *_user.c
-    # hypercall shims): without one, <sys/cdefs.h> & friends aren't found. Fall
-    # back to the config's default sysroot so those still resolve.
-    if not any(a.startswith("--sysroot") for a in flags):
-        default_sysroot = lang_cfg.get("sysroot")
-        if isinstance(default_sysroot, str) and default_sysroot:
-            flags.append(f"--sysroot={default_sysroot}")
-
-    # clang's own builtin headers (stdatomic.h, stddef.h, intrinsics) FIRST, so
-    # libstdc++'s `#include_next <stddef.h>` chains onto clang's, not gcc's — the
-    # pip libclang wheel doesn't ship these, so add a real resource dir's include.
-    flags += list(_clang_builtin_include())
-
-    predef_cc = lang_cfg.get("predef_cc")
-    if isinstance(predef_cc, list) and predef_cc:
-        # the cross compiler's implicit system include dirs (libstdc++, target
-        # headers, fixed-includes) — after clang's builtins so builtins win.
-        # Use the build's sysroot so gcc doesn't fall back to host /usr/include.
+    target = lang_cfg.get("target") or DEFAULT_TARGET
+    predef_cc = lang_cfg.get("predef_cc") or []
+    include_dirs: tuple[str, ...] = ()
+    predefs: tuple[str, ...] = ()
+    if predef_cc:
+        # The cross compiler's implicit system include dirs (libstdc++, target
+        # headers, fixed-includes). Its sysroot must be the build's, or gcc
+        # falls back to the host /usr/include and poisons the parse.
         #
-        # NOTE: we deliberately do NOT harvest gcc's *predefined macros* here.
-        # Feeding gcc's __GNUC__/__ATOMIC_*/__restrict macros into a clang parse
-        # makes headers take their gcc-builtin branch, which clang then rejects
-        # (e.g. openssl refcount.h's __atomic_fetch_* on _Atomic ptrs, cdefs.h's
-        # __restrict in C++). clang defines its own self-consistent target macros
-        # from --target, which match its own builtins. predef_cc is used only to
-        # locate the toolchain's include dirs.
-        sysroot = ""
-        for a in flags:
-            if a.startswith("--sysroot="):
-                sysroot = a[len("--sysroot="):]
+        # NOTE: we deliberately do NOT take gcc's predefined macros wholesale.
+        # Feeding gcc's __GNUC__/__ATOMIC_*/__restrict into a clang parse makes
+        # headers take their gcc-builtin branch, which clang then rejects
+        # (openssl's refcount.h __atomic_fetch_* on _Atomic ptrs, cdefs.h's
+        # __restrict in C++). Only the macros clang lacks are added.
         lang_x = "c++" if language == "cpp" else "c"
-        flags += list(_harvest_include_dirs(tuple(predef_cc), lang_x, sysroot))
+        include_dirs = snap.include_dirs(predef_cc, lang_x, sysroot_of(flags))
+        predefs = snap.missing_predefs(predef_cc, target)
 
-    target = lang_cfg.get("target", "riscv64-unknown-netbsd")
-
-    # Add ONLY the gcc compatibility macros clang lacks (e.g. __WCHAR_MIN__,
-    # __SIG_ATOMIC_TYPE__) that NetBSD headers require — never the ones clang
-    # already defines, which would re-create the gcc-branch conflicts above.
-    if isinstance(predef_cc, list) and predef_cc:
-        flags += list(_missing_predefs(tuple(predef_cc), target))
-
-    if not any(a.startswith(("--target", "-target")) for a in flags):
-        flags.append(f"--target={target}")
-
-    return flags
+    return finish_flags(flags, target=target,
+                        builtin_include=snap.builtin_include(),
+                        include_dirs=include_dirs, predefs=predefs)
