@@ -139,15 +139,15 @@ ouroboros trace debug.info --min-duration 0.1      # что шло дольше 
 | `finish <путь>` | переносит черновик в соседний `<путь>/чистовик/` |
 
 ```sh
-ouroboros create ~/работа/разбор
+ouroboros create /srv/tmp/разбор
 ```
 
 ```json
-{"ok": true, "base": "/home/m/работа/разбор", "draft": "/home/m/работа/разбор/черновик", "clean": "/home/m/работа/разбор/чистовик"}
+{"ok": true, "base": "/srv/tmp/разбор", "draft": "/srv/tmp/разбор/черновик", "clean": "/srv/tmp/разбор/чистовик"}
 ```
 
 ```sh
-ouroboros execute ~/работа/разбор -- python3 stats.py
+ouroboros execute /srv/tmp/разбор -- python3 stats.py
 ```
 
 Кроме записей о вызовах, `execute` дописывает в тот же файл одну строку о самой
@@ -180,7 +180,7 @@ ouroboros: init draft
 сохраняется:
 
 ```sh
-printf 'def broken(:\n    return 1\n' | ouroboros write ~/работа/разбор bad.py
+printf 'def broken(:\n    return 1\n' | ouroboros write /srv/tmp/разбор bad.py
 ```
 
 ```
