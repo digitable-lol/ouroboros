@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import functools
 import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -40,6 +42,7 @@ from ..clangtools import (
 from ..languages import (
     CorruptedSourceError,
     Transformer,
+    TreeConfigError,
     supported_languages,
     transformer_for_language,
     transformer_for_path,
@@ -125,6 +128,46 @@ def _drop_runtime_asset(tx: Transformer, target: Path) -> str | None:
     return str(dest)
 
 
+def _reports_bad_tree_config[**P](
+    fn: Callable[P, dict[str, Any]],
+) -> Callable[P, dict[str, Any]]:
+    """Turn a broken ``.ouroboros.json`` into an answer, not a crash.
+
+    ``TreeConfigError`` is raised deliberately deep down: a tree whose settings
+    cannot be read must stop the run rather than silently instrument against the
+    host compiler's flags and drop every function behind an ``#ifdef`` (see
+    ``languages/treeflags.py``). That decision is right, and nothing here softens
+    it — the operation still fails.
+
+    What this fixes is only HOW it fails at the boundary. Uncaught, the exception
+    left the MCP layer as a protocol-level error, so the agent got a stack trace
+    instead of ``{ok: false}`` and could not tell "your settings file has a typo"
+    from "the server is broken". Measured against a tree with an unparsable
+    ``.ouroboros.json``, three of the seventeen tools escaped this way:
+    wrap_file, wrap_functions, lint_file.
+
+    Caught HERE and not in the backends on purpose: a backend that swallowed it
+    would be back to instrumenting with the wrong flags, which is the bug the
+    exception exists to prevent.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> dict[str, Any]:
+        try:
+            return fn(*args, **kwargs)
+        except TreeConfigError as e:
+            return {
+                "ok": False,
+                "error": f"the tree's settings cannot be used: {e}",
+                "tree_config": e.path,
+                "reason": e.reason,
+                "hint": "fix or remove the settings file; instrumenting without "
+                        "the build's flags would silently skip code behind #ifdef",
+            }
+
+    return wrapper
+
+
 def tool_wrap_code_snippet(code: str, language: str) -> dict[str, Any]:
     """Instrument a raw ``code`` string for ``language`` in memory."""
 
@@ -147,6 +190,7 @@ def tool_wrap_code_snippet(code: str, language: str) -> dict[str, Any]:
     }
 
 
+@_reports_bad_tree_config
 def tool_wrap_file(path: str, minimal: bool = False) -> dict[str, Any]:
     """Instrument the file at ``path`` in place; return success/failure metrics.
 
@@ -205,6 +249,7 @@ def tool_wrap_file(path: str, minimal: bool = False) -> dict[str, Any]:
     return out
 
 
+@_reports_bad_tree_config
 def tool_wrap_functions(path: str, functions: list[str],
                         minimal: bool = False) -> dict[str, Any]:
     """Instrument ONLY the named ``functions`` in the file at ``path`` in place.
@@ -482,21 +527,28 @@ def tool_finish(base: str) -> dict[str, Any]:
     the code exists anywhere to restore — see ``ouroboros/sandbox/sync.py``."""
     try:
         proj = Project.open(base)
-        synced = sandbox_finish(proj)
+        result = sandbox_finish(proj)
     except SandboxError as e:
         return {"ok": False, "error": str(e)}
     return {
         "ok": True,
         "clean": str(proj.clean),
-        "synced": synced,
+        "synced": result.synced,
+        # Named, not counted. The rule that drops these cannot tell a compiler's
+        # output from a file the program was asked to produce, so the author has
+        # to be able to see a name they wanted and say so.
+        "skipped": [{"path": p, "reason": r} for p, r in result.skipped],
         "instrumentation_removed": False,
         "note": "The copy is instrumented, exactly like the draft: this step "
-                "publishes the draft, it does not un-instrument it. Build output "
-                "(__pycache__, *.pyc, *.beam, tool caches), .git and debug.info "
-                "are left behind.",
+                "publishes the draft, it does not un-instrument it. Left behind: "
+                ".git, debug.info, tool caches, and anything that looks built "
+                "(compiled binaries, object files, crash dumps) — each one listed "
+                "in `skipped` with the reason. If something you wanted is in that "
+                "list, copy it across yourself.",
     }
 
 
+@_reports_bad_tree_config
 def tool_lint_file(path: str, checks: str | None = None) -> dict[str, Any]:
     """Static-analyse a C/C++ file with clang-tidy (see ``clangtools.lint``)."""
     return clang_lint_file(path, checks=checks)
@@ -559,9 +611,20 @@ The loop is instrument -> run -> observe:
      (per-function counts + real durations). min_duration finds slow calls;
      in_flight surfaces hung/crashed ones.
 
+Choosing WHAT to instrument in a large C/C++ tree — six clangd/clang-tidy tools,
+listed here because a tool absent from these instructions does not get chosen:
+symbol_search (find a name across the tree), document_symbols (what one file
+defines), references (who uses it), call_hierarchy (who calls whom, transitively),
+describe_symbol (where it is defined, with what signature), lint_file (clang-tidy
+findings). Use them BEFORE wrap_functions to pick the functions worth wrapping,
+instead of wrapping a whole hot file. They need `clangd` and `clang-tidy` on PATH
+and, for anything cross-file, a compile_commands.json; without those they return
+{ok: false} explaining what is missing, so it is safe to try one and read the answer.
+
 Filesystem effects: wrap_file/wrap_functions overwrite the target file in place;
 write_file/finish mutate the sandbox tree; execute runs arbitrary commands. The
-read_* / list_files / trace tools never write. See SPEC.md for the trace schema.
+read_* / list_files / trace / clangd tools never write. See SPEC.md for the trace
+schema.
 """
 
 # One shared annotation instance for the read side and the pure in-memory

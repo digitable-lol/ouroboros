@@ -14,9 +14,11 @@ from .registry import (
     transformer_for_language,
     transformer_for_path,
 )
+from .treeflags import TreeConfigError
 
 __all__ = [
     "CorruptedSourceError",
+    "TreeConfigError",
     "Edit",
     "Transformer",
     "WrapResult",
