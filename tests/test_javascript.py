@@ -101,7 +101,7 @@ def test_end_to_end_via_sandbox_writes_debug_info(tmp_path):
     assert greet[0].outcome_kind == "result" and greet[0].outcome == '"hi world"'
     assert greet[0].duration is not None
 
-    synced = finish(proj)
+    synced = finish(proj).synced
     assert "main.js" in synced
     assert "ouroboros_runtime.js" in synced
 

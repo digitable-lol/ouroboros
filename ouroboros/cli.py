@@ -21,7 +21,12 @@ import argparse
 import json
 import sys
 
-from .languages import CorruptedSourceError, supported_languages, transformer_for_language
+from .languages import (
+    CorruptedSourceError,
+    TreeConfigError,
+    supported_languages,
+    transformer_for_language,
+)
 from .mcp.server import (
     tool_call_hierarchy,
     tool_create_project,
@@ -141,7 +146,29 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    """Run one subcommand and return its exit status.
+
+    A broken ``.ouroboros.json`` is caught here, once, rather than in each
+    subcommand: it is a mistake in the user's tree, and the answer to it is a
+    sentence naming the file — not the Python stack trace the user got before,
+    which buried that sentence under eight frames of our internals. Caught at the
+    top and nowhere lower on purpose; see ``_reports_bad_tree_config`` in
+    ``mcp/server.py`` for why no backend may swallow it.
+    """
+
+    try:
+        return _run(_build_parser().parse_args(argv))
+    except TreeConfigError as e:
+        print(f"{e}", file=sys.stderr)
+        print(
+            "fix or remove the settings file; instrumenting without the build's "
+            "flags would silently skip code behind #ifdef",
+            file=sys.stderr,
+        )
+        return 1
+
+
+def _run(args: argparse.Namespace) -> int:
 
     if args.command == "mcp":
         from .mcp.server import main as mcp_main
