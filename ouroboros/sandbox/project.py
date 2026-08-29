@@ -60,9 +60,16 @@ class Project:
         proj._git("config", "user.name", "ouroboros")
         proj._git("config", "user.email", "ouroboros@localhost")
 
-        # Ship the runtime helper so instrumented code is self-contained, and
-        # keep runtime artifacts out of version control.
-        proj._install_runtime()
+        # No runtime helper is dropped here. `create` does not yet know the
+        # project's language — it is given a path and nothing else — so the only
+        # helper it could install unconditionally is Python's, and that is what
+        # it used to do: every C project got a stray ouroboros_runtime.py, in the
+        # draft and then in the output tree. `write_file` installs the RIGHT
+        # helper for the language on the first write (see sandbox/crud.py), and
+        # `wrap_file` installs one next to the file it wraps, so nothing needs a
+        # helper before it exists. Measured: with this removed, first-write plus
+        # execute works for all five backends, and the C output tree loses only
+        # the stray Python file.
         (draft / ".gitignore").write_text(f"{DEBUG_INFO_NAME}\n", encoding="utf-8")
         proj._git("add", "-A")
         proj._git("commit", "-q", "-m", "ouroboros: init draft")
@@ -76,12 +83,6 @@ class Project:
         return cls(base=base_p, draft=draft, clean=clean)
 
     # ---- helpers ----------------------------------------------------------
-    def _install_runtime(self) -> None:
-        from .. import runtime as runtime_mod
-
-        src = Path(runtime_mod.__file__).read_text(encoding="utf-8")
-        (self.draft / RUNTIME_FILENAME).write_text(src, encoding="utf-8")
-
     def _git(self, *args: str) -> str:
         proc = subprocess.run(
             ["git", *args],

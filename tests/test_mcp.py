@@ -641,3 +641,78 @@ def test_transport_from_env_rejects_anything_else(monkeypatch):
     monkeypatch.setenv("OUROBOROS_MCP_TRANSPORT", "carrier-pigeon")
     with pytest.raises(SystemExit, match="carrier-pigeon"):
         transport_from_env()
+
+
+# --------------------------------------------------------------------------- #
+# A broken .ouroboros.json must reach the caller as an ANSWER.
+#
+# TreeConfigError is raised deep on purpose: a tree whose settings cannot be read
+# must stop, not quietly instrument with the host compiler's flags and lose every
+# function behind an #ifdef. Nothing below softens that — the operation still
+# fails. What is pinned here is that it fails as {ok: false} rather than as an
+# exception escaping the MCP layer, which is what the agent used to get.
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def broken_tree(tmp_path):
+    (tmp_path / ".ouroboros.json").write_text("{ not json }", encoding="utf-8")
+    src = tmp_path / "a.c"
+    src.write_text("int f(int x) { return x + 1; }\n", encoding="utf-8")
+    return tmp_path, src
+
+
+@pytest.mark.parametrize("call", ["wrap_file", "wrap_functions", "lint_file"])
+def test_broken_tree_config_is_an_answer_not_a_crash(broken_tree, call):
+    _, src = broken_tree
+    fn = {
+        "wrap_file": lambda: tool_wrap_file(str(src)),
+        "wrap_functions": lambda: tool_wrap_functions(str(src), ["f"]),
+        "lint_file": lambda: tool_lint_file(str(src)),
+    }[call]
+
+    res = fn()
+
+    assert res["ok"] is False
+    assert res["tree_config"].endswith(".ouroboros.json")
+    assert "not valid JSON" in res["reason"]
+    # The answer has to say what to do, not just that something is wrong.
+    assert "#ifdef" in res["hint"]
+
+
+def test_broken_tree_config_leaves_the_source_untouched(broken_tree):
+    """Failing loudly is only right if it also fails safely."""
+
+    _, src = broken_tree
+    before = src.read_text(encoding="utf-8")
+
+    assert tool_wrap_file(str(src))["ok"] is False
+
+    assert src.read_text(encoding="utf-8") == before
+
+
+def test_a_good_tree_still_works_after_the_guard(tmp_path):
+    """The guard must not swallow the ordinary path."""
+
+    (tmp_path / ".ouroboros.json").write_text("{}", encoding="utf-8")
+    src = tmp_path / "a.c"
+    src.write_text("int f(int x) { return x + 1; }\n", encoding="utf-8")
+
+    res = tool_wrap_file(str(src))
+
+    assert res["ok"] is True
+    assert res["functions_wrapped"] == 1
+
+
+def test_finish_answer_names_what_it_left_behind(tmp_path):
+    base = tmp_path / "site"
+    tool_create_project(str(base))
+    tool_write_file(str(base), "prog.c", "int add(int a, int b) { return a + b; }\n")
+    (base / "черновик" / "prog").write_bytes(b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 64)
+
+    res = tool_finish(str(base))
+
+    assert res["ok"] is True
+    assert "prog" not in res["synced"]
+    assert [s["path"] for s in res["skipped"]] == ["prog"]
+    assert res["skipped"][0]["reason"]
+    assert res["instrumentation_removed"] is False

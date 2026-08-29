@@ -23,6 +23,7 @@ from ouroboros.sandbox.project import (
     DRAFT_DIRNAME,
     RUNTIME_FILENAME,
 )
+from ouroboros.sandbox.sync import _exclusion_reason
 
 
 @pytest.fixture
@@ -30,14 +31,57 @@ def project(tmp_path) -> Project:
     return Project.create(tmp_path / "site")
 
 
-def test_create_provisions_draft_git_and_runtime(tmp_path):
+def test_create_provisions_draft_git_but_no_runtime_helper(tmp_path):
+    """`create` sets up git and .gitignore, and installs NO runtime helper.
+
+    It cannot install a right one: it is handed a path and does not yet know the
+    project's language. It used to install Python's unconditionally, which put a
+    stray ouroboros_runtime.py in every C project. The helper now arrives with
+    the first write, from the backend that actually needs it — see
+    test_first_write_installs_only_that_languages_helper.
+    """
+
     proj = Project.create(tmp_path / "site")
     assert proj.draft.name == DRAFT_DIRNAME
     assert proj.clean.name == CLEAN_DIRNAME
     assert (proj.draft / ".git").is_dir()
-    assert (proj.draft / RUNTIME_FILENAME).is_file()
+    assert not (proj.draft / RUNTIME_FILENAME).exists()
+    assert sorted(p.name for p in proj.draft.iterdir()) == [".git", ".gitignore"]
     assert (proj.draft / ".gitignore").read_text().strip() == "debug.info"
     assert proj.git_log() == ["ouroboros: init draft"]
+
+
+@pytest.mark.parametrize(
+    ("rel_path", "source", "helper"),
+    [
+        ("m.py", "def f(n):\n    return n\n", "ouroboros_runtime.py"),
+        ("m.js", "function f(n) { return n; }\n", "ouroboros_runtime.js"),
+        ("m.c", "int f(int n) { return n; }\n", "ouroboros_runtime.h"),
+        ("m.cpp", "int f(int n) { return n; }\n", "ouroboros_runtime.hpp"),
+        ("m.ex", "defmodule M do\n  def f(n), do: n\nend\n", "ouroboros_trace.ex"),
+    ],
+)
+def test_first_write_installs_only_that_languages_helper(tmp_path, rel_path, source, helper):
+    """The first write brings its own language's helper — and only that one."""
+
+    proj = Project.create(tmp_path / "site")
+    write_file(proj, rel_path, source)
+    present = sorted(p.name for p in proj.draft.iterdir() if p.name != ".git")
+    assert present == sorted([".gitignore", rel_path, helper])
+
+
+def test_write_then_execute_runs_without_a_helper_from_create(tmp_path):
+    """The end-to-end claim behind removing the unconditional helper.
+
+    Wrapped Python imports ouroboros_runtime; if nothing installed it, this
+    raises ModuleNotFoundError instead of printing.
+    """
+
+    proj = Project.create(tmp_path / "site")
+    write_file(proj, "main.py", "def f(n):\n    return n * 2\n\nprint(f(21))\n")
+    result = execute(proj, [sys.executable, "main.py"], timeout=60.0)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "42"
 
 
 def test_create_rejects_existing_then_exist_ok(tmp_path):
@@ -137,7 +181,7 @@ def test_finish_mirrors_draft_excluding_git_and_debug_info(project):
     execute(project, [sys.executable, "-c", "print('hi')"])
     assert project.debug_info_path().exists()
 
-    synced = finish(project)
+    synced = finish(project).synced
     clean = project.clean
     assert (clean / "main.py").is_file()
     assert (clean / RUNTIME_FILENAME).is_file()
@@ -183,7 +227,7 @@ def test_finish_omits_python_bytecode_cache(project):
     execute(project, [sys.executable, "main.py"])
     assert (project.draft / "__pycache__").is_dir()
 
-    synced = finish(project)
+    synced = finish(project).synced
 
     assert not (project.clean / "__pycache__").exists()
     assert all("__pycache__" not in s for s in synced)
@@ -200,7 +244,7 @@ def test_finish_twice_rebuilds_the_output_tree(project):
     assert (project.clean / "gone.py").is_file()
 
     delete_file(project, "gone.py")
-    synced = finish(project)
+    synced = finish(project).synced
 
     assert (project.clean / "keep.py").is_file()
     assert not (project.clean / "gone.py").exists()
@@ -213,7 +257,7 @@ def test_finish_copies_subdirectories(project):
     # runs on a path relative to the draft, not on the bare name)
     assert out.committed is True
 
-    synced = finish(project)
+    synced = finish(project).synced
 
     assert (project.clean / "pkg" / "mod.py").is_file()
     assert str(Path("pkg") / "mod.py") in synced
@@ -267,3 +311,130 @@ def test_committed_survives_a_filename_with_glob_characters(project):
 
     assert out.committed is True
     assert "we[i]rd?name*.py" in list_files(project)
+
+
+# --------------------------------------------------------------------------- #
+# What `finish` refuses to carry into the output tree, and what it says about it.
+#
+# The hard case is that a compiler's output and a file the program was ASKED to
+# produce are indistinguishable: both are made by a program, both come back if
+# you run it again. So the rule errs toward dropping and then NAMES what it
+# dropped. These tests pin both halves — the drop and the telling.
+# --------------------------------------------------------------------------- #
+
+def _draft_file(project: Project, rel: str, data: bytes, mode: int | None = None) -> Path:
+    p = project.draft / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(data)
+    if mode is not None:
+        p.chmod(mode)
+    return p
+
+
+def test_finish_drops_a_compiled_binary_built_in_the_draft(project):
+    write_file(project, "prog.c", "int add(int a, int b) { return a + b; }\n")
+    # A real ELF header, not a stand-in: this is what gcc leaves in the draft.
+    _draft_file(project, "prog", b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 64, mode=0o755)
+
+    result = finish(project)
+
+    assert "prog" not in result.synced
+    assert "prog.c" in result.synced
+    assert not (project.clean / "prog").exists()
+    assert any(path == "prog" for path, _ in result.skipped)
+
+
+def test_finish_keeps_an_executable_shell_script_with_no_extension(project):
+    """The case that rules out "has the execute bit" as the test.
+
+    A shell script and a compiled binary are both executable and both may have
+    no extension. Only the content tells them apart.
+    """
+
+    write_file(project, "m.py", "def f():\n    return 1\n")
+    _draft_file(project, "run", b"#!/bin/sh\necho hello\n", mode=0o755)
+
+    result = finish(project)
+
+    assert "run" in result.synced
+    assert (project.clean / "run").read_bytes().startswith(b"#!/bin/sh")
+    assert not any(path == "run" for path, _ in result.skipped)
+
+
+def test_finish_keeps_a_source_file_containing_a_real_nul_byte(project):
+    """A NUL in a .c file must not cost the author their source.
+
+    This is why the content check is only consulted for files whose extension is
+    not a source extension.
+    """
+
+    write_file(project, "m.py", "def f():\n    return 1\n")
+    _draft_file(project, "weird.c", b'/* \x00 */\nint f(void) { return 0; }\n')
+
+    result = finish(project)
+
+    assert "weird.c" in result.synced
+    assert b"\x00" in (project.clean / "weird.c").read_bytes()
+
+
+def test_finish_drops_object_files_and_crash_dumps_and_says_so(project):
+    write_file(project, "m.py", "def f():\n    return 1\n")
+    _draft_file(project, "prog.o", b"\x7fELF" + b"\x00" * 32)
+    _draft_file(project, "core.12345", b"\x7fELF" + b"\x00" * 32)
+
+    result = finish(project)
+
+    assert "prog.o" not in result.synced
+    assert "core.12345" not in result.synced
+    reasons = dict(result.skipped)
+    assert ".o" in reasons["prog.o"]
+    assert "crash dump" in reasons["core.12345"]
+
+
+def test_finish_names_dropped_data_so_the_author_can_disagree(project):
+    """The rule cannot tell a wanted picture from build output — so it tells."""
+
+    write_file(project, "m.py", "def f():\n    return 1\n")
+    _draft_file(project, "chart.png", bytes.fromhex("89504e470d0a1a0a") + b"\x00" * 32)
+
+    result = finish(project)
+
+    assert "chart.png" not in result.synced
+    assert dict(result.skipped)["chart.png"]
+
+
+def test_finish_does_not_report_git_internals_as_skipped(project):
+    """Routine drops stay quiet: one .git is ~30 entries and would bury the rest."""
+
+    write_file(project, "m.py", "def f():\n    return 1\n")
+    project.debug_info_path().write_text("{}\n", encoding="utf-8")
+
+    result = finish(project)
+
+    assert result.skipped == []
+    assert not (project.clean / ".git").exists()
+    assert not (project.clean / "debug.info").exists()
+
+
+def test_finish_treats_an_unreadable_file_as_not_built(project, monkeypatch):
+    """An unreadable file must not be classed as built on that basis alone.
+
+    Guessing "built" from a failed read would drop the author's file for a
+    reason that has nothing to do with its content. The name-based rules still
+    apply; only the content check declines to judge.
+    """
+
+    write_file(project, "m.py", "def f():\n    return 1\n")
+    target = _draft_file(project, "mystery", b"plain text, perfectly fine\n")
+
+    real_open = Path.open
+
+    def refuse(self, *args, **kwargs):
+        if self.name == "mystery":
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse)
+    reason = _exclusion_reason(Path("mystery"), target)
+
+    assert reason is None
