@@ -252,9 +252,9 @@ ouroboros wrap-functions parser.c parse_header parse_body
 в соседний каталог.
 
 ```sh
-ouroboros create ~/работа/разбор
-ouroboros write ~/работа/разбор stats.py < stats.py
-ouroboros execute ~/работа/разбор -- python3 stats.py
+ouroboros create /srv/tmp/разбор
+ouroboros write /srv/tmp/разбор stats.py < stats.py
+ouroboros execute /srv/tmp/разбор -- python3 stats.py
 ```
 
 **Код, который не разбирается, не сохраняется.** `write` в этом случае
