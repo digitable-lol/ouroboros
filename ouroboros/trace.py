@@ -86,11 +86,14 @@ def load(text: str) -> Loaded:
         try:
             ev = json.loads(s)
         except ValueError:
+            # A torn record: two writers appended at once and the kernel split
+            # one of them. Counted as malformed, never guessed at.
             malformed += 1
             continue
-        if not isinstance(ev, dict):
-            malformed += 1
-            continue
+        # No isinstance check here on purpose. `s` starts with `{`, and a JSON
+        # document that starts with `{` is either an object or a parse error —
+        # so a "not a dict" branch would be one no input can reach, and it sat
+        # here for a while looking like it was doing something.
         if ev.get("p") not in ("in", "out"):
             # Well-formed JSON that isn't a call event (e.g. an `exec` meta
             # record appended by the sandbox) — not a torn line; skip silently.

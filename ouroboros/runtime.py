@@ -73,8 +73,14 @@ def _thread_token() -> str:
 
 
 def _cpu() -> int:
-    """CPU index for the ``ci`` field. ``os.sched_getcpu`` exists only on Linux;
-    elsewhere (macOS/Windows) return -1 (parsed as 'unknown')."""
+    """CPU index for the ``ci`` field, or -1, which the parser reads as unknown.
+
+    ``os.sched_getcpu`` is a Linux-only call, and even on Linux the interpreter
+    exposes it only if it was built against a libc that offers it. Neither
+    CPython on the machine this was measured on has it, so ``ci`` is -1 here and
+    the per-CPU column of the trace stays empty — worth knowing before reading
+    an empty ``cpus`` list as "every call ran on one CPU".
+    """
     getcpu = getattr(os, "sched_getcpu", None)
     if getcpu is None:
         return -1
