@@ -13,6 +13,21 @@ Commands::
     ouroboros execute <base> -- <command...>
     ouroboros finish <base>
     ouroboros languages
+
+The module is split in two, the same way ``languages/toolchain.py`` is:
+
+* the **planning** half turns the parsed arguments into a description of the
+  call to make, and a tool's answer into text plus an exit status. It opens no
+  file, reads no stream and starts no process, so every branch in it is
+  reachable from a literal in a test.
+* the **running** half is the only part that reads stdin, opens files, calls
+  the tools and writes to the streams.
+
+Thirteen of the subcommands are the same shape — take the arguments, hand them
+to one tool, print the answer, exit 0 when it says ``ok`` — so that shape is
+written once, as data, in `TOOL_COMMANDS`. Before, it was written out thirteen
+times, and an argument that reached the wrong parameter would have been caught
+by nothing short of running the command against a real clangd.
 """
 
 from __future__ import annotations
@@ -20,6 +35,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
 
 from .languages import (
     CorruptedSourceError,
@@ -145,6 +163,134 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+# --------------------------------------------------------------------------- #
+# planning — arguments in, a description of the call and the printed answer out
+# --------------------------------------------------------------------------- #
+
+#: Every tool takes keyword arguments and answers with one JSON-ready dict.
+ToolFn = Callable[..., dict[str, Any]]
+
+#: How the answer is printed. ``COMPACT`` is one line, for an answer a program
+#: reads; ``READABLE`` is indented, for an answer a person reads. Which one each
+#: command uses is part of its contract — scripts pipe ``create`` and ``finish``
+#: into ``jq``, while ``trace`` output is read on a terminal.
+COMPACT: int | None = None
+READABLE: int | None = 2
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """Which tool to call, with what, and how to print its answer.
+
+    Building one calls nothing: it is a description, so a test can check that
+    ``--limit 5`` reaches the tool as ``limit=5`` without starting clangd.
+    """
+
+    tool: ToolFn
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+    indent: int | None
+
+
+#: The subcommands that come down to a single tool call: name -> (tool,
+#: positional arguments, keyword arguments, indent). The strings are the names
+#: argparse stores the values under AND the tool's own parameter names — they
+#: are deliberately the same word, and ``tests/test_cli.py`` checks both halves
+#: of that claim against the parser and against ``inspect.signature``.
+TOOL_COMMANDS: dict[str, tuple[ToolFn, tuple[str, ...], tuple[str, ...], int | None]] = {
+    "wrap-file": (tool_wrap_file, ("path",), ("minimal",), COMPACT),
+    "wrap-functions": (tool_wrap_functions, ("path", "functions"), ("minimal",), COMPACT),
+    "trace": (tool_read_trace, ("path",),
+              ("function", "contains", "outcome", "min_duration", "thread",
+               "regex", "tail", "cursor", "limit"), READABLE),
+    "trace-stats": (tool_trace_stats, ("path",),
+                    ("function", "contains", "outcome", "min_duration", "thread",
+                     "regex"), READABLE),
+    "lint": (tool_lint_file, ("path",), ("checks",), READABLE),
+    "symbols": (tool_symbol_search, ("query", "root"),
+                ("compile_commands_dir", "limit", "index_timeout"), READABLE),
+    "doc-symbols": (tool_document_symbols, ("path",), (), READABLE),
+    "refs": (tool_references, ("path", "symbol"),
+             ("compile_commands_dir", "limit", "index_timeout"), READABLE),
+    "callers": (tool_call_hierarchy, ("path", "symbol"),
+                ("direction", "compile_commands_dir", "index_timeout"), READABLE),
+    "describe": (tool_describe_symbol, ("path", "symbol"),
+                 ("compile_commands_dir",), READABLE),
+    "create": (tool_create_project, ("base",), (), COMPACT),
+    "finish": (tool_finish, ("base",), (), COMPACT),
+}
+
+#: The subcommands that do NOT come down to one tool call, and why. Kept next to
+#: `TOOL_COMMANDS` so that the two together must cover the parser — which is
+#: what makes the end of `_run` reachable-by-construction rather than a
+#: ``pragma: no cover`` on a line nobody can prove is dead.
+SPECIAL_COMMANDS: frozenset[str] = frozenset({
+    "mcp",           # hands the process over to the MCP server; never returns normally
+    "languages",     # answers from the registry, no tool involved
+    "wrap-snippet",  # reads the code from stdin
+    "write",         # reads the content from stdin
+    "execute",       # streams the child's own stdout/stderr through, verbatim
+})
+
+#: Printed under a `TreeConfigError`. Saying only that the settings file is
+#: broken is not enough: the reason this stops the run rather than falling back
+#: on the host compiler's flags is that the fallback loses every function behind
+#: an ``#ifdef``, silently.
+BAD_TREE_CONFIG_HINT = (
+    "fix or remove the settings file; instrumenting without the build's "
+    "flags would silently skip code behind #ifdef"
+)
+
+
+def plan(args: argparse.Namespace) -> ToolCall | None:
+    """The call this command comes down to, or ``None`` if it is not one call.
+
+    ``wrap-file --stdout`` is the one command that leaves the table depending on
+    a flag: without ``--stdout`` it is `tool_wrap_file`, which rewrites the file
+    in place, and with it the file must not be touched at all.
+    """
+
+    if args.command == "wrap-file" and args.stdout:
+        return None
+    entry = TOOL_COMMANDS.get(args.command)
+    if entry is None:
+        return None
+    tool, positional, keyword, indent = entry
+    return ToolCall(
+        tool=tool,
+        args=tuple(getattr(args, name) for name in positional),
+        kwargs={name: getattr(args, name) for name in keyword},
+        indent=indent,
+    )
+
+
+def report(result: Mapping[str, Any], indent: int | None) -> tuple[str, int]:
+    """A tool's answer as the text to print and the status to exit with.
+
+    The status comes from the answer's own ``ok``, so a failure the tool
+    reported as data still leaves the shell a non-zero status to branch on.
+    """
+
+    return json.dumps(result, ensure_ascii=False, indent=indent), 0 if result["ok"] else 1
+
+
+def command_after_dashdash(argv: Sequence[str]) -> list[str]:
+    """The command for ``execute``, with the ``--`` argparse leaves in place.
+
+    ``nargs=REMAINDER`` keeps the separator as the first element, so
+    ``execute base -- python x.py`` arrives as ``["--", "python", "x.py"]`` and
+    would try to run a program literally named ``--``.
+    """
+
+    if argv and argv[0] == "--":
+        return list(argv[1:])
+    return list(argv)
+
+
+# --------------------------------------------------------------------------- #
+# running — the only half that touches streams, files and processes
+# --------------------------------------------------------------------------- #
+
 def main(argv: list[str] | None = None) -> int:
     """Run one subcommand and return its exit status.
 
@@ -160,15 +306,16 @@ def main(argv: list[str] | None = None) -> int:
         return _run(_build_parser().parse_args(argv))
     except TreeConfigError as e:
         print(f"{e}", file=sys.stderr)
-        print(
-            "fix or remove the settings file; instrumenting without the build's "
-            "flags would silently skip code behind #ifdef",
-            file=sys.stderr,
-        )
+        print(BAD_TREE_CONFIG_HINT, file=sys.stderr)
         return 1
 
 
 def _run(args: argparse.Namespace) -> int:
+    call = plan(args)
+    if call is not None:
+        text, status = report(call.tool(*call.args, **call.kwargs), call.indent)
+        print(text)
+        return status
 
     if args.command == "mcp":
         from .mcp.server import main as mcp_main
@@ -194,89 +341,21 @@ def _run(args: argparse.Namespace) -> int:
         sys.stdout.write(result.code)
         return 0
 
-    if args.command == "wrap-file":
-        if args.stdout:
-            from .languages import transformer_for_path
+    if args.command == "wrap-file":  # --stdout: print, leave the file alone
+        from .languages import transformer_for_path
 
-            t = transformer_for_path(args.path)
-            if t is None:
-                print(f"no transformer for {args.path}", file=sys.stderr)
-                return 2
-            try:
-                with open(args.path, encoding="utf-8") as fh:
-                    out = t.wrap_source(fh.read(), filename=args.path, minimal=args.minimal)
-            except CorruptedSourceError as e:
-                print(str(e), file=sys.stderr)
-                return 1
-            sys.stdout.write(out.code)
-            return 0
-        res = tool_wrap_file(args.path, minimal=args.minimal)
-        print(json.dumps(res, ensure_ascii=False))
-        return 0 if res["ok"] else 1
-
-    if args.command == "wrap-functions":
-        res = tool_wrap_functions(args.path, args.functions, minimal=args.minimal)
-        print(json.dumps(res, ensure_ascii=False))
-        return 0 if res["ok"] else 1
-
-    if args.command == "trace":
-        res = tool_read_trace(args.path, function=args.function,
-                              contains=args.contains, outcome=args.outcome,
-                              min_duration=args.min_duration, thread=args.thread,
-                              regex=args.regex,
-                              tail=args.tail, cursor=args.cursor, limit=args.limit)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "trace-stats":
-        res = tool_trace_stats(args.path, function=args.function,
-                               contains=args.contains, outcome=args.outcome,
-                               min_duration=args.min_duration, thread=args.thread,
-                               regex=args.regex)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "lint":
-        res = tool_lint_file(args.path, checks=args.checks)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "symbols":
-        res = tool_symbol_search(args.query, args.root,
-                                 compile_commands_dir=args.compile_commands_dir,
-                                 limit=args.limit, index_timeout=args.index_timeout)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "doc-symbols":
-        res = tool_document_symbols(args.path)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "refs":
-        res = tool_references(args.path, args.symbol,
-                              compile_commands_dir=args.compile_commands_dir,
-                              limit=args.limit, index_timeout=args.index_timeout)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "callers":
-        res = tool_call_hierarchy(args.path, args.symbol, direction=args.direction,
-                                  compile_commands_dir=args.compile_commands_dir,
-                                  index_timeout=args.index_timeout)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "describe":
-        res = tool_describe_symbol(args.path, args.symbol,
-                                   compile_commands_dir=args.compile_commands_dir)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if res["ok"] else 1
-
-    if args.command == "create":
-        res = tool_create_project(args.base)
-        print(json.dumps(res, ensure_ascii=False))
-        return 0 if res["ok"] else 1
+        t = transformer_for_path(args.path)
+        if t is None:
+            print(f"no transformer for {args.path}", file=sys.stderr)
+            return 2
+        try:
+            with open(args.path, encoding="utf-8") as fh:
+                out = t.wrap_source(fh.read(), filename=args.path, minimal=args.minimal)
+        except CorruptedSourceError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        sys.stdout.write(out.code)
+        return 0
 
     if args.command == "write":
         content = sys.stdin.read()
@@ -299,25 +378,18 @@ def _run(args: argparse.Namespace) -> int:
         )
         return 0
 
-    if args.command == "execute":
-        argv_cmd = args.argv
-        if argv_cmd and argv_cmd[0] == "--":
-            argv_cmd = argv_cmd[1:]
-        if not argv_cmd:
-            print("no command given after --", file=sys.stderr)
-            return 2
-        proj = Project.open(args.base)
-        exec_result = sandbox_execute(proj, argv_cmd)
-        sys.stdout.write(exec_result.stdout)
-        sys.stderr.write(exec_result.stderr)
-        return exec_result.returncode
-
-    if args.command == "finish":
-        res = tool_finish(args.base)
-        print(json.dumps(res, ensure_ascii=False))
-        return 0 if res["ok"] else 1
-
-    return 2  # pragma: no cover
+    # `execute` is the last one: the parser accepts nothing outside
+    # TOOL_COMMANDS | SPECIAL_COMMANDS, and test_cli.py holds it to that, so
+    # there is no unreachable tail here to hide behind a pragma.
+    argv_cmd = command_after_dashdash(args.argv)
+    if not argv_cmd:
+        print("no command given after --", file=sys.stderr)
+        return 2
+    proj = Project.open(args.base)
+    exec_result = sandbox_execute(proj, argv_cmd)
+    sys.stdout.write(exec_result.stdout)
+    sys.stderr.write(exec_result.stderr)
+    return exec_result.returncode
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -251,7 +251,7 @@ def mutate(items):
 стоимость обычного прогона нельзя, и профилировщик она не заменяет. Отсчёт `d`
 начинается **после** записи строки входа, то есть стоимость самой этой записи в
 `d` не входит — но всё прочее, что добавила обмазка, входит
-([`ouroboros/runtime.py:305`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L305)).
+([`ouroboros/runtime.py:311`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L311)).
 
 ## Повторить вызов, на котором сломалось
 

@@ -14,7 +14,8 @@ import pathlib
 import pytest
 
 from ouroboros.languages import CorruptedSourceError, transformer_for_language
-from ouroboros.languages.python_lang import DECORATOR, PythonTransformer
+from ouroboros.languages.base import line_start_offsets
+from ouroboros.languages.python_lang import DECORATOR, PythonTransformer, _import_offset
 
 
 @pytest.fixture
@@ -214,3 +215,81 @@ def test_runtime_module_is_never_instrumented(tx):
     res = tx.wrap_source(src, filename="ouroboros_runtime.py")
     assert res.functions_wrapped == 0
     assert res.code == src
+
+
+def test_a_qualified_decorator_of_ours_counts_as_already_decorated(tx):
+    """The decorator can arrive as a bare name or through the module it came
+    from. Both are ours, and neither may be doubled — a function decorated
+    twice logs every call twice, which reads as the function being called
+    twice."""
+
+    src = ("import ouroboros_runtime\n"
+           "\n"
+           "@ouroboros_runtime._ouro_log\n"
+           "def f(x):\n"
+           "    return x\n")
+
+    res = tx.wrap_source(src, filename="m.py")
+
+    assert res.functions_wrapped == 0
+    assert res.code == src
+
+
+def test_an_existing_runtime_import_is_not_added_a_second_time(tx):
+    """A file half-instrumented by hand, or wrapped through a different route,
+    already has the import. A second one is a duplicate line, not a failure —
+    but it is noise in a diff, and it says the tool did not look."""
+
+    src = ("from ouroboros_runtime import log as _ouro_log\n"
+           "\n"
+           "def f(x):\n"
+           "    return x\n")
+
+    res = tx.wrap_source(src, filename="m.py")
+
+    assert res.functions_wrapped == 1
+    assert res.code.count("from ouroboros_runtime import") == 1
+    assert ast.parse(res.code)
+
+
+def test_a_file_without_a_trailing_newline_still_parses_after_wrapping(tx):
+    """When everything above the insertion point is a docstring that runs to the
+    last byte, the import is appended at the very end — straight onto the last
+    line unless a newline is put in first, which would make the file
+    unparseable."""
+
+    src = 'def f(x):\n    return x\n\n"""tail docstring, no trailing newline"""'
+
+    res = tx.wrap_source(src, filename="m.py")
+
+    assert res.functions_wrapped == 1
+    ast.parse(res.code)                     # the point: it still parses
+    assert "from ouroboros_runtime import" in res.code
+
+
+@pytest.mark.parametrize("source,expected_line", [
+    ("", None),
+    ("import os\n", 0),
+    ('"""doc"""\n', 1),
+    ("#!/usr/bin/env python\n", 1),
+    ("#!/usr/bin/env python\n# -*- coding: utf-8 -*-\n", 2),
+    ('"""doc"""\nfrom __future__ import annotations\n', 2),
+])
+def test_the_import_offset_lands_after_everything_that_owns_the_top(source, expected_line):
+    """`_import_offset` is asked where the runtime import may go, and answers
+    for files that are nothing but header — where the answer is the end of the
+    file. `wrap_source` never sees such a file with a function in it, so this is
+    asked of the function directly rather than through a wrap that cannot
+    happen.
+    """
+
+    tree = ast.parse(source)
+    starts = line_start_offsets(source)
+
+    off = _import_offset(tree, source, starts)
+
+    if expected_line is None or expected_line == 0:
+        assert off == 0
+    else:
+        assert off == len(source)          # header-only: the end is all there is
+        assert source[:off].count("\n") == expected_line

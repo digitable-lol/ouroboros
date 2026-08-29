@@ -66,11 +66,19 @@ def measure() -> dict[str, Any]:
 
     with (ROOT / ".coverage.json").open(encoding="utf-8") as fh:
         cov = json.load(fh)
-    percent = cov["totals"]["percent_covered"]
+    totals = cov["totals"]
+    percent = totals["percent_covered"]
+    # Незакрытые единицы — операторы плюс ветви. Это число стоит в разборе
+    # покрытия в ARCHITECTURE.md и уже разъезжалось: таблица говорила 56, когда
+    # на сведённом дереве было 58.
+    uncovered = totals["missing_lines"] + totals["missing_branches"]
+    units = totals["num_statements"] + totals["num_branches"]
 
     return {
         "version": version(),
         "tests": tests,
+        "uncovered_units": uncovered,
+        "total_units": units,
         "coverage_percent": round(percent),
         "coverage_exact": round(percent, 2),
         "mcp_tools": tool_count(),

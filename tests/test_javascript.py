@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from ouroboros.languages import CorruptedSourceError, transformer_for_path
+from ouroboros.languages import CorruptedSourceError, javascript, transformer_for_path
 from ouroboros.languages.javascript import JavaScriptTransformer
 from ouroboros.sandbox import Project, execute, finish, write_file
 from ouroboros.trace import load
@@ -173,3 +173,95 @@ def test_shebang_and_use_strict_keep_their_place(tmp_path):
         'function f() { "use strict"; return 1; }\n', filename="prog.js").code
     directive = body.index('"use strict"')
     assert body.index("__ouro_ctx") > directive
+
+
+# --------------------------------------------------------------------------- #
+# The nearest package.json, and what happens when it cannot be read.
+#
+# For a plain `.js` the extension says nothing and node asks the closest
+# package.json. Getting this wrong emits `require` into an ES module, and the
+# program dies with "require is not defined in ES module scope" — so the answer
+# for a package.json that is missing, unreadable or nonsense matters as much as
+# the answer for a good one.
+# --------------------------------------------------------------------------- #
+
+def test_no_filename_means_no_package_json_to_consult():
+    """`wrap-snippet` has no path at all; there is nothing to look up from."""
+
+    assert javascript._package_type(None) is None
+    assert javascript._package_type("") is None
+
+
+def test_an_unreadable_package_json_is_no_answer_rather_than_a_crash(tmp_path):
+    """A package.json that is not valid JSON is a real thing to find in a tree
+    (a merge conflict marker, a truncated write). Instrumentation falls back to
+    the syntax rather than refusing to run."""
+
+    (tmp_path / "package.json").write_text("{ not json", encoding="utf-8")
+
+    assert javascript._package_type(str(tmp_path / "m.js")) is None
+
+
+def test_a_package_json_without_a_type_means_commonjs(tmp_path):
+    """node's own default: no `type` field is `commonjs`, and so is a `type`
+    holding something node does not recognise."""
+
+    (tmp_path / "package.json").write_text('{"name": "x"}', encoding="utf-8")
+    assert javascript._package_type(str(tmp_path / "m.js")) == "commonjs"
+
+    (tmp_path / "package.json").write_text('{"type": "esm"}', encoding="utf-8")
+    assert javascript._package_type(str(tmp_path / "m.js")) == "commonjs"
+
+    (tmp_path / "package.json").write_text('{"type": "module"}', encoding="utf-8")
+    assert javascript._package_type(str(tmp_path / "m.js")) == "module"
+
+
+def test_a_snippet_with_no_filename_still_wraps(tx):
+    """`wrap-snippet` gives the backend code and nothing else — no extension to
+    pick a parser dialect from, no path to resolve a module system with."""
+
+    res = tx.wrap_source("function sum(a, b) {\n    return a + b;\n}\n")
+
+    assert res.functions_wrapped == 1
+    assert "__ouro_result" in res.code
+
+
+def test_selective_wrapping_leaves_the_other_functions_alone(tx):
+    src = ("function a(x) { return x; }\n"
+           "function b(x) { return x; }\n")
+
+    res = tx.wrap_source(src, filename="m.js", only={"a"})
+
+    assert res.functions_wrapped == 1
+    assert res.code.count("__ouro_ctx = ") == 1
+    assert '"a"' in res.code and '"b"' not in res.code
+
+
+def test_the_minimal_probe_is_refused_here_by_name(tx):
+    """`--minimal` is the C kernel ring-sink probe. Silently ignoring it would
+    hand back an ordinarily-wrapped file to someone who asked for the stackless
+    one because the ordinary one deadlocks."""
+
+    with pytest.raises(NotImplementedError, match="C-only"):
+        tx.wrap_source("function f() { return 1; }\n", filename="m.js", minimal=True)
+
+
+def test_a_missing_node_is_named_as_the_reason(tx, monkeypatch, tmp_path):
+    """Said plainly, because it is the most common way this backend fails on a
+    fresh machine. PATH is really emptied — node really cannot be found."""
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    with pytest.raises(CorruptedSourceError, match="node executable not found"):
+        tx.wrap_source("function f() { return 1; }\n", filename="m.js")
+
+
+def test_an_emitter_that_cannot_run_is_named_as_the_reason(tx, monkeypatch, tmp_path):
+    """A broken install: node is there, the emitter script is not. Real node
+    really runs and really exits non-zero; only the path it is pointed at is
+    ours."""
+
+    monkeypatch.setattr(javascript, "_EMITTER", tmp_path / "not-installed.js")
+
+    with pytest.raises(CorruptedSourceError, match="emitter crashed"):
+        tx.wrap_source("function f() { return 1; }\n", filename="m.js")

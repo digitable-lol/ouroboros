@@ -129,3 +129,33 @@ def test_end_to_end_compile_and_run(tmp_path):
     # made the field mean something different in Elixir than in the other four.
     assert all(re.fullmatch(r"\d+\.#PID<[\d.]+>", c.thread) for c in loaded.calls)
     assert all(c.cpu is None for c in loaded.calls)
+
+
+def test_the_minimal_probe_is_refused_here_by_name(tx):
+    """`--minimal` is the C kernel ring-sink probe. Ignoring it silently would
+    return an ordinarily-wrapped module to someone who asked for the stackless
+    one precisely because the ordinary one will not do."""
+
+    with pytest.raises(NotImplementedError, match="C-only"):
+        tx.wrap_source("defmodule M do\n  def f(x), do: x\nend\n",
+                       filename="m.ex", minimal=True)
+
+
+def test_selecting_single_functions_is_refused_rather_than_ignored(tx):
+    """This backend instruments per MODULE: one injected `use` wraps every def
+    in it. There is no way to honour a request for one function, so it says so
+    instead of wrapping everything and reporting success."""
+
+    with pytest.raises(CorruptedSourceError, match="module-granular"):
+        tx.wrap_source("defmodule M do\n  def f(x), do: x\n  def g(x), do: x\nend\n",
+                       filename="m.ex", only={"f"})
+
+
+def test_a_missing_elixir_is_named_as_the_reason(tx, monkeypatch, tmp_path):
+    """The most common way this backend fails on a fresh machine. PATH is really
+    emptied — elixir really cannot be found."""
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    with pytest.raises(CorruptedSourceError, match="elixir not found"):
+        tx.wrap_source("defmodule M do\n  def f(x), do: x\nend\n", filename="m.ex")
