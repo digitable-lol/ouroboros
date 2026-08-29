@@ -306,7 +306,7 @@ ouroboros execute /srv/tmp/разбор -- python3 stats.py
 | каталог | что там |
 |---|---|
 | [`ouroboros/`](ouroboros/) | сам пакет: командная строка, сервер MCP, черновик, языки |
-| [`tests/`](tests/) | проверок: <!--state:tests-->687<!--/state--> |
+| [`tests/`](tests/) | проверок: <!--state:tests-->742<!--/state--> |
 | [`bench/`](bench/) | стенд и его итоги |
 | [`packaging/`](packaging/) | один файл-программа, образ, формула Homebrew, плагин asdf |
 | [`docs/`](docs/) | страницы, они же опубликованы |
@@ -340,7 +340,7 @@ scripts/qa.sh    # ruff, mypy, pytest
 
 ## Состояние
 
-Версия <!--state:version-->0.3.0<!--/state-->. Проверки: <!--state:tests-->687<!--/state--> из <!--state:tests-->687<!--/state-->, покрытие с ветвями <!--state:coverage_percent-->98<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Установка
+Версия <!--state:version-->0.3.0<!--/state-->. Проверки: <!--state:tests-->742<!--/state--> из <!--state:tests-->742<!--/state-->, покрытие с ветвями <!--state:coverage_percent-->99<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Установка
 проверена целиком, а не «по виду правильно»: `uv tool install`;
 `brew install digitable-lol/tap/ouroboros` вместе с `brew test` — с машины, где
 ни Homebrew, ни хранилища формул не было, короткая строка подключила хранилище

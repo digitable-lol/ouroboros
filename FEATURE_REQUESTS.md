@@ -77,7 +77,7 @@ the history of what the tools learned to do stays visible.
   and its embedded engine **clang-tidy**. Both use the SAME `compile_commands.json` that
   `treeflags.py` already discovers via `.ouroboros.json` → `compdb`. Strong seam.
 - **Probe findings (2026-06-15, clang-tidy-18 on an instrumented .c):**
-  - clang-tidy DOES catch bugs the libclang `_gate_diagnostics` misses
+  - clang-tidy DOES catch bugs the libclang parse gate (`clangbridge.gate_diagnostics`) misses
     (`bugprone-assignment-in-if-condition`, `clang-diagnostic-parentheses`,
     `clang-analyzer-deadcode.DeadStores` on `if (a = b)`). Real marginal value.
   - Header resolution works IF we reuse the C backend's flags + `_drop_runtime_asset`

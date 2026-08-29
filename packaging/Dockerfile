@@ -46,6 +46,11 @@ RUN cd /app/ouroboros/languages/_js && npm install --omit=dev --no-audit --no-fu
 # compiled before any instrumented module. The sandbox drops it into each draft
 # project; compile it first there (the per-project step, not a global one).
 
+# Build the C/C++ range emitter now rather than on the first wrap, and fail the
+# image build if it cannot be built. It is a small C program over libclang
+# (ouroboros/languages/_clang/emitter.c); the gcc installed above builds it.
+RUN python -c "from ouroboros.languages.clangbridge import emitter_path; print(emitter_path())"
+
 # Fail the build if the engine can't enumerate its backends.
 RUN ouroboros languages
 

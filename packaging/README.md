@@ -5,7 +5,8 @@ Two distributable artifacts of the Ouroboros-Logger MCP server.
 ## A. Single-file binary (`dist/ouroboros`)
 
 One self-contained executable (~47 MB) — **no Python install required**. The
-libclang native library is bundled, so **Python and C work fully standalone**.
+libclang native library is bundled, so **Python works fully standalone** and C
+needs only a C compiler on the host (which anyone instrumenting C has anyway).
 
 ```bash
 uv run pyinstaller packaging/ouroboros.spec --noconfirm
@@ -17,7 +18,9 @@ echo 'int add(int a,int b){return a+b;}' | ./dist/ouroboros wrap-snippet -l c
 | Backend | Standalone in the binary? |
 |---------|---------------------------|
 | Python  | ✅ yes (stdlib only) |
-| C        | ✅ yes (libclang bundled); `execute` needs a C compiler on the host |
+| C        | libclang is bundled, but the range emitter is built on the host at
+             first use, so `cc` is needed to wrap as well as to `execute`. Set
+             `OUROBOROS_CLANG_EMITTER` to a prebuilt emitter to skip the build. |
 | C++      | needs `g++`/`clang++` on the host (include-path discovery + compile) |
 | JS/TS    | needs `node` on the host |
 | Elixir   | needs `elixir`/`erlang` on the host |
@@ -51,8 +54,9 @@ instrument Elixir for a specific target (e.g. OTP 29 for the ROS fork).
 ## Server requirements summary
 
 - **Core:** Python ≥ 3.12, `git`. Process is light at idle; per-wrap cost is the
-  emitter subprocess start (node/elixir ≈ 0.1–0.5 s). Linux/macOS (Windows
-  untested).
+  emitter subprocess start — node/elixir ≈ 0.1–0.5 s, the C/C++ emitter ≈ 5 ms
+  (a native binary: ~1 ms to spawn, ~4 ms to open libclang), plus the parse
+  itself. Linux/macOS (Windows untested).
 - **Per language:** see the table above — the parser toolchain to *wrap*, the
   language runtime/compiler to *execute*.
 - **Disk:** our code ~6 MB; libclang ~60 MB; node ~70 MB; erlang+elixir
