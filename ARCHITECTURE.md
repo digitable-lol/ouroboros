@@ -52,12 +52,16 @@ later Elixir port is a re-implementation of the same shapes, not a redesign.
 Each new language is an external JSON helper + a thin `Transformer`:
 
 1. Write a small **range-emitter** in the native ecosystem (node/`@babel/parser`
-   for JS/TS, libclang for C++, Roslyn for C#) that reads source on stdin and
-   prints function-header / return byte-ranges as JSON on stdout. This is the
+   for JS/TS, `_clang/emitter.c` over libclang for C and C++, real
+   `Code.string_to_quoted` for Elixir, Roslyn for C#) that reads source on stdin
+   and prints function-header / return byte-ranges as JSON on stdout. This is the
    Elixir-port-friendly shape: the core only orchestrates detect → ranges →
-   splice → log.
+   splice → log. Every backend shipped today has one, so no backend holds a
+   parser inside the process any more.
 2. Implement a `Transformer` subclass that shells out to the emitter, builds
-   `Edit`s, and applies them — reusing `apply_edits` unchanged.
+   `Edit`s, and applies them — reusing `apply_edits` unchanged. For C and C++
+   that subclass is thinner still: `ClangTransformer` in `clangbridge.py` holds
+   the wrap loop both share, and each language supplies only the text it injects.
 3. Ship a runtime helper (the language's analogue of `ouroboros_runtime.py`)
    that appends the exact [SPEC.md](SPEC.md) `ШАБЛОН` block to
    `OUROBOROS_DEBUG_INFO`. **Not** via stdout.
@@ -72,11 +76,12 @@ Each new language is an external JSON helper + a thin `Transformer`:
   arrows skipped; the runtime import assumes the helper sits beside the file
   (draft root) and a CommonJS-or-ESM `default` import; async functions log the
   returned Promise, not the awaited value.
-- **C**: complete end-to-end (`c_lang.py`, libclang + `__attribute__((cleanup))`).
-  Type-directed arg/return formatting from the AST (`%d`/`%ld`/`%p`/guarded `%s`…),
-  one block per call on any exit path (return/goto/fall-through), runtime header
+- **C**: complete end-to-end (`c_lang.py`, `__attribute__((cleanup))`).
+  Type-directed arg/return formatting — the specifier per type (`%d`/`%ld`/`%p`/
+  guarded `%s`…) is read by the range emitter, not by the backend — one block per
+  call on any exit path (return/goto/fall-through), runtime header
   `_c/ouroboros_runtime.h`. Validated by gcc compile+run. Userland only.
-- **C++**: complete end-to-end (`cpp_lang.py`, libclang + RAII ScopeGuard).
+- **C++**: complete end-to-end (`cpp_lang.py`, RAII ScopeGuard).
   Generic value repr via `operator<<`/SFINAE, qualified names (`ns::C::m`),
   exception-aware exit (`std::uncaught_exceptions`), `capture()` for any return
   type, runtime header `_cpp/ouroboros_runtime.hpp`. Validated by g++ compile+run.
@@ -105,13 +110,26 @@ Each new language is an external JSON helper + a thin `Transformer`:
   trace module must be compiled before any module that `use`s it.
 - **C#**: not yet wired (dotnet 10 SDK present at `~/.dotnet`).
 
-C/C++ splice on BYTE offsets (libclang) and parse with discovered system include
-paths; the corruption gate rejects on Error-severity diagnostics. Real NetBSD-tree
-files need that tree's `-I/-D` flags + target headers (validate on `ssh netbsd`)
-— the validated path here is AI-authored self-contained userland code.
+C and C++ talk to libclang **out of process**, through one native range emitter
+(`_clang/emitter.c`) shared by both: it parses, and prints body ranges, parameter
+types-as-specifiers, the result's capture plan and every `return`'s extent as
+JSON. Neither backend imports `clang.cindex`; both splice bytes at the offsets
+that come back. They splice on BYTE offsets and parse with discovered system
+include paths; the corruption gate rejects on Error-severity diagnostics. Real
+NetBSD-tree files need that tree's `-I/-D` flags + target headers (validate on
+`ssh netbsd`) — the validated path here is AI-authored self-contained userland
+code.
 
-Suite: <!--state:tests-->687<!--/state--> tests,
-<!--state:coverage_percent-->98<!--/state-->% coverage (statements **and**
+The emitter is compiled once per machine into the user's cache on first use
+(`OUROBOROS_CLANG_EMITTER` points at a prebuilt one instead). It needs a C
+compiler, which a host that instruments C already has, and no llvm development
+headers: it declares the slice of libclang's ABI it uses in
+`_clang/libclang_api.h` and opens the shared object with `dlopen`. Those
+declarations are not trusted — a test builds the emitter both ways, against them
+and against the host's real `<clang-c/Index.h>`, and requires identical output.
+
+Suite: <!--state:tests-->742<!--/state--> tests,
+<!--state:coverage_percent-->99<!--/state-->% coverage (statements **and**
 branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir
 (all by compile+run where applicable). MCP tools declared by the server:
 <!--state:mcp_tools-->17<!--/state-->.
@@ -138,18 +156,23 @@ tested rather than argued about. At 100% of statements and branches: `clangtools
 `cli.py`, `trace.py`, `registry.py`, and the JavaScript, Elixir and Python
 backends.
 
-Named honestly, what is left — <!--state:uncovered_units-->58<!--/state-->
-uncovered statement-and-branch units out of <!--state:total_units-->3113<!--/state-->:
+Named honestly, what is left — <!--state:uncovered_units-->15<!--/state-->
+uncovered statement-and-branch units out of <!--state:total_units-->3068<!--/state-->:
 
 | where | uncovered units | why |
 | --- | --- | --- |
-| `languages/c_lang.py` | 31 | the C/C++ parser boundary, being worked on separately |
-| `languages/cpp_lang.py` | 19 | same |
-| `runtime.py` | 6 | see below |
-| `languages/python_lang.py` | 2 | see below |
+| `runtime.py` | 6 | unreachable, see below |
+| `languages/cpp_lang.py` | 4 | the C/C++ backends, not analysed unit by unit here |
+| `languages/c_lang.py` | 2 | same |
+| `languages/python_lang.py` | 2 | unreachable, see below |
+| `languages/clangbridge.py` | 1 | same as the backends |
 
-Of the eight outside the two C/C++ backends, all eight are unreachable rather
-than untested, and that is a claim with a reason attached in each case:
+The C and C++ backends used to hold 50 of these; moving libclang out of process
+took them to 7, because most of what was uncovered was type-walking code that no
+longer exists. Those 7 are not claimed to be unreachable — they simply have not
+been gone through one at a time.
+
+The other eight ARE unreachable rather than untested, with a reason each:
 
 - `runtime.py` `_cpu`, five units. `os.sched_getcpu` is Linux-only, and even on
   Linux the interpreter has it only if it was built against a libc that offers
