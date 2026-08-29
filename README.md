@@ -113,11 +113,11 @@ Traceback (most recent call last):
   File "/srv/tmp/ouro-work/demo/stats.py", line 24, in <module>
     print(report([]))
           ~~~~~~^^^^
-  File "/srv/tmp/ouro-work/demo/ouroboros_runtime.py", line 144, in wrapper
+  File "/srv/tmp/ouro-work/demo/ouroboros_runtime.py", line 228, in wrapper
     result = fn(*args, **kwargs)
   File "/srv/tmp/ouro-work/demo/stats.py", line 19, in report
     return average([ms for _, ms in pairs])
-  File "/srv/tmp/ouro-work/demo/ouroboros_runtime.py", line 144, in wrapper
+  File "/srv/tmp/ouro-work/demo/ouroboros_runtime.py", line 228, in wrapper
     result = fn(*args, **kwargs)
   File "/srv/tmp/ouro-work/demo/stats.py", line 13, in average
     return sum(values) / len(values)
@@ -363,15 +363,8 @@ scripts/qa.sh    # ruff, mypy, pytest
 на вызов, поэтому глубокая рекурсия мельчает вдвое. Каждое — с замером и
 объяснением в [Границах](docs/limits.md#где-обмазка-меняет-поведение-программы).
 
-**Чего здесь нет.** Моста, превращающего записи в готовые примеры для
-спецификации (`fts_extract_examples`, `fts-gate`). Он описан в навыке
-[`skill/SKILL.md`](skill/SKILL.md), но это отдельная сборка поверх этого
-инструмента, и сервер её операций не выкладывает.
-
 ## Лицензия
 
 BSD 2-Clause — полный текст в [LICENSE](LICENSE).
 
-Оговорка: файл навыка [`skill/SKILL.md`](skill/SKILL.md) несёт в своём заголовке
-собственную пометку `license: Apache-2.0`. Она пришла вместе с навыком, и здесь
-её не трогали.
+Навык [`skill/SKILL.md`](skill/SKILL.md) — под той же лицензией.

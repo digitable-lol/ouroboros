@@ -90,7 +90,7 @@ echo 'int add(int a, int b) { return a + b; }' | ouroboros wrap-snippet -l c
 int add(int a, int b) {
 	struct _ouro_call __ouro __attribute__((cleanup(_ouro_emit)));
 	int __ouro_result;
-	_ouro_enter(&__ouro, "add", "a=%d, b=%d", a, b);
+	_ouro_enter(&__ouro, "add", "%d, %d", a, b);
  return  (__ouro_result = (a + b), _ouro_set_result(&__ouro, "%d", __ouro_result), __ouro_result); }
 ```
 
