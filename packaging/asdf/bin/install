@@ -51,23 +51,18 @@ echo "asdf-ouroboros: ставлю из исходников (${python_bin})"
 "${install_path}/libexec/bin/python" -m pip install --quiet --upgrade pip
 "${install_path}/libexec/bin/python" -m pip install --quiet "${download_path}"
 
-# Наружу выносится всё, что пакет положил в bin своего окружения, кроме
-# служебного питоновского. Сейчас это ouroboros и ouroboros-mcp; если выпуск
-# добавит команды, они подхватятся сами.
-shopt -s nullglob
-for entry in "${install_path}/libexec/bin/"*; do
-  name="$(basename "$entry")"
-  case "$name" in
-    python*|pip*|activate*|Activate*) continue ;;
-  esac
+# Наружу выносятся ТОЛЬКО команды самого пакета. Список явный, а не «всё, что
+# лежит в bin, кроме питоновского»: в окружении оказываются и команды
+# зависимостей — httpx, jsonschema, mcp, uvicorn, dotenv и прочие. asdf делает
+# обёртку на каждое вынесенное имя, то есть они попали бы человеку на PATH и
+# заслонили бы настоящие программы с теми же именами.
+for name in ouroboros ouroboros-mcp; do
+  if [[ ! -x "${install_path}/libexec/bin/${name}" ]]; then
+    echo "asdf-ouroboros: пакет не положил команду ${name} — установка неполная" >&2
+    exit 1
+  fi
   ln -sf "../libexec/bin/${name}" "${install_path}/bin/${name}"
 done
-shopt -u nullglob
-
-if [[ ! -x "${install_path}/bin/ouroboros" ]]; then
-  echo "asdf-ouroboros: поставилось не то — ${install_path}/bin/ouroboros отсутствует" >&2
-  exit 1
-fi
 
 # Проверка, что поставленное запускается, а не просто лежит на месте.
 if ! "${install_path}/bin/ouroboros" languages >/dev/null; then

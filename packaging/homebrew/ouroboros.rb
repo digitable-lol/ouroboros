@@ -11,10 +11,10 @@
 #     brew install --formula \
 #       https://raw.githubusercontent.com/digitable-lol/ouroboros/main/packaging/homebrew/ouroboros.rb
 #
-# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.2.0. Отпечаток
+# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.2.1. Отпечаток
 # посчитан с того самого архива, который отдаёт GitHub:
 #
-#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.0.tar.gz | sha256sum
+#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.1.tar.gz | sha256sum
 #
 # Установка проверена целиком: brew install из этого файла и brew test.
 #
@@ -23,8 +23,8 @@ class Ouroboros < Formula
 
   desc "Records how code actually ran: calls, arguments, results, exceptions"
   homepage "https://github.com/digitable-lol/ouroboros"
-  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "75e6e2100232b9c2cc998e3c306f71d53646b62ef782dbad8af18fc1730186d7"
+  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.1.tar.gz"
+  sha256 "87f96ac55532cbc62fabe3a310a3a126b67eed37769ec675e1a752f19fb14829"
   license "BSD-2-Clause"
 
   # Пакет требует Python 3.12 или новее (pyproject.toml, requires-python).

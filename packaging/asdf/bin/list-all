@@ -6,13 +6,17 @@
 set -euo pipefail
 
 # Хранилище, на тегах которого стоят номера версий.
-# Проставлено: адрес известен и меняться не должен.
 readonly REPO="https://github.com/digitable-lol/ouroboros.git"
 
+# GIT_CONFIG_GLOBAL/SYSTEM=/dev/null — нарочно. У человека в ~/.gitconfig может
+# стоять правило insteadOf, переписывающее адреса https на ssh (обычное дело у
+# тех, кто пушит в это же хранилище). Тогда открытый адрес выше молча
+# превращается в ssh, и запрос падает на отсутствии ключа — хотя читать теги
+# можно и без всякого ключа. Здесь нужен ровно тот адрес, который написан.
+readonly git_env=(env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null)
+
 # Теги вида v1.2.3 → номера вида 1.2.3.
-# Если тегов ещё нет, вывод пустой — и это правда, а не поломка: выпусков нет.
-# asdf в таком случае скажет, что версия не найдена; см. README.md рядом.
-git ls-remote --tags --refs "$REPO" \
+"${git_env[@]}" git ls-remote --tags --refs "$REPO" \
   | awk -F/ '{ print $NF }' \
   | sed 's/^v//' \
   | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?' \
