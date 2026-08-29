@@ -1,0 +1,1107 @@
+{
+  "taken_at": "2026-08-29T00:35:41",
+  "how": "живой разговор с `ouroboros-mcp` по стандартному вводу-выводу",
+  "server_name": "ouroboros-logger",
+  "server_version": "1.27.2",
+  "protocol_version": "2025-11-25",
+  "entry_point": "ouroboros-mcp (pyproject [project.scripts])",
+  "instructions": "Ouroboros-Logger: guaranteed function-level logging instrumentation for code.\n\nThe loop is instrument -> run -> observe:\n  1. instrument: wrap_code_snippet (in memory), wrap_file (whole file in place),\n     or wrap_functions (only named functions — for hot/kernel paths). Or work in\n     a sandbox: create_project, then write_file (wrap-on-save), execute, finish.\n  2. run: execute the instrumented code (execute, or run it yourself); every\n     wrapped call appends `in`/`out` JSONL records to a debug.info trace.\n  3. observe: read_trace (structural query + pagination) and trace_stats\n     (per-function counts + real durations). min_duration finds slow calls;\n     in_flight surfaces hung/crashed ones.\n\nFilesystem effects: wrap_file/wrap_functions overwrite the target file in place;\nwrite_file/finish mutate the sandbox tree; execute runs arbitrary commands. The\nread_* / list_files / trace tools never write. See SPEC.md for the trace schema.\n",
+  "declared_tool_count": 17,
+  "tools_declared_but_not_called": [],
+  "tools": [
+    {
+      "name": "create_project",
+      "title": "Create draft project",
+      "description": "Create a draft (черновик) git project under the given base path.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base"
+        ],
+        "title": "create_projectArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "create_projectDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "base": "<work>/site"
+      },
+      "example_answer": {
+        "ok": true,
+        "base": "<work>/site",
+        "draft": "<work>/site/черновик",
+        "clean": "<work>/site/чистовик"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "write_file",
+      "title": "Wrap-on-save into draft",
+      "description": "Wrap-on-save a file into the draft and commit it (rejects unparseable code).",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "rel_path": {
+            "title": "Rel Path",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "rel_path",
+          "content"
+        ],
+        "title": "write_fileArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "write_fileDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "base": "<work>/site",
+        "rel_path": "main.py",
+        "content": "def square(n):\n    return n * n\n\nprint(square(6))\n"
+      },
+      "example_answer": {
+        "ok": true,
+        "rel_path": "main.py",
+        "language": "python",
+        "functions_wrapped": 1,
+        "wrapped": true,
+        "committed": true
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "read_file",
+      "title": "Read file from draft",
+      "description": "Read a file from the draft.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "rel_path": {
+            "title": "Rel Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "rel_path"
+        ],
+        "title": "read_fileArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "read_fileDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "base": "<work>/site",
+        "rel_path": "main.py"
+      },
+      "example_answer": {
+        "ok": true,
+        "content": "from ouroboros_runtime import log as _ouro_log\n@_ouro_log\ndef square(n):\n    return n * n\n\nprint(square(6))\n"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "list_files",
+      "title": "List files in draft",
+      "description": "List tracked files in the draft.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base"
+        ],
+        "title": "list_filesArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "list_filesDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "base": "<work>/site"
+      },
+      "example_answer": {
+        "ok": true,
+        "files": [
+          ".gitignore",
+          "main.py",
+          "... ещё 1"
+        ]
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "execute",
+      "title": "Execute command in draft",
+      "description": "Run a command in the draft; runtime info is funneled to debug.info.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "arguments": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Command",
+            "type": "array"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          }
+        },
+        "required": [
+          "base",
+          "command"
+        ],
+        "title": "executeArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "executeDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "base": "<work>/site",
+        "command": [
+          "<python>",
+          "main.py"
+        ]
+      },
+      "example_answer": {
+        "ok": true,
+        "returncode": 0,
+        "stdout": "36\n",
+        "stderr": "",
+        "debug_info": "<work>/site/черновик/debug.info"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "finish",
+      "title": "Copy draft into the output tree",
+      "description": "Copy the draft (черновик) into the output tree (чистовик).\n\nThe copy KEEPS the logging instrumentation — there is no un-instrument\nstep, and this is not one. write_file wraps code before saving it, so no\nun-instrumented copy of the source exists anywhere to restore. Left\nbehind: .git, debug.info, and build output (__pycache__, *.pyc, *.beam,\ntool caches). Wipes the output tree first, then rebuilds it.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base"
+        ],
+        "title": "finishArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "finishDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "base": "<work>/site"
+      },
+      "example_answer": {
+        "ok": true,
+        "clean": "<work>/site/чистовик",
+        "synced": [
+          ".gitignore",
+          "main.py",
+          "... ещё 1"
+        ],
+        "instrumentation_removed": false,
+        "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Build output (__pycache__, *.pyc, *.beam, tool caches), .git and debug.info are left behind."
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "wrap_code_snippet",
+      "title": "Wrap code snippet",
+      "description": "Wrap a raw code string with function-level logging instrumentation.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "language"
+        ],
+        "title": "wrap_code_snippetArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "wrap_code_snippetDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "code": "def square(n):\n    return n * n\n",
+        "language": "python"
+      },
+      "example_answer": {
+        "ok": true,
+        "language": "python",
+        "functions_wrapped": 1,
+        "code": "from ouroboros_runtime import log as _ouro_log\n@_ouro_log\ndef square(n):\n    return n * n\n"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "wrap_file",
+      "title": "Instrument file in place",
+      "description": "Instrument a source file in place; returns success/failure metrics.\n\nSet ``minimal=True`` (C only) for the stackless depth-only probe on every\nfunction — wrap a whole mechanism file to capture its full runtime call tree.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "minimal": {
+            "default": false,
+            "title": "Minimal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "wrap_fileArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "wrap_fileDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/m.py"
+      },
+      "example_answer": {
+        "ok": true,
+        "path": "<work>/m.py",
+        "language": "python",
+        "functions_wrapped": 1,
+        "runtime_header": "<work>/ouroboros_runtime.py"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "wrap_functions",
+      "title": "Instrument named functions in place",
+      "description": "Instrument ONLY the named functions in a file in place (selective mode\nfor hot/kernel files where wrapping the whole file would flood the sink).\n\nSet ``minimal=True`` (C only) for the stackless, depth-only probe — for\nHOT/RECURSIVE/deeply-locked kernel functions where the full per-frame\nstruct blows the kernel stack or widens the fault surface.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "functions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Functions",
+            "type": "array"
+          },
+          "minimal": {
+            "default": false,
+            "title": "Minimal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "functions"
+        ],
+        "title": "wrap_functionsArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "wrap_functionsDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/m2.py",
+        "functions": [
+          "square"
+        ]
+      },
+      "example_answer": {
+        "ok": true,
+        "path": "<work>/m2.py",
+        "language": "python",
+        "functions_requested": [
+          "square"
+        ],
+        "functions_wrapped": 1,
+        "runtime_header": "<work>/ouroboros_runtime.py"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "read_trace",
+      "title": "Query trace records",
+      "description": "Query a debug.info trace (the JSONL in/out call records the runtime emits)\nstructurally. Filter by function/contains/outcome, min_duration (slow calls,\nseconds), thread (exact `th` token — one thread out of a concurrent trace;\neach record carries cpu/thread), or regex. Read in parts: a page carries\nnext_cursor when more matches remain — pass it back as cursor for the next\npage; its absence means end. limit is the page-size hint (≤1000); tail windows\nto the last N first (tail must be >= 0; tail=0 returns nothing). Slow calls\n(min_duration) + hung calls (in_flight) cover \"what went wrong\". The read\nside of instrument -> run -> observe.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "function": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Function"
+          },
+          "contains": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Contains"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "min_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min Duration"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Thread"
+          },
+          "regex": {
+            "default": false,
+            "title": "Regex",
+            "type": "boolean"
+          },
+          "tail": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tail"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 200,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "read_traceArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "read_traceDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/debug.info"
+      },
+      "example_answer": {
+        "ok": true,
+        "path": "<work>/debug.info",
+        "calls_parsed": 1,
+        "malformed": 0,
+        "matched": 1,
+        "returned": 1,
+        "next_cursor": null,
+        "in_flight": [],
+        "in_flight_truncated": false,
+        "records": [
+          {
+            "index": 0,
+            "started": "2026-06-15T10:00:00.001",
+            "call_id": "abc",
+            "name": "square",
+            "args": "6",
+            "kwargs": "",
+            "outcome_kind": "result",
+            "outcome": "36",
+            "duration": 1.2e-05,
+            "cpu": null,
+            "thread": ""
+          }
+        ]
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "trace_stats",
+      "title": "Aggregate trace statistics",
+      "description": "Aggregate a debug.info trace: per-function call counts (by outcome) and\nREAL per-call durations (min/max/mean/total from each call's `d`), plus\nby_thread (per-thread counts + CPUs each thread ran on), in_flight and the\nentry timespan. Same filters as read_trace, incl. min_duration (seconds),\nthread, and regex.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "function": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Function"
+          },
+          "contains": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Contains"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "min_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min Duration"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Thread"
+          },
+          "regex": {
+            "default": false,
+            "title": "Regex",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "trace_statsArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "trace_statsDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/debug.info"
+      },
+      "example_answer": {
+        "ok": true,
+        "path": "<work>/debug.info",
+        "calls_parsed": 1,
+        "malformed": 0,
+        "total_calls": 1,
+        "in_flight": [],
+        "by_function": [
+          {
+            "name": "square",
+            "count": 1,
+            "result": 1,
+            "raised": 0,
+            "unknown": 0,
+            "duration_seconds": {
+              "min": 1.2e-05,
+              "max": 1.2e-05,
+              "mean": 1.2e-05,
+              "total": 1.2e-05,
+              "count": 1
+            }
+          }
+        ],
+        "by_thread": [],
+        "duration_seconds": {
+          "min": 1.2e-05,
+          "max": 1.2e-05,
+          "mean": 1.2e-05,
+          "total": 1.2e-05,
+          "count": 1
+        },
+        "timespan": {
+          "first": "2026-06-15T10:00:00.001",
+          "last": "2026-06-15T10:00:00.001",
+          "seconds": 0.0,
+          "timestamps_parsed": 1,
+          "timestamps_unparsed": 0
+        },
+        "note": "counts/durations are over completed calls; `duration_seconds` are REAL per-call durations (exit−entry) from each call's `d`. `by_thread` groups calls by the `th` token (CPUs each thread ran on); empty for traces with no ... (+102 символов)"
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "lint_file",
+      "title": "Lint C/C++ file (clang-tidy)",
+      "description": "Static-analyse a C/C++ file with clang-tidy — real bugs the parse gate\ncan't see (use-after-free, `if (a = b)`, dead stores, perf traps). Uses the\nsame compile_commands.json as the instrumenter; filters the `__ouro`\nreserved-identifier noise our own instrumentation injects. `checks` overrides\nthe default clang-tidy check set.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "checks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Checks"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "lint_fileArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "lint_fileDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/lib.c"
+      },
+      "example_answer": {
+        "ok": true,
+        "path": "<work>/lib.c",
+        "language": "c",
+        "tool": "/usr/bin/clang-tidy",
+        "checks": "bugprone-*,clang-analyzer-*,performance-*,clang-diagnostic-*",
+        "diagnostics": [],
+        "counts": {
+          "error": 0,
+          "warning": 0
+        },
+        "filtered_instrumentation_noise": 0,
+        "filtered_out_of_file": 0
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "symbol_search",
+      "title": "Search C/C++ symbols (clangd)",
+      "description": "Smart cross-file C/C++ symbol search via clangd's workspace/symbol — find\nfunctions/types/vars by name across a whole tree (to pick wrap_functions\ntargets) instead of grepping. `root` is the project dir; optional\n`compile_commands_dir` points clangd at the build's compile_commands.json.\nFirst call on a fresh tree pays background-index cost (cached to disk after);\nraise `index_timeout` (seconds) for a very large tree. The result's\n`index_complete` is False if indexing didn't finish (results may be partial).",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "compile_commands_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Compile Commands Dir"
+          },
+          "limit": {
+            "default": 100,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "index_timeout": {
+            "default": 60.0,
+            "title": "Index Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "query",
+          "root"
+        ],
+        "title": "symbol_searchArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "symbol_searchDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "query": "ouro_helper",
+        "root": "<work>",
+        "compile_commands_dir": "<work>"
+      },
+      "example_answer": {
+        "ok": true,
+        "query": "ouro_helper",
+        "root": "<work>",
+        "index_complete": true,
+        "matched": 1,
+        "returned": 1,
+        "symbols": [
+          {
+            "name": "ouro_helper",
+            "kind": "function",
+            "container": "",
+            "file": "<work>/lib.c",
+            "line": 1
+          }
+        ]
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "document_symbols",
+      "title": "List symbols in C/C++ file (clangd)",
+      "description": "List every symbol defined in ONE C/C++ file (functions, types, vars) — the\nper-file menu of wrap_functions candidates. Needs no project index, so it is\nfast. Returns name/kind/line for each.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "document_symbolsArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "document_symbolsDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/lib.c"
+      },
+      "example_answer": {
+        "ok": true,
+        "path": "<work>/lib.c",
+        "count": 1,
+        "symbols": [
+          {
+            "name": "ouro_helper",
+            "kind": "function",
+            "line": 1
+          }
+        ]
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "references",
+      "title": "Find references to C/C++ symbol (clangd)",
+      "description": "Every call/use site of `symbol` (defined in `path`) across the tree — who\ncalls it / how hot it is, to choose instrumentation targets. Cross-file, so it\nwaits for clangd's background index. `compile_commands_dir` points at the build's\ncompile_commands.json; raise `index_timeout` for a large tree. `index_complete`\nin the result is False if indexing didn't finish (results may be partial).",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "compile_commands_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Compile Commands Dir"
+          },
+          "limit": {
+            "default": 200,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "index_timeout": {
+            "default": 60.0,
+            "title": "Index Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "symbol"
+        ],
+        "title": "referencesArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "referencesDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/lib.c",
+        "symbol": "ouro_helper",
+        "compile_commands_dir": "<work>"
+      },
+      "example_answer": {
+        "ok": true,
+        "symbol": "ouro_helper",
+        "index_complete": true,
+        "matched": 0,
+        "returned": 0,
+        "references": []
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "call_hierarchy",
+      "title": "C/C++ call hierarchy (clangd)",
+      "description": "Callers (direction='incoming') or callees ('outgoing') of a C/C++ function —\nthe sharpest tool for choosing what to wrap_functions along a call path. `symbol`\nis defined in `path`; cross-file, waits for the background index (raise\n`index_timeout` for a large tree). NOTE: 'outgoing' needs clangd ≥ ~19; older\nbuilds report a clean unsupported error.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "direction": {
+            "default": "incoming",
+            "title": "Direction",
+            "type": "string"
+          },
+          "compile_commands_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Compile Commands Dir"
+          },
+          "index_timeout": {
+            "default": 60.0,
+            "title": "Index Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "symbol"
+        ],
+        "title": "call_hierarchyArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "call_hierarchyDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/lib.c",
+        "symbol": "ouro_helper",
+        "direction": "incoming",
+        "compile_commands_dir": "<work>"
+      },
+      "example_answer": {
+        "ok": true,
+        "symbol": "ouro_helper",
+        "direction": "incoming",
+        "index_complete": true,
+        "calls": []
+      },
+      "example_is_error": false
+    },
+    {
+      "name": "describe_symbol",
+      "title": "Describe C/C++ symbol (clangd)",
+      "description": "Definition location + hover (type/signature/doc) of a C/C++ `symbol` in\n`path` — navigate to where it's defined and see its signature.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "arguments": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "compile_commands_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Compile Commands Dir"
+          }
+        },
+        "required": [
+          "path",
+          "symbol"
+        ],
+        "title": "describe_symbolArguments",
+        "type": "object"
+      },
+      "answer_schema": {
+        "additionalProperties": true,
+        "title": "describe_symbolDictOutput",
+        "type": "object"
+      },
+      "example_call": {
+        "path": "<work>/lib.c",
+        "symbol": "ouro_helper",
+        "compile_commands_dir": "<work>"
+      },
+      "example_answer": {
+        "ok": true,
+        "symbol": "ouro_helper",
+        "definition": {
+          "file": "<work>/lib.c",
+          "line": 1
+        },
+        "hover": "function ouro_helper\n\n→ int\nParameters:\n- int x\n\nint ouro_helper(int x)"
+      },
+      "example_is_error": false
+    }
+  ]
+}

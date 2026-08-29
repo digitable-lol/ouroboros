@@ -195,23 +195,39 @@ printf 'def broken(:\n    return 1\n' | ouroboros write /srv/tmp/разбор ba
 
 ## Что `finish` переносит, а что оставляет
 
-Проверено прогоном, а не выведено из описания. `finish` зеркалит черновик в
-чистовик, **выбрасывая ровно два имени**: `.git` и `debug.info`
-([`ouroboros/sandbox/sync.py:16`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/sandbox/sync.py#L16)).
+Проверено прогоном, а не выведено из описания. `finish` копирует черновик в
+чистовик, оставляя позади служебное и произведённое машиной: имена `.git`,
+`debug.info`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache` и файлы
+с расширениями `.pyc`, `.pyo`, `.beam`
+([`ouroboros/sandbox/sync.py:27-40`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/sandbox/sync.py#L27-L40)).
+
+Дословный ответ на том же проекте, что и выше:
 
 ```json
-{"ok": true, "clean": "…/чистовик", "synced": [".gitignore", "__pycache__/ouroboros_runtime.cpython-314.pyc", "ouroboros_runtime.py", "stats.py"]}
+{
+  "ok": true,
+  "clean": "…/чистовик",
+  "synced": [".gitignore", "ouroboros_runtime.py", "stats.py"],
+  "instrumentation_removed": false,
+  "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Build output (__pycache__, *.pyc, *.beam, tool caches), .git and debug.info are left behind."
+}
 ```
+
+В черновике на этот момент лежал ещё и `__pycache__/ouroboros_runtime.cpython-313.pyc`,
+оставленный запуском, — в чистовик он не поехал.
 
 Отсюда три следствия, о которых стоит знать заранее:
 
-1. **Запись о вызовах при переносе не снимается.** В чистовике лежит тот же
-   обмазанный файл, что и в черновике. Обратной операции у инструмента нет:
-   снимают её из системы контроля версий или руками.
+1. **Запись о вызовах при переносе не снимается**, и поле
+   `instrumentation_removed: false` говорит об этом прямо. В чистовике лежит тот
+   же обмазанный файл, что и в черновике. Обратной операции у инструмента нет и
+   быть не может: `write_file` обмазывает **до** сохранения, поэтому исходного
+   текста автора нет ни в черновике, ни в истории изменений. Снимают обмазку из
+   своей системы контроля версий или руками.
 2. **Помощник `ouroboros_runtime.py` едет вместе с кодом** — и правильно, без
    него обмазанный файл не запустится.
-3. **Всё прочее едет тоже.** В примере выше уехал и `__pycache__`. Список
-   исключений — те самые два имени, больше ничего не отбрасывается.
+3. **Всё прочее едет тоже.** Отбрасывается только перечисленное выше — то, что
+   заново делает машина. Ваш файл с данными, даже двоичный, поедет.
 
 ## Две вещи, на которых спотыкаются в первый раз
 

@@ -21,3 +21,4 @@ htmlcov/
 
 # Trace output produced by instrumented code
 debug.info
+.probe-work/
