@@ -132,3 +132,85 @@ def test_lines_are_valid_jsonl(debug_info):
     lines = _lines(debug_info)
     assert all(isinstance(ln, dict) for ln in lines)
     assert lines[0]["a"] == repr('he said "hi"\nbye\t\\done')
+
+
+# --------------------------------------------------------------------------- #
+# The per-record ceiling (SPEC.md §1).
+#
+# Each record must be written with one append and stay under PIPE_BUF, because
+# that is the whole reason several processes can share one debug.info. These run
+# in-process against `_bounded` directly: the end-to-end parity tests exercise
+# the same promise, but through a subprocess, where `pytest --cov` cannot see it.
+# --------------------------------------------------------------------------- #
+
+def _record(**over):
+    rec = {"p": "in", "t": "2026-08-29T00:00:00.001", "id": "abc-123",
+           "ci": 0, "th": "t1", "fn": "m.many", "a": "", "k": ""}
+    rec.update(over)
+    return rec
+
+
+def test_short_record_is_left_exactly_as_it_was():
+    rec = _record(a="1, 2, 3")
+
+    line = runtime._bounded(rec)
+
+    assert json.loads(line) == rec
+    assert runtime._ELLIPSIS not in line
+
+
+def test_thirty_large_arguments_fit_under_the_ceiling():
+    """The measured failure: 30 args produced a 6208-byte line and the kernel
+    tore it, after which the parser counted both halves as malformed."""
+
+    rec = _record(a=", ".join("'" + "x" * 200 + "'" for _ in range(30)))
+
+    line = runtime._bounded(rec)
+
+    assert len(line.encode("utf-8")) <= runtime.MAX_RECORD_BYTES
+    assert json.loads(line)["a"].endswith(runtime._ELLIPSIS)
+
+
+def test_one_enormous_argument_also_fits():
+    """Overflow can come from thirty ordinary values or from one huge one."""
+
+    rec = _record(a="'" + "y" * 100_000 + "'")
+
+    line = runtime._bounded(rec)
+
+    assert len(line.encode("utf-8")) <= runtime.MAX_RECORD_BYTES
+
+
+def test_identifying_fields_are_never_shortened():
+    """fn/id/t are what make a record identifiable; shortening them would make
+    an over-long record unattributable instead of merely incomplete."""
+
+    rec = _record(fn="m." + "n" * 300, a="z" * 8000)
+
+    got = json.loads(runtime._bounded(rec))
+
+    assert got["fn"] == rec["fn"]
+    assert got["id"] == rec["id"]
+    assert got["t"] == rec["t"]
+
+
+def test_shortening_never_splits_a_character():
+    """Half a character would make the whole line undecodable, losing the record
+    that shortening exists to preserve."""
+
+    rec = _record(a="'" + "ё" * 40_000 + "'")
+
+    line = runtime._bounded(rec)
+
+    assert len(line.encode("utf-8")) <= runtime.MAX_RECORD_BYTES
+    json.loads(line)  # decodes, so no character was cut in half
+    line.encode("utf-8").decode("utf-8")
+
+
+def test_every_shortened_field_is_marked_and_untouched_ones_are_not():
+    rec = _record(a="a" * 6000, k="k=1")
+
+    got = json.loads(runtime._bounded(rec))
+
+    assert got["a"].endswith(runtime._ELLIPSIS)
+    assert got["k"] == "k=1"
