@@ -105,6 +105,19 @@ class Project:
             raise SandboxError(f"path escapes the draft sandbox: {rel_path}")
         return target
 
+    def is_tracked(self, rel_path: str | Path) -> bool:
+        """True if ``rel_path`` is in the draft's git index.
+
+        Lets a write REPORT what git actually did instead of assuming it: ``git
+        add -A`` silently skips paths matched by ``.gitignore`` (``debug.info``),
+        so the commit that follows can succeed while carrying nothing. The
+        ``:(literal)`` prefix stops a filename containing ``*`` or ``?`` from
+        being read as a match pattern.
+        """
+
+        out = self._git("ls-files", "-z", "--", f":(literal){rel_path}")
+        return bool(out.strip("\x00"))
+
     def git_log(self) -> list[str]:
         out = self._git("log", "--format=%s")
         return [line for line in out.splitlines() if line]
