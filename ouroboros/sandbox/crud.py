@@ -21,6 +21,9 @@ class WriteOutcome:
     language: str | None
     functions_wrapped: int
     wrapped: bool
+    #: Whether the file is in the draft's git history after this write. Read back
+    #: from git, never assumed: a path matched by ``.gitignore`` is skipped by
+    #: ``git add -A``, so the commit still succeeds while carrying nothing.
     committed: bool
 
 
@@ -68,12 +71,18 @@ def write_file(project: Project, rel_path: str, content: str) -> WriteOutcome:
     # agent re-writes identical content (otherwise git exits non-zero).
     project._git("commit", "-q", "--allow-empty", "-m", summary)
 
+    # Ask git what it ended up holding rather than asserting the happy path:
+    # `add -A` skips ignored paths (debug.info), so the commit above can be empty
+    # and the file untracked. `committed=True` used to be written flat here and
+    # reported a version that did not exist.
+    committed = project.is_tracked(target.relative_to(project.draft))
+
     return WriteOutcome(
         rel_path=rel_path,
         language=language,
         functions_wrapped=functions,
         wrapped=wrapped,
-        committed=True,
+        committed=committed,
     )
 
 

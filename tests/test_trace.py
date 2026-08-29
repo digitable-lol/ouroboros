@@ -286,3 +286,44 @@ def test_tool_trace_stats_by_thread(tmp_path):
     r = tool_trace_stats(str(f))
     bt = {e["thread"]: e for e in r["by_thread"]}
     assert bt["100.1"]["count"] == 2 and bt["100.1"]["cpus"] == [0, 1]
+
+
+# --------------------------------------------------------------------------- #
+# Defect: `matched[-tail:]` with tail == 0 is `matched[0:]` — the WHOLE list.
+# "keep the last 0 matches" handed back every match instead of none.
+# --------------------------------------------------------------------------- #
+
+
+def test_tool_read_trace_tail_zero_returns_nothing(tmp_path):
+    f = tmp_path / "debug.info"
+    f.write_text(SAMPLE, encoding="utf-8")
+
+    r = tool_read_trace(str(f), tail=0)
+
+    assert r["ok"] is True
+    assert r["matched"] == 3          # the filters still matched all three
+    assert r["returned"] == 0         # ...but the window keeps none of them
+    assert r["records"] == []
+    assert r["next_cursor"] is None
+
+
+def test_tool_read_trace_negative_tail_is_rejected(tmp_path):
+    """A negative tail used to fall through to "no window at all" and quietly
+    return every match — the opposite of what the caller asked for."""
+    f = tmp_path / "debug.info"
+    f.write_text(SAMPLE, encoding="utf-8")
+
+    r = tool_read_trace(str(f), tail=-1)
+
+    assert r["ok"] is False
+    assert "tail" in r["error"]
+
+
+def test_tool_read_trace_tail_larger_than_match_count(tmp_path):
+    """A tail bigger than the trace is not an error — it just keeps everything."""
+    f = tmp_path / "debug.info"
+    f.write_text(SAMPLE, encoding="utf-8")
+
+    r = tool_read_trace(str(f), tail=99)
+
+    assert r["ok"] is True and r["returned"] == 3

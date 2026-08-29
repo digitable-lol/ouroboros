@@ -5,9 +5,11 @@ Tools fall into two groups:
 * **Stateless transforms** — ``wrap_code_snippet`` (in-memory) and ``wrap_file``
   (in place on disk). These are the two tools the project brief mandates.
 * **Sandbox lifecycle** — ``create_project`` / ``write_file`` / ``read_file`` /
-  ``execute`` / ``finish`` map onto the draft→clean workflow. Each is stateless
-  at the protocol level: the project is re-opened from its ``base`` path on
-  every call, so no server-side session state can drift.
+  ``execute`` / ``finish`` map onto the draft→output-tree workflow. Each is
+  stateless at the protocol level: the project is re-opened from its ``base``
+  path on every call, so no server-side session state can drift. ``finish``
+  publishes the draft; it does NOT take the instrumentation back off (there is
+  no un-instrumented copy anywhere to restore) — see ``ouroboros/sandbox/sync.py``.
 
 The tool *implementations* live as plain functions returning JSON-able dicts so
 they are unit-testable without a live MCP transport; :func:`build_server` just
@@ -23,7 +25,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from mcp.types import ToolAnnotations
 
@@ -107,16 +109,19 @@ def _drop_runtime_asset(tx: Transformer, target: Path) -> str | None:
     ``ouroboros_runtime.h: No such file or directory`` (exactly what broke the
     riscv kernel build). The helper is generated, so we write it FRESH every time
     rather than skip-if-exists: a stale on-disk copy (e.g. an older kernel sink)
-    would otherwise silently persist. Returns the path written, or None."""
+    would otherwise silently persist.
+
+    Returns the path written, or ``None`` **only** when this language needs no
+    helper at all. A failed write raises ``OSError`` instead of returning ``None``:
+    the two used to be the same answer, so a caller could not tell "nothing was
+    needed" from "the header the wrapped source includes is missing", and reported
+    success for a file that cannot compile. Callers must let that failure through."""
     asset = tx.runtime_asset()
     if asset is None:
         return None
     asset_name, asset_src = asset
     dest = target.parent / asset_name
-    try:
-        _atomic_write(dest, asset_src)
-    except OSError:
-        return None
+    _atomic_write(dest, asset_src)
     return str(dest)
 
 
@@ -173,11 +178,21 @@ def tool_wrap_file(path: str, minimal: bool = False) -> dict[str, Any]:
         return {"ok": False, "error": str(e), "language": e.language}
     except NotImplementedError as e:
         return {"ok": False, "error": str(e), "language": tx.language}
+    # The helper goes down FIRST, on purpose. The wrapped source includes it, so
+    # a source file written without it is a file that will not compile; writing
+    # the helper first means a failure here leaves the original file untouched
+    # instead of leaving the caller a broken tree it was told was fine.
+    try:
+        runtime_header = _drop_runtime_asset(tx, p) if result.functions_wrapped else None
+    except OSError as e:
+        return {"ok": False,
+                "error": f"cannot write the runtime helper next to {path}: {e}; "
+                         f"{path} left unchanged (instrumented code would not build "
+                         "without the helper)"}
     try:
         _atomic_write(p, result.code)
     except OSError as e:
         return {"ok": False, "error": f"cannot write {path}: {e}"}
-    runtime_header = _drop_runtime_asset(tx, p) if result.functions_wrapped else None
     out: dict[str, Any] = {
         "ok": True,
         "path": str(p),
@@ -234,11 +249,18 @@ def tool_wrap_functions(path: str, functions: list[str],
         return {"ok": False, "error": str(e), "language": e.language}
     except NotImplementedError as e:
         return {"ok": False, "error": str(e), "language": tx.language}
+    # Helper first — see the same comment in tool_wrap_file.
+    try:
+        runtime_header = _drop_runtime_asset(tx, p) if result.functions_wrapped else None
+    except OSError as e:
+        return {"ok": False,
+                "error": f"cannot write the runtime helper next to {path}: {e}; "
+                         f"{path} left unchanged (instrumented code would not build "
+                         "without the helper)"}
     try:
         _atomic_write(p, result.code)
     except OSError as e:
         return {"ok": False, "error": f"cannot write {path}: {e}"}
-    runtime_header = _drop_runtime_asset(tx, p) if result.functions_wrapped else None
     out: dict[str, Any] = {
         "ok": True,
         "path": str(p),
@@ -305,7 +327,8 @@ def tool_read_trace(path: str, function: str | None = None,
     its ABSENCE means end-of-results. Treat the cursor as opaque (don't parse it).
     ``limit`` is the page-size hint (clamped to 1000); ``tail`` first windows
     to the last N matches (the recent calls before a failure), then you can page
-    within that window. Reads UTF-8 with replacement so a noisy kernel capture parses.
+    within that window; ``tail`` must be >= 0, and ``tail=0`` returns no records.
+    Reads UTF-8 with replacement so a noisy kernel capture parses.
     """
     p = Path(path).expanduser()
     try:
@@ -325,7 +348,17 @@ def tool_read_trace(path: str, function: str | None = None,
         return {"ok": False, "error": f"invalid regex: {e}"}
 
     total_matched = len(matched)
-    window = matched[-tail:] if (tail is not None and tail >= 0) else matched
+    # `matched[-tail:]` is a trap at tail == 0: `matched[0:]` is the WHOLE list,
+    # so "keep the last 0 matches" used to hand back every match. Spell the three
+    # cases out instead of leaning on slice semantics.
+    if tail is None:
+        window = matched
+    elif tail < 0:
+        return {"ok": False, "error": f"tail must be >= 0; got {tail}"}
+    elif tail == 0:
+        window = []
+    else:
+        window = matched[-tail:]
     # Forward page: records after the cursor's index (records keep insertion order,
     # so `index` is monotonic — "index > last" is a clean, append-stable cut).
     candidates = window if last_index is None else [r for r in window if r.index > last_index]
@@ -441,12 +474,27 @@ def tool_execute(base: str, command: list[str], timeout: float | None = None) ->
 
 
 def tool_finish(base: str) -> dict[str, Any]:
+    """Copy the draft into the output tree (``чистовик``), instrumentation and all.
+
+    ``instrumentation_removed`` is in the answer because the operation's name
+    used to suggest the opposite. It is always False, and cannot be otherwise:
+    ``write_file`` wraps a buffer before saving it, so no un-instrumented copy of
+    the code exists anywhere to restore — see ``ouroboros/sandbox/sync.py``."""
     try:
         proj = Project.open(base)
         synced = sandbox_finish(proj)
     except SandboxError as e:
         return {"ok": False, "error": str(e)}
-    return {"ok": True, "clean": str(proj.clean), "synced": synced}
+    return {
+        "ok": True,
+        "clean": str(proj.clean),
+        "synced": synced,
+        "instrumentation_removed": False,
+        "note": "The copy is instrumented, exactly like the draft: this step "
+                "publishes the draft, it does not un-instrument it. Build output "
+                "(__pycache__, *.pyc, *.beam, tool caches), .git and debug.info "
+                "are left behind.",
+    }
 
 
 def tool_lint_file(path: str, checks: str | None = None) -> dict[str, Any]:
@@ -525,7 +573,7 @@ read_* / list_files / trace tools never write. See SPEC.md for the trace schema.
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 
 
-def build_server() -> FastMCP:  # pragma: no cover - exercised via integration, not unit
+def build_server() -> FastMCP:
     from mcp.server.fastmcp import FastMCP
 
     mcp = FastMCP("ouroboros-logger", instructions=_INSTRUCTIONS)
@@ -584,8 +632,9 @@ def build_server() -> FastMCP:  # pragma: no cover - exercised via integration, 
         each record carries cpu/thread), or regex. Read in parts: a page carries
         next_cursor when more matches remain — pass it back as cursor for the next
         page; its absence means end. limit is the page-size hint (≤1000); tail windows
-        to the last N first. Slow calls (min_duration) + hung calls (in_flight) cover
-        "what went wrong". The read side of instrument -> run -> observe."""
+        to the last N first (tail must be >= 0; tail=0 returns nothing). Slow calls
+        (min_duration) + hung calls (in_flight) cover "what went wrong". The read
+        side of instrument -> run -> observe."""
         return tool_read_trace(path, function=function, contains=contains,
                                outcome=outcome, min_duration=min_duration,
                                thread=thread, regex=regex,
@@ -658,15 +707,24 @@ def build_server() -> FastMCP:  # pragma: no cover - exercised via integration, 
         return tool_execute(base, command, timeout)
 
     @mcp.tool(
-        title="Sync draft to clean tree",
-        # Rebuilds the clean tree from the draft: it rmtree's the existing clean
-        # tree first, so content there but not in the draft is lost (destructive);
-        # re-syncing yields the same clean state (idempotent).
+        # NOT "clean up the code": this copies the draft, it does not take the
+        # instrumentation back off. The title says copy so the name `finish` and
+        # the folder name `чистовик` stop implying a step that does not exist.
+        title="Copy draft into the output tree",
+        # Rebuilds the output tree from the draft: it rmtree's the existing tree
+        # first, so content there but not in the draft is lost (destructive);
+        # re-copying yields the same state (idempotent).
         annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True,
                                     idempotentHint=True, openWorldHint=False),
     )
     def finish(base: str) -> dict[str, Any]:
-        """Sync the draft (черновик) to the clean tree (чистовик)."""
+        """Copy the draft (черновик) into the output tree (чистовик).
+
+        The copy KEEPS the logging instrumentation — there is no un-instrument
+        step, and this is not one. write_file wraps code before saving it, so no
+        un-instrumented copy of the source exists anywhere to restore. Left
+        behind: .git, debug.info, and build output (__pycache__, *.pyc, *.beam,
+        tool caches). Wipes the output tree first, then rebuilds it."""
         return tool_finish(base)
 
     @mcp.tool(
@@ -762,24 +820,29 @@ def build_server() -> FastMCP:  # pragma: no cover - exercised via integration, 
     return mcp
 
 
-def main() -> None:  # pragma: no cover - process entrypoint
-    # The SDK accepts exactly these three transports; validate the env override
-    # against them (defaulting to stdio) instead of forwarding an arbitrary
-    # string that would otherwise fail deep inside the server. The equality
-    # chain also narrows `transport` to the Literal `run` expects (no cast).
+def transport_from_env() -> Literal["stdio", "sse", "streamable-http"]:
+    """Read ``OUROBOROS_MCP_TRANSPORT`` (default ``stdio``) and check it.
+
+    The SDK accepts exactly these three; validating here stops a typo from
+    failing deep inside the server with an unreadable message. Separate from
+    :func:`main` so the check is testable — ``main`` itself only starts a server
+    that then blocks, so it cannot be measured. The equality chain also narrows
+    the value to the ``Literal`` ``run`` expects (no cast)."""
     transport = os.environ.get("OUROBOROS_MCP_TRANSPORT", "stdio")
-    if transport not in ("stdio", "sse", "streamable-http"):
-        raise SystemExit(
-            f"OUROBOROS_MCP_TRANSPORT={transport!r} is not one of "
-            "'stdio', 'sse', 'streamable-http'"
-        )
-    server = build_server()
     if transport == "sse":
-        server.run(transport="sse")
-    elif transport == "streamable-http":
-        server.run(transport="streamable-http")
-    else:
-        server.run(transport="stdio")
+        return "sse"
+    if transport == "streamable-http":
+        return "streamable-http"
+    if transport == "stdio":
+        return "stdio"
+    raise SystemExit(
+        f"OUROBOROS_MCP_TRANSPORT={transport!r} is not one of "
+        "'stdio', 'sse', 'streamable-http'"
+    )
+
+
+def main() -> None:  # pragma: no cover - process entrypoint; run() blocks
+    build_server().run(transport=transport_from_env())
 
 
 if __name__ == "__main__":  # pragma: no cover
