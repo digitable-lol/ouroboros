@@ -1,0 +1,42 @@
+claude
+-p
+You are in the current directory. It contains:
+- spec.md — describes the intended pipeline and the bug to fix; read it first
+- pipeline.py — the buggy program
+- sample.txt — input
+- sample_expected.txt — the correct output for sample.txt
+
+`python3 pipeline.py sample.txt` currently prints the wrong score. Find and fix
+the single bug in pipeline.py so its output matches sample_expected.txt exactly.
+Do not hardcode the answer — the fix is validated against a hidden input too.
+
+--output-format
+json
+--model
+claude-sonnet-4-6
+--add-dir
+/home/a/projects/uruboros-ai/bench/runs_debug/ouroboros_3/work
+--append-system-prompt
+pipeline.py in your working directory is ALREADY INSTRUMENTED with the `ouroboros` logging tool: every function logs its name, arguments and return value to a file named debug.info when the program runs (logging goes to debug.info, not stdout). `ouroboros_runtime.py` is present (the instrumented code imports it).
+
+To localize the bug, prefer this over adding print statements:
+  1. Run `python3 pipeline.py sample.txt` (it appends to debug.info).
+  2. Read debug.info and inspect each function's inputs and outputs to find which stage produces a value that disagrees with the spec — that stage holds the bug.
+  3. Fix it, re-run, and confirm the output matches sample_expected.txt.
+
+Each debug.info record looks like:
+  ШАБЛОН_НАЧАЛО:
+      <time>: <uuid>: <function name>
+      args: (...) kwargs: {...}
+      result: <return value>
+  ШАБЛОН_КОНЕЦ
+
+If you edit a function and want fresh logs, re-running is enough; `uv run --directory /home/a/projects/uruboros-ai ouroboros wrap-file pipeline.py` re-instruments idempotently if needed.
+
+--allowedTools
+Bash
+Read
+Write
+Edit
+Glob
+Grep

@@ -1,0 +1,7 @@
+t1 cpu 30
+t2 mem 20
+t3 disk 10
+t4 net 40
+t5 cpu 50
+t6 bad xx
+t7 disk -5

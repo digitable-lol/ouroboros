@@ -1,0 +1,13 @@
+stark compute 1000 hour
+stark bandwidth 10000 GB
+umbrella storage 3000 GB
+wayne bandwidth 5 TB
+wayne storage 100 MB
+oscorp bandwidth 777 GB
+oscorp storage 11 GB
+umbrella compute 0 minute
+malformed line here too long to be valid
+oscorp disk 5 GB
+wayne compute 10 fortnight
+stark storage -100 GB
+

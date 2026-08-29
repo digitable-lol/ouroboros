@@ -1,0 +1,16 @@
+acme storage 1500 GB
+acme bandwidth 2 TB
+acme compute 720 minute
+globex compute 100 hour
+globex storage 500000 MB
+globex bandwidth 3000 GB
+initech storage 4 TB
+hooli bandwidth 1234 GB
+hooli storage 250 GB
+# this line is a comment and must be skipped
+acme storage 100
+acme gpu 5 hour
+globex storage 100 PB
+initech compute -5 hour
+hooli storage abc GB
+

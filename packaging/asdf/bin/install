@@ -20,75 +20,58 @@ if [[ "${ASDF_INSTALL_TYPE:-version}" != "version" ]]; then
   exit 1
 fi
 
-if [[ ! -d "$download_path" ]]; then
-  echo "asdf-ouroboros: нечего ставить — ${download_path} пуст. Сперва отрабатывает bin/download." >&2
+if [[ ! -f "${download_path}/pyproject.toml" ]]; then
+  echo "asdf-ouroboros: нечего ставить — в ${download_path} нет pyproject.toml." >&2
+  echo "asdf-ouroboros: сперва отрабатывает bin/download." >&2
   exit 1
 fi
 
-# Навык называет нижнюю границу: Python 3.12 или новее.
+# Пакет требует Python 3.12 или новее (pyproject.toml, requires-python).
 # Проверяем до установки: иначе человек узнает об этом из невнятной ошибки сборки.
-python_bin="$(command -v python3.12 || command -v python3 || true)"
+python_bin=""
+for candidate in python3.14 python3.13 python3.12 python3; do
+  if command -v "$candidate" >/dev/null 2>&1 &&
+     "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
+    python_bin="$(command -v "$candidate")"
+    break
+  fi
+done
 if [[ -z "$python_bin" ]]; then
-  echo "asdf-ouroboros: не найден python3. Нужен Python 3.12 или новее." >&2
-  exit 1
-fi
-if ! "$python_bin" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
-  echo "asdf-ouroboros: нужен Python 3.12 или новее, а найден $("$python_bin" -V)" >&2
+  echo "asdf-ouroboros: не найден Python 3.12 или новее." >&2
   exit 1
 fi
 
 mkdir -p "${install_path}/bin"
 
-# --- ЧТО ПРОСТАВИТЬ ПРИ ВЫПУСКЕ -------------------------------------------
-#
-# Здесь два пути, и какой из них настоящий, решает форма выпуска. Собранного
-# выпуска ещё не было, поэтому написаны оба, а какой лишний — вычеркнут при
-# первом выпуске. Гадать нельзя: неверная ветка поставит пустой каталог,
-# и это выяснится далеко от места ошибки.
-#
-#   1. Выпуск — исходники Python (есть pyproject.toml). Ставим в отдельное
-#      окружение и выносим наружу исполняемые файлы.
-#   2. Выпуск — уже собранное (есть готовый bin/). Просто копируем.
-#
-if [[ -f "${download_path}/pyproject.toml" ]]; then
-  echo "asdf-ouroboros: ставлю из исходников Python"
-  "$python_bin" -m venv "${install_path}/libexec"
-  "${install_path}/libexec/bin/python" -m pip install --quiet --upgrade pip
-  "${install_path}/libexec/bin/python" -m pip install --quiet "${download_path}"
+# Пакет ставится в собственное окружение внутри каталога версии, а наружу
+# выносятся только его команды. Так у каждой версии свои зависимости и они не
+# сталкиваются ни между собой, ни с системным Python.
+echo "asdf-ouroboros: ставлю из исходников (${python_bin})"
+"$python_bin" -m venv "${install_path}/libexec"
+"${install_path}/libexec/bin/python" -m pip install --quiet --upgrade pip
+"${install_path}/libexec/bin/python" -m pip install --quiet "${download_path}"
 
-  # Наружу выносится всё, что пакет положил в bin своего окружения,
-  # кроме служебного питоновского. Имя из настройки в навыке —
-  # ouroboros-mcp-router; если выпуск даст другие, они подхватятся сами.
-  shopt -s nullglob
-  for entry in "${install_path}/libexec/bin/"*; do
-    name="$(basename "$entry")"
-    case "$name" in
-      python*|pip*|activate*|Activate*) continue ;;
-    esac
-    ln -sf "../libexec/bin/${name}" "${install_path}/bin/${name}"
-  done
-  shopt -u nullglob
+# Наружу выносится всё, что пакет положил в bin своего окружения, кроме
+# служебного питоновского. Сейчас это ouroboros и ouroboros-mcp; если выпуск
+# добавит команды, они подхватятся сами.
+shopt -s nullglob
+for entry in "${install_path}/libexec/bin/"*; do
+  name="$(basename "$entry")"
+  case "$name" in
+    python*|pip*|activate*|Activate*) continue ;;
+  esac
+  ln -sf "../libexec/bin/${name}" "${install_path}/bin/${name}"
+done
+shopt -u nullglob
 
-elif [[ -d "${download_path}/bin" ]]; then
-  echo "asdf-ouroboros: ставлю собранное"
-  cp -R "${download_path}/bin/." "${install_path}/bin/"
-  chmod +x "${install_path}/bin/"*
-
-else
-  cat >&2 <<EOS
-asdf-ouroboros: в скачанном нет ни pyproject.toml, ни каталога bin/ —
-непонятно, что ставить.
-
-Это ожидаемо, пока выпуска не было: форма выпуска не выбрана, и обе ветки в
-bin/install написаны наугад по двум возможным. Когда выпуск появится, лишнюю
-ветку убирают, а оставшуюся сверяют с тем, что в архиве на самом деле.
-EOS
+if [[ ! -x "${install_path}/bin/ouroboros" ]]; then
+  echo "asdf-ouroboros: поставилось не то — ${install_path}/bin/ouroboros отсутствует" >&2
   exit 1
 fi
-# ---------------------------------------------------------------------------
 
-if [[ -z "$(ls -A "${install_path}/bin")" ]]; then
-  echo "asdf-ouroboros: поставилось пусто — в ${install_path}/bin ничего нет" >&2
+# Проверка, что поставленное запускается, а не просто лежит на месте.
+if ! "${install_path}/bin/ouroboros" languages >/dev/null; then
+  echo "asdf-ouroboros: поставленный ouroboros не запускается" >&2
   exit 1
 fi
 
