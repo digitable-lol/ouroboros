@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Точка входа плагина asdf. asdf ждёт bin/ в КОРНЕ хранилища плагина, поэтому
+# файл лежит здесь, а сам плагин — в packaging/asdf/, чтобы не разносить его по
+# двум местам. Ставится так:
+#
+#     asdf plugin add ouroboros https://github.com/digitable-lol/ouroboros.git
+#
+exec "$(dirname "$0")/../packaging/asdf/bin/list-all" "$@"
