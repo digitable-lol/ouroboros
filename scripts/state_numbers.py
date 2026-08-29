@@ -79,7 +79,10 @@ def measure() -> dict[str, Any]:
         "tests": tests,
         "uncovered_units": uncovered,
         "total_units": units,
-        "coverage_percent": round(percent),
+        # ВНИЗ, а не к ближайшему: 99,51 % — это не «100 %». Число про покрытие,
+        # округлённое вверх, обещает то, чего нет, а именно с такими обещаниями
+        # этот файл и борется.
+        "coverage_percent": int(percent),
         "coverage_exact": round(percent, 2),
         "mcp_tools": tool_count(),
         "languages": languages(),

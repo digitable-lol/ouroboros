@@ -26,6 +26,10 @@ for pkg in ("clang", "libclang"):
 datas += [
     (os.path.join(ROOT, "ouroboros/runtime.py"), "ouroboros"),
     (os.path.join(ROOT, "ouroboros/languages/_c"), "ouroboros/languages/_c"),
+    # The C/C++ range emitter ships as SOURCE and is compiled on first use into
+    # the user's cache, so one frozen binary works with whatever libclang the
+    # machine has. Leaving it out makes every C and C++ wrap fail at run time.
+    (os.path.join(ROOT, "ouroboros/languages/_clang"), "ouroboros/languages/_clang"),
     (os.path.join(ROOT, "ouroboros/languages/_cpp"), "ouroboros/languages/_cpp"),
     (os.path.join(ROOT, "ouroboros/languages/_js"), "ouroboros/languages/_js"),
     (os.path.join(ROOT, "ouroboros/languages/_elixir"), "ouroboros/languages/_elixir"),
@@ -34,6 +38,7 @@ datas += [
 hiddenimports += [
     "ouroboros.languages.python_lang",
     "ouroboros.languages.javascript",
+    "ouroboros.languages.clangbridge",
     "ouroboros.languages.c_lang",
     "ouroboros.languages.cpp_lang",
     "ouroboros.languages.elixir_lang",

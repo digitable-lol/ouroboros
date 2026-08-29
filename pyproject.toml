@@ -5,6 +5,10 @@ description = "Ouroboros-Logger: guaranteed function-level logging instrumentati
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    # The shared object the C/C++ range emitter opens at run time. Nothing
+    # imports the Python bindings any more (see ouroboros/languages/
+    # clangbridge.py); the dependency stays because it is what guarantees a
+    # libclang is on the machine without asking the user to install one.
     "libclang>=18.1.1",
     # Верхняя граница обязательна. В mcp 2.x FastMCP переименован в MCPServer, и
     # `from mcp.server.fastmcp import FastMCP` в ouroboros/mcp/server.py падает с
@@ -73,7 +77,8 @@ combine-as-imports = true
 [tool.mypy]
 python_version = "3.12"
 strict = true
-# libclang ships no type stubs — a real third-party-import gap, not a dodge.
-[[tool.mypy.overrides]]
-module = ["clang.*"]
-ignore_missing_imports = true
+# No per-module relaxations. There used to be one for `clang.*` (libclang ships
+# no type stubs), needed because the C and C++ backends imported clang.cindex
+# and passed untyped cursors around. They no longer import it: libclang is
+# spoken to by ouroboros/languages/_clang/emitter.c, on the far side of a
+# process boundary, and what crosses back is JSON.
