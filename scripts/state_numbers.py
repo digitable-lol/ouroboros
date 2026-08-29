@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATE_FILE = ROOT / "docs" / "state.json"
 
 #: Страницы, в которых стоят пометки.
-PAGES = ["README.md", "ARCHITECTURE.md"]
+PAGES = ["README.md", "ARCHITECTURE.md", "docs/index.md", "docs/install.md"]
 
 MARK = re.compile(r"<!--state:([a-z_]+)-->(.*?)<!--/state-->", re.DOTALL)
 
@@ -69,6 +69,7 @@ def measure() -> dict[str, Any]:
     percent = cov["totals"]["percent_covered"]
 
     return {
+        "version": version(),
         "tests": tests,
         "coverage_percent": round(percent),
         "coverage_exact": round(percent, 2),
@@ -76,6 +77,20 @@ def measure() -> dict[str, Any]:
         "languages": languages(),
         "measured_with": "pytest --cov (statements and branches)",
     }
+
+
+def version() -> str:
+    """Номер выпуска — из pyproject.toml, единственного места, где он настоящий.
+
+    Он же стоял руками в восьми местах и уже разъезжался: страницы обещали 0.2.1
+    после того, как пакет стал другим.
+    """
+
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    m = re.search(r'^version = "([^"]+)"', text, re.MULTILINE)
+    if m is None:
+        raise SystemExit("в pyproject.toml не нашлось строки version")
+    return m.group(1)
 
 
 def tool_count() -> int:
@@ -149,6 +164,12 @@ def check(state: dict[str, Any]) -> list[str]:
         problems.append(
             f"проверок сейчас {now}, а в docs/state.json записано "
             f"{state.get('tests')} — прогоните --measure"
+        )
+    now_version = version()
+    if now_version != state.get("version"):
+        problems.append(
+            f"в pyproject.toml версия {now_version}, а в docs/state.json "
+            f"{state.get('version')} — прогоните --measure"
         )
     tools = tool_count()
     if tools != state.get("mcp_tools"):
