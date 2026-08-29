@@ -3,7 +3,8 @@
 # Bundles every toolchain so all five backends work out of the box AND
 # `execute` can compile/run the instrumented code:
 #   Python (stdlib) · JS/TS (node + @babel) · C/C++ (clang/libclang + gcc/g++)
-#   · Elixir (erlang/OTP + elixir + mix) · git for the draft sandbox.
+#   · Elixir (erlang/OTP + elixir + mix) · git for the draft sandbox
+#   · clangd + clang-tidy for the six C/C++ navigation tools.
 #
 # Build:  docker build -t ouroboros-logger -f packaging/Dockerfile .
 # Run  :  docker run --rm -i ouroboros-logger          # MCP server over stdio
@@ -17,8 +18,13 @@
 # for a specific target's BEAM version, install that version instead of Debian's.
 FROM python:3.12-slim-bookworm
 
+# clangd and clang-tidy back six of the seventeen MCP tools (symbol_search,
+# document_symbols, references, call_hierarchy, describe_symbol, lint_file).
+# They were missing here, so those six were declared by the server and then
+# failed for want of a binary — a third of the tool surface, advertised and
+# broken, in every image built from this file.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        clang gcc g++ \
+        clang clangd clang-tidy gcc g++ \
         nodejs npm \
         erlang-base erlang-crypto elixir \
         git ca-certificates \
@@ -42,6 +48,10 @@ RUN cd /app/ouroboros/languages/_js && npm install --omit=dev --no-audit --no-fu
 
 # Fail the build if the engine can't enumerate its backends.
 RUN ouroboros languages
+
+# Fail the build if the binaries behind the six C/C++ tools are absent. Without
+# this the image builds happily and the tools break only when an agent calls one.
+RUN clangd --version && clang-tidy --version
 
 # Default to the MCP server; override the CMD to run any CLI subcommand
 # (e.g. `docker run --rm ouroboros-logger languages`).
