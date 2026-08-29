@@ -9,10 +9,10 @@
 # Хранилище формул заведено, копия там лежит, короткая строка проверена
 # прогоном: brew подключает хранилище сам, отдельная команда brew tap не нужна.
 #
-# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.2.1. Отпечаток
+# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.3.0. Отпечаток
 # посчитан с того самого архива, который отдаёт GitHub:
 #
-#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.1.tar.gz | sha256sum
+#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.3.0.tar.gz | sha256sum
 #
 # Установка проверена целиком: короткая строка выше на машине без Homebrew и без
 # хранилищ формул, затем brew test, затем обмазка файла, запуск и чтение записей.
@@ -22,8 +22,8 @@ class Ouroboros < Formula
 
   desc "Records how code actually ran: calls, arguments, results, exceptions"
   homepage "https://github.com/digitable-lol/ouroboros"
-  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.2.1.tar.gz"
-  sha256 "87f96ac55532cbc62fabe3a310a3a126b67eed37769ec675e1a752f19fb14829"
+  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.3.0.tar.gz"
+  sha256 "a3e4c58ff8b2165854e89bb6364e65df5193fbfac04c355f9fecb23667c09577"
   license "BSD-2-Clause"
 
   # Пакет требует Python 3.12 или новее (pyproject.toml, requires-python).
