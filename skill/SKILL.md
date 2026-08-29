@@ -1,162 +1,379 @@
 ---
 name: ouroboros-tracing
-description: Use when a specification, a test suite or a regression corpus needs examples and there is working code that already produces them. Ouroboros instruments source (Python, JS/TS, C, C++, Elixir) so running it emits a structured call trace, and the bridge turns that trace into FTS `пример` blocks with file/function/call-uuid provenance. Covers the three-tool MCP routing protocol, the draft/clean sandbox workflow, what the bridge refuses to convert and why it never guesses, how representative cases are chosen so thresholds get bracketed, and the hard limit that a trace records how code behaved rather than how it should — so a specification grown from one inherits the program's bugs as law. Use it before hand-writing examples, and never as a source of `правило` or `свойство`.
-version: 1.0.0
+description: "Записывает, как код на самом деле исполнялся — вызовы, доводы, возвращённые значения, исключения, длительности. Обмазывает исходник на Python, JavaScript/TypeScript, C, C++ и Elixir так, что запуск обмазанного кода дописывает по две строки JSONL на вызов в файл debug.info, и даёт средства читать этот файл с отбором и постранично. Берите, когда надо понять поведение работающей программы: разобрать чужой код, найти ошибку, которой не видно по итоговому выводу, снять снимок «было так» перед правкой, найти медленные вызовы или зависшие. Для C и C++ есть шесть средств навигации по дереву на clangd и clang-tidy, чтобы выбрать, что обмазывать. Не берите, чтобы узнать, как код ДОЛЖЕН работать, и не считайте записи доказательством правильности."
+version: 2.0.0
 author: Digitable
-license: Apache-2.0
+license: BSD-2-Clause
 platforms: [linux, macos]
 metadata:
   digit:
-    tags: [ouroboros, tracing, instrumentation, fts, examples, mcp, provenance]
+    tags: [ouroboros, tracing, instrumentation, mcp, debugging]
     category: software-development
-    related_skills: [fts-gate, fts, digit-tools-core, verified-answers]
 ---
 
-# Ouroboros Tracing
+# Уроборос: записи о вызовах
 
-## Overview
+## О чём это
 
-Writing examples is the expensive part of an executable specification, and it is
-the part that decides how well the specification generalises. In the synthesis
-experiment behind `ga/`, quadrupling the sample cut the train/holdout gap from
-68.8 to 11.2 percentage points, while adding `свойство` invariants moved it by
-1.1–4.3. **Examples are the scarce input.**
+Инструмент правит исходник так, что каждая функция при вызове дописывает две
+строки в файл `debug.info`: одну на входе, одну на выходе. По ним видно, что
+звали, с чем, что вернулось, что упало и сколько это заняло.
 
-Ouroboros makes them a by-product of running the code. It instruments a source
-file, the instrumented copy writes one JSONL record per call entry and exit into
-`debug.info`, and the bridge turns those records into `пример` blocks.
+Работает на пяти языках: **Python, JavaScript/TypeScript, C, C++, Elixir**.
 
-What each side is entitled to supply is not negotiable:
+Есть два входа: командная строка `ouroboros` (17 подкоманд) и сервер MCP
+`ouroboros-mcp` (17 средств). Это одна и та же машина, просто с двух сторон.
 
-| Block | Source | Why |
-|---|---|---|
-| `пример` | the trace | it is an observation, and observations are what a trace has |
-| `правило` | a person, or a synthesiser | the law is what is being sought, not what was seen |
-| `свойство` | a person | an invariant is a claim about all runs, not a summary of some |
+> **Читайте раздел «Границы» до того, как делать выводы из записей.** Записи
+> говорят, **как код себя вёл**, а не как он должен себя вести. Программа с
+> ошибкой даёт записи, в которых ошибка выглядит нормой.
 
-## When to Use
+## Когда брать
 
-- A specification, test corpus or regression suite needs input→output examples
-  and a working implementation exists.
-- You are about to hand-write examples for behaviour that already runs.
-- You need to know what a program actually does on real traffic — which branches
-  run, which arguments occur, which calls hang or raise.
-- A specification's examples must be auditable back to a real execution.
+- Надо понять, как работает незнакомый код, — а читать его целиком дорого.
+- Ошибка не видна ни по итоговому выводу, ни по отслеживанию стека: неверное
+  значение рождается в середине цепочки и до вывода не доходит.
+- Программа идёт долго и молчит, и непонятно, где она сейчас.
+- Нужен снимок «до правки» — чтобы после правки сверить, что поведение то же.
+- Нужно найти медленные вызовы или те, что вошли и не вернулись.
 
-Do not use it to discover what code *should* do, to generate `свойство` blocks,
-or as evidence that a program is correct. See § Pitfalls — the limit there is
-the whole point, not a footnote.
+## Когда не брать
 
-## Prerequisites
+- Надо узнать, что код **должен** делать. Спросите человека или спецификацию.
+- Надо доказать, что код правильный. Записи этого не могут по устройству.
+- Ошибка уже видна по выводу или по отслеживанию стека — дешевле посмотреть
+  туда.
+- Горячий путь, где важна каждая микросекунда, и обмазать надо всё.
 
-Python ≥ 3.12. `libclang` only for the C/C++ backends; Node for JS/TS. The MCP
-server needs no other service. Register it beside the other Digit servers:
+## Что нужно поставить
+
+**Обязательно:** Python 3.12 или новее. Всё остальное — только под тот язык,
+который собираетесь обмазывать и запускать.
+
+| зачем | что |
+|---|---|
+| обмазать и читать записи на любом языке | Python ≥ 3.12 |
+| запустить обмазанный JavaScript/TypeScript | Node |
+| собрать и запустить обмазанный C/C++ | gcc или clang |
+| собрать и запустить обмазанный Elixir | Elixir и Erlang/OTP |
+| шесть средств навигации по C/C++ | `clangd` и `clang-tidy` на `PATH` |
+| черновик и чистовик | `git` |
+
+`libclang` (нужен разбору C и C++) и `@babel/parser` (нужен разбору JavaScript)
+приезжают вместе с пакетом. Отдельно ставить не надо.
+
+### Установка
+
+```sh
+uv tool install git+https://github.com/digitable-lol/ouroboros
+```
+
+```
+Installed 2 executables: ouroboros, ouroboros-mcp
+```
+
+Через Homebrew — одной строкой, Python доставится сам:
+
+```sh
+brew install digitable-lol/tap/ouroboros
+```
+
+**На PyPI пакета нет**, поэтому `pip install ouroboros-logger` не сработает.
+Из локального хранилища ставится обычным `pip install <путь к хранилищу>`.
+Остальные способы (asdf, один файл-программа, образ) — `docs/install.md`.
+
+Проверка, что встало:
+
+```sh
+ouroboros languages
+```
+
+```json
+{"languages": ["python", "javascript", "c", "cpp", "elixir"]}
+```
+
+Ставятся **две** команды: `ouroboros` и `ouroboros-mcp`. Других нет.
+
+### Подключить сервер MCP
+
+```json
+{ "mcpServers": { "ouroboros": { "type": "stdio", "command": "ouroboros-mcp" } } }
+```
+
+Из исходников, без установки:
 
 ```json
 { "mcpServers": { "ouroboros": {
     "type": "stdio", "command": "uv",
-    "args": ["run", "--directory", "<path>/ouroboros-src", "ouroboros-mcp-router"] } } }
+    "args": ["run", "--directory", "<путь к хранилищу>", "ouroboros-mcp"] } } }
 ```
 
-## The routing protocol
+Проверка: спросите у агента список средств. Должно прийти **семнадцать** имён.
 
-Nineteen operations are exposed as **three** tools, so nineteen schemas do not
-sit in every turn. Two cheap steps, then execute — the same shape as
-`digit-tools-core`:
-
-1. `ouroboros_capabilities` — the group index (`instrument`, `sandbox`, `trace`,
-   `fts`, `clang`).
-2. `ouroboros_describe` with one group — the input schemas of its operations.
-3. `ouroboros_invoke` with `operation` and `arguments`.
-
-Do not call `ouroboros_invoke` for an operation whose schema you have not read.
-Failures come back as structured results with the schema attached, not as
-exceptions; only a malformed protocol call is an MCP-level error.
-
-## The workflow
+## Порядок работы
 
 ```
-create_project  ->  write_file  ->  execute  ->  read_trace  ->  fts_extract_examples
-   draft repo      wrap-on-save     runs it     inspect it        пример blocks
+обмазать  ->  запустить  ->  прочитать
 ```
 
-`create_project` makes a draft (`черновик`) git repo. `write_file` instruments
-the file **before** saving it and commits one revision per operation; code that
-does not parse is **rejected, not saved**. `execute` runs a command with
-`OUROBOROS_DEBUG_INFO` pointed at the draft. `finish` mirrors the draft to the
-clean tree (`чистовик`), without `.git` or `debug.info`.
+**Обмазать.** Три способа, по нарастанию осторожности:
 
-Use `wrap_functions` rather than `wrap_file` on a hot or large file: wrapping
-everything floods the sink and the useful records drown.
-
-## What the bridge refuses
-
-Refusal is the feature. A fabricated example is worse than a missing one,
-because it corrupts the fitness function that consumes it, silently. Every
-dropped call is counted by reason in the extraction report:
-
-| Reason | What it means |
+| средство | что делает |
 |---|---|
-| `truncated-repr` | the repr hit the 200-char cap; the tail is gone and is not reconstructed |
-| `unparseable-repr` | `<Foo object at 0x…>` — an identity, not a value |
-| `non-scalar` | a list or dict where FTS takes a scalar |
-| `mixed-field-type` | one parameter took an int on one call and a string on another |
-| `no-parameter-name` | positional args with no signature to name them; `арг1` is not invented |
-| `number-not-representable` | no exact FTS spelling (the grammar has no exponent form) |
-| `empty-name` | an empty string — FTS has no empty string literal |
-| `raised-call` | the call threw; `ожидается результат равен` asserts a value, and an exception is not one |
+| `wrap_code_snippet(code, language)` | обмазывает строку в памяти, на диск не пишет |
+| `wrap_file(path)` | обмазывает файл на месте, все функции |
+| `wrap_functions(path, functions)` | обмазывает **только названные** функции |
 
-Parameter names come from an explicit list, or from a Python signature read off
-the source. **TypeScript and C signatures are not read automatically** — pass
-`param_names` or every call is refused.
+На большом или горячем файле берите `wrap_functions`: обмазка всего файла
+затопит файл записей, и нужное в нём утонет.
 
-## Choosing which calls become examples
+Повторная обмазка безопасна: уже обмазанная функция пропускается, новая
+добавляется.
 
-A thousand calls do not make a thousand examples. Identical calls collapse to
-one (the count is kept in the provenance), and the survivors are ranked:
-range extremes first, then coverage of every boolean value and every distinct
-exception, then **behaviour breaks** — pairs of adjacent points where the output's
-slope changes, which bracket a threshold — then farthest-point spread.
+**Запустить.** Как обычно — своей командой, своими проверками. Файл записей
+задаётся переменной `OUROBOROS_DEBUG_INFO`; если не задана, записи идут в
+`./debug.info` рядом с рабочим каталогом.
 
-This targets a measured failure: a synthesised discount specification put its
-threshold at 8000 instead of 10000 because the sample had no point between 8000
-and 12000. Trace selection brackets the same threshold to within 50.
+**Прочитать.**
 
-Each emitted example carries the file, function, call UUID and selection reason
-as `//` comments. An example without provenance is an unfalsifiable claim.
+| средство | что делает |
+|---|---|
+| `read_trace(path, …)` | отбирает записи: по имени функции, по содержимому, по исходу, по длительности, по потоку; выдаёт постранично |
+| `trace_stats(path, …)` | сводка: сколько раз какую функцию звали, настоящие длительности, что вошло и не вернулось |
 
-## Pitfalls
+Начинайте с `trace_stats` — он даёт карту. `read_trace` уже по ней.
 
-- **A trace records how the code behaved, not how it should.** Measured: a
-  discount calculator with `>` where the rule says `>=` produces a trace whose
-  boundary case is simply wrong. Rules written from the domain make the gate
-  refuse that document (`PROPERTY_VIOLATION`); rules fitted to the trace make it
-  **certified** — a proof certificate for a bug. Grounding in facts does not
-  yield truth. This is why `свойство` stays human-written.
-- **The workload is the sample.** Examples inherit the distribution of the
-  traffic. On a shipping task, examples from evenly-spread traffic fitted their
-  training set at 88.5 % and scored 21.4 % on the holdout, and adding four times
-  more of them did not move either number. More examples from the wrong
-  distribution do not help.
-- **A trace covers only executed branches.** A branch nothing exercised produces
-  no examples and no warning that it is missing.
-- **Examples alone are always refused.** A document with `пример` blocks and no
-  `правило` computes its initial value for every input; the gate answers
-  `PROPERTY_VIOLATION`. That is correct: the examples are the obligation, not the
-  answer.
-- **Not every function has an FTS shape.** FTS rules are conditions over an
-  object's fields; a converter or a lookup has no compact rule form. Real case:
-  `arabicToRoman` from the tools catalog yields clean examples, and every
-  specification built around them is refused — one of them as `NON_EXHAUSTIVE`.
-- **Instrumentation changes the program's timing**, not its results. Do not read
-  `d` durations from an instrumented run as the uninstrumented cost.
+Полезные отборы: `min_duration` находит медленные вызовы, `outcome: "raised"` —
+упавшие, `in_flight` в сводке — те, что вошли и не вернулись (зависание или
+падение).
 
-## Verification
+## Черновик и чистовик
 
-- [ ] The extraction report was read: `skipped_by_reason` is empty or understood.
-- [ ] Every example carries a `// trace:` provenance comment with a call UUID.
-- [ ] `правило` and `свойство` were written by a person, not lifted from the trace.
-- [ ] The traced workload covers the branches the specification claims to describe.
-- [ ] The specification was put through `fts-gate check`, and a refusal was read
-      rather than worked around.
-- [ ] Nobody is treating "the certificate is green" as "the program is correct".
+Отдельный способ работы, когда код пишете вы (или агент), а не берёте готовый.
+
+```
+create_project  ->  write_file  ->  execute  ->  finish
+   черновик       обмазка при      запуск      копия в
+   с git          сохранении                   чистовик
+```
+
+- `create_project(base)` заводит `<base>/черновик/` — обычное хранилище git.
+- `write_file(base, rel_path, content)` обмазывает содержимое **перед** записью
+  на диск и делает свой оборот. **Код, который не разбирается, не сохраняется** —
+  средство отвечает отказом с сообщением разборщика.
+- `execute(base, command)` запускает команду внутри черновика, подставив
+  `OUROBOROS_DEBUG_INFO`, и дописывает в тот же файл строку о самом запуске.
+- `finish(base)` копирует черновик в `<base>/чистовик/`.
+
+> **`finish` не снимает обмазку.** Копия в чистовике обмазана ровно так же, как
+> черновик. Необмазанного текста нигде нет: `write_file` обмазывает буфер до
+> того, как байты попадут на диск, так что ни в черновике, ни в его истории git
+> подлинника автора никогда не было. Средство честно называется копированием, и
+> в ответе стоит `"instrumentation_removed": false`.
+>
+> Что копия **не** уносит: `.git`, `debug.info`, кеши средств и всё, что выглядит
+> собранным (двоичные файлы, объектные файлы, дампы памяти). Каждое такое имя
+> перечислено в `skipped` с причиной — если там оказалось нужное, перенесите
+> сами.
+
+## Выбрать, что обмазывать в дереве C и C++
+
+Шесть средств поверх `clangd` и `clang-tidy`. Они нужны **до** `wrap_functions`,
+чтобы выбрать функции, которые стоит обмазать, вместо обмазки целого горячего
+файла.
+
+| средство | вопрос, на который отвечает |
+|---|---|
+| `symbol_search(query, root)` | где в дереве это имя |
+| `document_symbols(path)` | что определяет вот этот файл |
+| `references(path, symbol)` | кто это использует |
+| `call_hierarchy(path, symbol)` | кто это зовёт (или кого зовёт оно) |
+| `describe_symbol(path, symbol)` | где определено и с какой подписью |
+| `lint_file(path)` | что говорит clang-tidy про настоящие ошибки |
+
+Три вещи, на которых здесь спотыкаются:
+
+1. **Пяти средствам из шести нужен полный путь.** Относительный путь даёт отказ
+   `unresolvable URI at (root).textDocument.uri` — это ответ clangd, не наш.
+   Исключение — `lint_file`: ему относительный путь годится.
+2. **Всему, что смотрит за пределы одного файла, нужен `compile_commands.json`.**
+   Путь к каталогу с ним передаётся доводом `compile_commands_dir`.
+3. **Первый вызов на свежем дереве платит за построение указателя.** Дальше он
+   лежит на диске. На большом дереве поднимайте `index_timeout`. В ответе есть
+   `index_complete`: если там `false`, ответ неполный.
+
+Нет `clangd` или `clang-tidy` — средства отвечают понятным отказом, а не падают:
+
+```json
+{"ok": false, "error": "clangd not found on PATH"}
+```
+
+## Все семнадцать средств
+
+| средство | обязательные доводы |
+|---|---|
+| `wrap_code_snippet` | `code`, `language` |
+| `wrap_file` | `path` |
+| `wrap_functions` | `path`, `functions` |
+| `read_trace` | `path` |
+| `trace_stats` | `path` |
+| `create_project` | `base` |
+| `write_file` | `base`, `rel_path`, `content` |
+| `read_file` | `base`, `rel_path` |
+| `list_files` | `base` |
+| `execute` | `base`, `command` |
+| `finish` | `base` |
+| `lint_file` | `path` |
+| `symbol_search` | `query`, `root` |
+| `document_symbols` | `path` |
+| `references` | `path`, `symbol` |
+| `call_hierarchy` | `path`, `symbol` |
+| `describe_symbol` | `path`, `symbol` |
+
+Все семнадцать — обычные средства MCP с обычными схемами. **Никакого указателя
+возможностей, никакого разбора схем по запросу, никакой подачи операций через
+одно средство здесь нет.** Полный справочник со всеми необязательными доводами —
+`docs/mcp-tools.md` в хранилище; он снят разговором с живым сервером, а не
+написан руками.
+
+Тем же семнадцати действиям отвечают семнадцать подкоманд командной строки:
+`wrap-file`, `wrap-functions`, `wrap-snippet`, `trace`, `trace-stats`, `lint`,
+`symbols`, `doc-symbols`, `refs`, `callers`, `describe`, `create`, `write`,
+`execute`, `finish`, `languages`, `mcp`.
+
+## Что лежит в записи
+
+Две строки на вызов, связанные полем `id`:
+
+```jsonl
+{"p":"in","t":"2026-08-29T08:30:14.227","id":"7b0bd3b0-…","ci":-1,"th":"1175211.128643830919680","fn":"add","a":"0, 0","k":""}
+{"p":"out","id":"7b0bd3b0-…","fn":"add","r":"0","d":2e-06}
+{"p":"out","id":"e81a5517-…","fn":"div","x":"ZeroDivisionError: division by zero","d":5e-06}
+```
+
+| поле | где | что значит |
+|---|---|---|
+| `p` | обе | `in` — вошли, `out` — вышли |
+| `t` | `in` | время входа |
+| `id` | обе | номер вызова; связывает вход с выходом |
+| `fn` | обе | имя функции |
+| `a` | `in` | значения доводов по позиции, через запятую |
+| `k` | `in` | именованные доводы как `имя=значение` |
+| `r` | `out` | возвращённое значение |
+| `x` | `out` | исключение как `Вид: сообщение` |
+| `d` | `out` | длительность в секундах |
+| `ci` | `in` | номер ядра |
+| `th` | `in` | метка потока |
+
+**Строка входа без пары — вызов, который вошёл и не вернулся.** Зависание,
+падение, жёсткий выход. Это то, чего однострочная запись «по завершении» не
+могла бы показать вовсе.
+
+## Границы
+
+Каждый пункт ниже проверен прогоном.
+
+### Чего в записях нет по устройству
+
+- **Того, что не выполнялось.** Ветвь, в которую не зашли, записей не даст — **и
+  не пожалуется**. Отсутствие записей читается как «тут всё спокойно», а значит
+  оно «тут никто не был».
+- **Намерения.** Функция вернула `-1` — это код ошибки или ответ? В записи этого
+  нет.
+- **Имён позиционных доводов — ни у одного из пяти языков.** В поле `a` везде
+  одни значения: `2, 3`. У C, C++ и Elixir подпись при обмазке разобрана и имена
+  известны, но раньше эти три писали `a=2, b=3`, и тогда поле значило у трёх
+  языков одно, а у двух другое. Сейчас имён нет нигде, и по одной записи их не
+  восстановить.
+- **Номера ядра — ни у одного из пяти языков.** Поле `ci` в обычной программе
+  всегда `-1` (в разборе — `null`). У Python потому, что функции
+  `os.sched_getcpu` в CPython нет вовсе; у остальных — потому, что переносимого
+  способа узнать ядро в их средах нет. Настоящий номер бывает только в сборке C
+  внутри ядра операционной системы.
+- **Значений длиннее 200 знаков.** Обрезаются, хвост не восстанавливается.
+  Списки и словари вдобавок обрезаются по числу элементов — первые десять.
+- **Настоящей цены вызова.** Поле `d` меряет **обмазанный** прогон, который идёт
+  дольше обычного. Профилировщик записи не заменяют.
+
+### Что записывается не полностью
+
+- **C++ не записывает возвращённый объект классового типа** — в поле `r` стоит
+  `(no value)`. Провести такой возврат через помощник значило бы отменить
+  пропуск копирования, который C++17 **гарантирует**: программа, считающая свои
+  конструкторы, начала бы печатать перемещение, которого без обмазки не было, а
+  тип с удалёнными копированием и перемещением перестал бы собираться. Доводы,
+  длительность и факт исключения записываются как обычно.
+- **C не записывает возвращённую структуру** — то же `(no value)`, по той же
+  причине: вида для `printf` у структуры нет.
+- **У C не бывает поля `x`** — в языке нет исключений.
+- **Длительность у C округлена до микросекунды**, поэтому вызовы короче
+  микросекунды показывают `0.000000`.
+- **Короткий вид записи для C (`--minimal`) пишет только строку входа** — без
+  доводов, без возвращённого значения, без номера вызова и без длительности.
+  Обычные средства чтения такие строки вызовами не считают: каждая попадает в
+  список незавершённых. Он годится, чтобы увидеть дерево вызовов и глубину, и
+  ни для чего другого.
+
+### Где обмазка меняет поведение программы
+
+- **Python: плюс кадр стека на каждый вызов.** Замерено: при пределе рекурсии
+  200 достижимая глубина 199 без обмазки и 95 с обмазкой; при пределе 1000 —
+  999 и 495. Примерно вдвое мельче. Программа с тесно подогнанным пределом
+  рекурсии может упереться там, где не упиралась. Для глубокой рекурсии
+  обмазывайте не саму рекурсивную функцию, а тех, кто её зовёт.
+- **Обмазка остаётся в файле,** пока вы её не уберёте. Обратной команды нет, и
+  `finish` её не делает.
+- **В отслеживании стека появляются кадры обёртки** между вашими.
+
+> **Правило, которое стоит выполнять всегда: прогоняйте свои проверки ПОСЛЕ
+> обмазки, а не только до неё.** Зелёные и на обмазанном коде — правка для вашей
+> программы безобидна. Полного перебора того, что ещё может сломаться, никто не
+> делал, и утверждать, что список выше исчерпывающий, нельзя.
+
+### Чего стоит по времени и по месту
+
+Замерено на одной функции `add(a, b)`, 20 002 вызова, Linux, ext4:
+
+| язык | добавка на вызов | байт на вызов |
+|---|---|---|
+| JavaScript | 21 мкс | 238 |
+| C | 20 мкс | 250 |
+| C++ | 23 мкс | 270 |
+| Python | 66 мкс | 255 |
+| Elixir | около 200 мкс | 255 |
+
+Дороже всего сама запись, а не язык: каждая строка — это открыть файл, дописать
+и закрыть, дважды на вызов. **Миллион вызовов — примерно четверть гигабайта.**
+
+Считать по этим числам, «во сколько раз медленнее», нельзя: подопытная программа
+не делает ничего, кроме вызовов, и отношение выходит от 6 до 313 в зависимости
+только от того, насколько быстрым был пустой цикл на этом языке. Осмысленное
+число — добавка на вызов. В настоящей задаче её доля меньше во столько раз, во
+сколько сама функция дороже этих микросекунд.
+
+Как повторить замер: `scripts/measure/run.sh` в хранилище.
+
+## Что проверить, прежде чем считать работу сделанной
+
+- [ ] Проверки программы прогнаны **после** обмазки и зелёные.
+- [ ] Записи прочитаны средствами (`trace_stats`, `read_trace`), а не глазами по
+      файлу: файл на миллион вызовов читать глазами нечем.
+- [ ] Незавершённые вызовы (`in_flight`) просмотрены — там зависания и падения.
+- [ ] Никто не считает «записи есть» доказательством «код правильный».
+- [ ] Никто не считает «записей нет» доказательством «сюда не ходят»: возможно,
+      сюда просто не зашли в этом прогоне.
+- [ ] Если обмазан чужой код — решено, что с обмазкой делать дальше: она
+      остаётся в файлах, пока её не уберут.
+
+## Где что лежит
+
+| страница | о чём |
+|---|---|
+| `docs/install.md` | все способы установки, подключение сервера MCP, переменные среды |
+| `docs/getting-started.md` | все команды и порядок работы |
+| `docs/trace-existing-code.md` | по шагам: прологировать чужой код |
+| `docs/languages.md` | чем пять языков отличаются в записи |
+| `docs/limits.md` | границы — самая важная страница |
+| `docs/measurements.md` | замеры по пяти языкам и как их повторить |
+| `docs/mcp-tools.md` | справочник всех семнадцати средств |
+| `SPEC.md` | схема записи |
