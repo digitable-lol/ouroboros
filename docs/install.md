@@ -68,9 +68,54 @@ brew install digitable-lol/tap/ouroboros
 `brew tap` не нужна.
 
 Исходник формулы лежит здесь, в
-[`packaging/homebrew/ouroboros.rb`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/homebrew/ouroboros.rb);
-в tap он выкладывается при выпуске. Формула ставит пакет в собственное окружение
-Python и выносит наружу обе команды.
+[`packaging/homebrew/ouroboros.rb`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/homebrew/ouroboros.rb),
+а выложенная копия — в самом tap:
+[`digitable-lol/homebrew-tap`](https://github.com/digitable-lol/homebrew-tap),
+файл `Formula/ouroboros.rb`. Правки вносятся в исходник, в tap выкладываются
+копией при выпуске.
+
+Формула ставит пакет в собственное окружение Python и выносит наружу обе
+команды. Python 3.12 Homebrew доставит сам — отдельно ставить его не надо.
+
+Проверено прогоном на машине, где ни Homebrew, ни хранилища формул до этого не
+было: одна строка `brew install digitable-lol/tap/ouroboros` подключила tap
+сама, поставила Python 3.12 и пакет, `brew test` прошёл, после чего поставленный
+`ouroboros` обмазал файл, файл запустился и записи прочитались.
+
+> **Если `brew` отказывает по правам доступа.** Установка может оборваться так:
+>
+> ```
+> Cloning into '.../Taps/digitable-lol/homebrew-tap'...
+> git@github.com: Permission denied (publickey).
+> fatal: Could not read from remote repository.
+> ```
+>
+> Хранилище формул тут ни при чём: оно открытое и читается без всякого ключа.
+> Примета видна в самом отказе — `brew` просил адрес на `https://`, а ругань
+> пришла про `git@github.com` и ключ. Значит, адрес подменили по дороге, и
+> сделали это ваши собственные настройки git: правило `insteadOf`. Его часто
+> заводят себе те, кто сам пишет в эти же хранилища. Посмотреть, есть ли оно:
+>
+> ```sh
+> git config --get-regexp 'url\..*\.insteadof'
+> ```
+>
+> ```
+> url.git@github.com:digitable-lol/.insteadof https://github.com/digitable-lol/
+> ```
+>
+> Лечится заменой `insteadOf` на `pushInsteadOf`: тогда подменяется только
+> отправка, а чтение остаётся на `https` — и `brew` работает.
+>
+> ```sh
+> git config --global --unset url."git@github.com:digitable-lol/".insteadOf
+> git config --global url."git@github.com:digitable-lol/".pushInsteadOf https://github.com/digitable-lol/
+> ```
+>
+> Удобство при этом не теряется: `git push` по-прежнему уходит на
+> `git@github.com` по вашему ключу, меняется только чтение. Разово подсунуть
+> `GIT_CONFIG_GLOBAL=/dev/null` не поможет — `brew` чистит окружение перед тем,
+> как позвать git.
 
 Обновление и удаление — как у любой формулы:
 
@@ -107,7 +152,16 @@ asdf list all ouroboros
 > общем списке плагинов asdf; попасть туда — отдельный шаг, который ещё не
 > сделан. До тех пор адрес хранилища указывают явно, как выше.
 
-Наружу плагин выносит ровно две команды — `ouroboros` и `ouroboros-mcp`.
+Наружу плагин выносит ровно две команды — `ouroboros` и `ouroboros-mcp`. Это
+важно: вместе с пакетом в его окружение приезжают команды зависимостей —
+`httpx`, `jsonschema`, `mcp`, `uvicorn`, `dotenv` и другие. Если вынести всё
+подряд, `asdf` сделает обёртку на каждое имя, и они заслонят настоящие программы
+с теми же именами на машине.
+
+Проверено прогоном на asdf 0.20.0: `plugin add` по адресу выше, `list all`
+(печатает `0.2.0` и `0.2.1`), `install`, `set` — после чего наружу вынесены
+ровно два имени, а поставленный `ouroboros` обмазал файл, файл запустился и
+записи прочитались.
 
 Устройство плагина —
 [`packaging/asdf/README.md`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/asdf/README.md).
@@ -219,11 +273,12 @@ printf '%s\n' \
 ```
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.27.2"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.29.1"}}}
 ```
 
-> Число `1.27.2` в `serverInfo` — это версия библиотеки MCP, а не версия
-> уробороса. Так её проставляет сама библиотека; версия инструмента лежит в
+> Число в `serverInfo` — это версия библиотеки MCP, а не версия уробороса. Так
+> её проставляет сама библиотека, поэтому у вас будет та, которая приехала при
+> установке; в прогоне выше это `1.29.1`. Версия самого инструмента лежит в
 > `pyproject.toml` и сейчас равна `0.2.1`.
 
 ## Переменные среды

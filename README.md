@@ -23,8 +23,15 @@ uv tool install git+https://github.com/digitable-lol/ouroboros
 Installed 2 executables: ouroboros, ouroboros-mcp
 ```
 
-Через Homebrew и asdf — [Установка](docs/install.md); там же подключение к
-Claude Code и Cursor как сервера MCP.
+Через Homebrew — одной строкой, Python доставится сам:
+
+```sh
+brew install digitable-lol/tap/ouroboros
+```
+
+Любой из этих двух способов ставит `ouroboros` и `ouroboros-mcp`. Ещё есть asdf,
+сборка из исходников, один файл-программа и образ — [Установка](docs/install.md);
+там же подключение к Claude Code и Cursor как сервера MCP.
 
 ### 2. Дописать запись о вызовах
 
@@ -334,10 +341,12 @@ scripts/qa.sh    # ruff, mypy, pytest
 ## Состояние
 
 Версия 0.2.1. Проверки: 167 из 167 (`ruff`, `mypy --strict`, `pytest`). Установка
-проверена целиком, а не «по виду правильно»: `uv tool install`, `brew install`
-вместе с `brew test`, `asdf plugin add` вместе с `asdf install` — и после каждой
-поставленный инструмент обмазывал файл, запускал его и читал записи. Все пять
-языков прогнаны по отдельности.
+проверена целиком, а не «по виду правильно»: `uv tool install`;
+`brew install digitable-lol/tap/ouroboros` вместе с `brew test` — с машины, где
+ни Homebrew, ни хранилища формул не было, короткая строка подключила хранилище
+сама; `asdf plugin add` вместе с `asdf install`. После каждой поставленный
+инструмент обмазывал файл, запускал его, читал записи и отвечал сервером MCP.
+Все пять языков прогнаны по отдельности.
 
 **Что известно сломанным.** Обмазка умеет менять поведение программы, а не только
 время её работы: в JavaScript пропадает `"use strict"`, в C++ не собирается
