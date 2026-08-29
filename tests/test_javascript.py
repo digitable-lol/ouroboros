@@ -118,3 +118,58 @@ def test_end_to_end_logs_exception(tmp_path):
     bad = [c for c in loaded.calls if c.name == "bad"]
     assert len(bad) == 1
     assert bad[0].outcome_kind == "raised" and bad[0].outcome == "TypeError: kaboom"
+
+
+def test_module_header_follows_the_extension_not_the_parse(tmp_path):
+    """`.mjs` gets `import`, `.cjs` gets `require`, whatever the file looks like.
+
+    Babel is asked to parse "unambiguous", so a file with neither `import` nor
+    `export` — most files — comes back as a script. Believing that verdict put
+    `require(...)` at the top of every `.mjs` file, and node killed all of them
+    with "require is not defined in ES module scope": 16 of 17 programs in the
+    equivalence corpus. Node decides from the name, so the backend must too.
+    """
+    tx = JavaScriptTransformer()
+    src = "function add(a, b) { return a + b; }\n"
+    assert 'import _ouro_rt from "./ouroboros_runtime.js"' in \
+        tx.wrap_source(src, filename="prog.mjs").code
+    assert 'require("./ouroboros_runtime.js")' in \
+        tx.wrap_source(src, filename="prog.cjs").code
+
+
+def test_plain_js_header_follows_the_nearest_package_json(tmp_path):
+    """For a `.js` file the extension says nothing; node resolves the module
+    system from the closest package.json, so reading the same file is the only
+    way to agree with it."""
+    tx = JavaScriptTransformer()
+    src = "function add(a, b) { return a + b; }\n"
+    (tmp_path / "package.json").write_text('{"type": "module"}', encoding="utf-8")
+    esm = tmp_path / "prog.js"
+    esm.write_text(src, encoding="utf-8")
+    assert 'import _ouro_rt from "./ouroboros_runtime.js"' in \
+        tx.wrap_source(src, filename=str(esm)).code
+
+    cjs_dir = tmp_path / "sub"
+    cjs_dir.mkdir()
+    (cjs_dir / "package.json").write_text('{"type": "commonjs"}', encoding="utf-8")
+    assert 'require("./ouroboros_runtime.js")' in \
+        tx.wrap_source(src, filename=str(cjs_dir / "prog.js")).code
+
+
+def test_shebang_and_use_strict_keep_their_place(tmp_path):
+    """Both only work while they are first: a `#!` below line 1 is not read by
+    the kernel at all, and a demoted "use strict" silently stops applying — the
+    program keeps running, in the other mode."""
+    tx = JavaScriptTransformer()
+    code = tx.wrap_source(
+        '#!/usr/bin/env node\n"use strict";\nfunction f() { return 1; }\n',
+        filename="prog.js").code
+    lines = [ln for ln in code.splitlines() if ln.strip()]
+    assert lines[0] == "#!/usr/bin/env node"
+    assert lines[1] == '"use strict";'
+    assert "ouroboros_runtime.js" in lines[2]
+
+    body = tx.wrap_source(
+        'function f() { "use strict"; return 1; }\n', filename="prog.js").code
+    directive = body.index('"use strict"')
+    assert body.index("__ouro_ctx") > directive

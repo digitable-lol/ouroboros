@@ -9,6 +9,7 @@ name-mangled and break).
 from __future__ import annotations
 
 import ast
+import pathlib
 
 import pytest
 
@@ -180,3 +181,36 @@ def test_docstring_and_future_import_together(tx):
     lines = res.code.splitlines()
     assert lines[1] == "from __future__ import annotations"
     assert "from ouroboros_runtime import log" in lines[2]
+
+
+def test_shebang_stays_on_line_one(tx):
+    """The kernel reads `#!` only from byte 0. A shebang pushed to line 2 turns a
+    runnable script into `Exec format error` — the wrap made the file unusable
+    without changing a single character of its logic."""
+    src = "#!/usr/bin/env python3\ndef f():\n    return 7\n"
+    res = tx.wrap_source(src)
+    assert res.functions_wrapped == 1
+    assert res.code.splitlines()[0] == "#!/usr/bin/env python3"
+    assert "from ouroboros_runtime import log" in res.code.splitlines()[1]
+
+
+def test_coding_declaration_stays_in_the_first_two_lines(tx):
+    """PEP 263 is honoured only on the first two lines; below that it is a
+    comment and the file's declared encoding is silently ignored."""
+    src = "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\ndef f():\n    return 7\n"
+    res = tx.wrap_source(src)
+    lines = res.code.splitlines()
+    assert lines[0].startswith("#!")
+    assert "coding" in lines[1]
+    assert "from ouroboros_runtime import log" in lines[2]
+
+
+def test_runtime_module_is_never_instrumented(tx):
+    """The sink must stay out of its own loop: instrumented code imports the
+    decorator FROM this module, so wrapping it makes the file import itself."""
+    from ouroboros import runtime as runtime_mod
+
+    src = pathlib.Path(runtime_mod.__file__).read_text(encoding="utf-8")
+    res = tx.wrap_source(src, filename="ouroboros_runtime.py")
+    assert res.functions_wrapped == 0
+    assert res.code == src

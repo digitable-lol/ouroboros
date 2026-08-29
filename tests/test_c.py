@@ -38,7 +38,7 @@ def test_basic_wrap(tx):
     res = tx.wrap_source("int add(int a, int b) {\n    return a + b;\n}\n", filename="m.c")
     assert res.functions_wrapped == 1
     assert '#include "ouroboros_runtime.h"' in res.code
-    assert '_ouro_enter(&__ouro, "add", "a=%d, b=%d", a, b)' in res.code
+    assert '_ouro_enter(&__ouro, "add", "%d, %d", a, b)' in res.code
     assert "int __ouro_result;" in res.code
 
 
@@ -120,7 +120,7 @@ def test_compdb_command_string_form_is_recognized(tmp_path):
 def test_const_char_pointer_is_guarded_string(tx):
     res = tx.wrap_source(
         'int len(const char *s) {\n    return 0;\n}\n', filename="m.c")
-    assert 's=%s' in res.code
+    assert '"%s"' in res.code
     assert '(s ? s : "(null)")' in res.code
 
 
@@ -159,7 +159,7 @@ def test_void_function_has_no_result_temp(tx):
     res = tx.wrap_source("void p(int n) {\n    (void)n;\n}\n", filename="m.c")
     assert res.functions_wrapped == 1
     assert "__ouro_result" not in res.code
-    assert '_ouro_enter(&__ouro, "p", "n=%d", n)' in res.code
+    assert '_ouro_enter(&__ouro, "p", "%d", n)' in res.code
 
 
 def test_struct_return_is_not_captured(tx):
@@ -169,12 +169,12 @@ def test_struct_return_is_not_captured(tx):
     assert res.functions_wrapped == 1
     # unprintable return -> no capture, but args still logged
     assert "__ouro_result" not in res.code
-    assert '_ouro_enter(&__ouro, "mk", "x=%d", x)' in res.code
+    assert '_ouro_enter(&__ouro, "mk", "%d", x)' in res.code
 
 
 def test_double_uses_float_specifier(tx):
     res = tx.wrap_source("double sc(double x) {\n    return x * 2;\n}\n", filename="m.c")
-    assert 'x=%f' in res.code
+    assert '"%f"' in res.code
     assert '_ouro_set_result(&__ouro, "%f"' in res.code
 
 
@@ -208,7 +208,7 @@ def test_c_schema_matches_spec(tmp_path):
                    env={"OUROBOROS_DEBUG_INFO": str(debug), "PATH": "/usr/bin:/bin"})
     assert _normalize(debug.read_text(encoding="utf-8")) == [
         {"p": "in", "t": "<X>", "id": "<X>", "ci": "<X>", "th": "<X>",
-         "fn": "add", "a": "a=2, b=3", "k": ""},
+         "fn": "add", "a": "2, 3", "k": ""},
         {"p": "out", "id": "<X>", "fn": "add", "r": "5", "d": "<X>"},
     ]
 
@@ -274,7 +274,7 @@ def test_kernel_branch_formats_via_shim(tmp_path):
         "int kfn(int a) {\n"
         "    struct _ouro_call __ouro __attribute__((cleanup(_ouro_emit)));\n"
         "    int __ouro_result;\n"
-        '    _ouro_enter(&__ouro, "kfn", "a=%d", a);\n'
+        '    _ouro_enter(&__ouro, "kfn", "%d", a);\n'
         '    return (__ouro_result = (a * 2), '
         '_ouro_set_result(&__ouro, "%d", __ouro_result), __ouro_result);\n'
         "}\n"
@@ -290,7 +290,7 @@ def test_kernel_branch_formats_via_shim(tmp_path):
     # the kernel `t` dialect is uptime-relative, but it is blanked by _normalize
     assert lines == [
         {"p": "in", "t": "<X>", "id": "<X>", "ci": "<X>", "th": "<X>",
-         "fn": "kfn", "a": "a=21", "k": ""},
+         "fn": "kfn", "a": "21", "k": ""},
         {"p": "out", "id": "<X>", "fn": "kfn", "r": "42", "d": "<X>"},
     ]
 
@@ -323,7 +323,7 @@ def test_kernel_ring_buffer_via_shim(tmp_path):
         "int kfn(int a) {\n"
         "    struct _ouro_call __ouro __attribute__((cleanup(_ouro_emit)));\n"
         "    int __ouro_result;\n"
-        '    _ouro_enter(&__ouro, "kfn", "a=%d", a);\n'
+        '    _ouro_enter(&__ouro, "kfn", "%d", a);\n'
         '    return (__ouro_result = (a * 2), '
         '_ouro_set_result(&__ouro, "%d", __ouro_result), __ouro_result);\n'
         "}\n"
@@ -345,13 +345,13 @@ def test_kernel_ring_buffer_via_shim(tmp_path):
     # the 6 records (3 calls x in/out), in order, parse as the same JSONL schema
     assert lines == [
         {"p": "in", "t": "<X>", "id": "<X>", "ci": "<X>", "th": "<X>",
-         "fn": "kfn", "a": "a=1", "k": ""},
+         "fn": "kfn", "a": "1", "k": ""},
         {"p": "out", "id": "<X>", "fn": "kfn", "r": "2", "d": "<X>"},
         {"p": "in", "t": "<X>", "id": "<X>", "ci": "<X>", "th": "<X>",
-         "fn": "kfn", "a": "a=2", "k": ""},
+         "fn": "kfn", "a": "2", "k": ""},
         {"p": "out", "id": "<X>", "fn": "kfn", "r": "4", "d": "<X>"},
         {"p": "in", "t": "<X>", "id": "<X>", "ci": "<X>", "th": "<X>",
-         "fn": "kfn", "a": "a=3", "k": ""},
+         "fn": "kfn", "a": "3", "k": ""},
         {"p": "out", "id": "<X>", "fn": "kfn", "r": "6", "d": "<X>"},
     ]
 

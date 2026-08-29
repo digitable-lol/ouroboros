@@ -15,6 +15,7 @@ the planned Elixir port will use.
 from __future__ import annotations
 
 import ast
+import re
 
 from .base import (
     CorruptedSourceError,
@@ -35,32 +36,39 @@ DECORATOR = f"@{DECORATOR_NAME}"
 RUNTIME_IMPORT = f"from ouroboros_runtime import log as {DECORATOR_NAME}\n"
 
 
-def _already_decorated(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    for dec in node.decorator_list:
-        if isinstance(dec, ast.Name) and dec.id == DECORATOR_NAME:
-            return True
-        if isinstance(dec, ast.Attribute) and dec.attr == DECORATOR_NAME:
-            return True
-    return False
+#: PEP 263 encoding declaration. Only honoured by the interpreter on the first
+#: two lines, so nothing may be spliced above it.
+_CODING_RE = re.compile(rb"^[ \t\f]*#.*?coding[:=][ \t]*[-_.a-zA-Z0-9]+")
 
 
 def _import_offset(tree: ast.Module, source: str, starts: list[int]) -> int:
     """Character offset at which :data:`RUNTIME_IMPORT` may be spliced.
 
-    Not simply 0. Two statements are required by the language to come first, and
-    inserting ahead of them is wrong in different ways:
+    Not simply 0. Four things claim the top of a Python file, and pushing any of
+    them down changes the program in a different way:
 
-    * ``from __future__ import ...`` **must** be the first statement — putting the
-      runtime import before it makes the file a ``SyntaxError`` ("from __future__
-      imports must occur at the beginning of the file"), i.e. wrapping would hand
-      back a file that no longer parses.
-    * a module **docstring** stops being ``__doc__`` the moment any statement
-      precedes it; it silently degrades to a bare string expression.
+    * ``#!`` — the kernel reads a shebang only from byte 0, so a script whose
+      ``#!`` moved to line 2 stops being runnable: ``Exec format error``.
+    * a PEP 263 ``coding:`` comment — the interpreter honours it only on the
+      first two lines, so a demoted one stops selecting the encoding.
+    * a module **docstring** — it stops being ``__doc__`` the moment any
+      statement precedes it; it silently degrades to a bare string expression.
+    * ``from __future__ import ...`` **must** be the first statement — putting
+      the runtime import before it makes the file a ``SyntaxError`` ("from
+      __future__ imports must occur at the beginning of the file"), i.e.
+      wrapping would hand back a file that no longer parses.
 
-    So skip past the docstring and every ``__future__`` import, and insert at the
-    start of the line after the last of them.
+    So skip past all four and insert at the start of the line after the last of
+    them; 0 when the file has none.
     """
+
     last_line = 0
+    lines = source.splitlines()
+    if lines and lines[0].startswith("#!"):
+        last_line = 1
+    for i in range(min(2, len(lines))):
+        if _CODING_RE.match(lines[i].encode("utf-8", "replace")):
+            last_line = max(last_line, i + 1)
     for i, node in enumerate(tree.body):
         is_docstring = (
             i == 0
@@ -74,10 +82,39 @@ def _import_offset(tree: ast.Module, source: str, starts: list[int]) -> int:
         last_line = max(last_line, node.end_lineno or node.lineno)
     if last_line == 0:
         return 0
-    # Start of the line following the last must-stay-first statement. If that
-    # statement ends the file, append at the very end instead of indexing past
-    # the offset table.
+    # Start of the line after the last must-stay-on-top construct; if that was
+    # the final line, append at the very end rather than index past the table.
     return starts[last_line + 1] if last_line + 1 < len(starts) else len(source)
+
+
+def _already_decorated(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for dec in node.decorator_list:
+        if isinstance(dec, ast.Name) and dec.id == DECORATOR_NAME:
+            return True
+        if isinstance(dec, ast.Attribute) and dec.attr == DECORATOR_NAME:
+            return True
+    return False
+
+
+#: Module-level flag by which the runtime helper declares itself off limits.
+RUNTIME_SENTINEL = "OUROBOROS_RUNTIME_MODULE"
+
+
+def _is_runtime_module(tree: ast.Module) -> bool:
+    """True for the logging helper itself (it sets :data:`RUNTIME_SENTINEL`).
+
+    Instrumented code imports the decorator from this module, so instrumenting
+    it makes it import itself — every wrapped program then dies on its first
+    line with a circular import.
+    """
+
+    for node in tree.body:
+        targets = (node.targets if isinstance(node, ast.Assign)
+                   else [node.target] if isinstance(node, ast.AnnAssign) else [])
+        for t in targets:
+            if isinstance(t, ast.Name) and t.id == RUNTIME_SENTINEL:
+                return True
+    return False
 
 
 def _has_runtime_import(tree: ast.Module) -> bool:
@@ -109,6 +146,9 @@ class PythonTransformer(Transformer):
         except SyntaxError as e:
             raise CorruptedSourceError("python", str(e), filename=filename) from e
 
+        if _is_runtime_module(tree):
+            return WrapResult(code=source, language=self.language, functions_wrapped=0)
+
         starts = line_start_offsets(source)
         edits: list[Edit[str]] = []
         wrapped = 0
@@ -132,12 +172,15 @@ class PythonTransformer(Transformer):
         from .base import apply_edits
 
         if wrapped and not _has_runtime_import(tree):
-            # Goes after the docstring / `__future__` imports (see
-            # _import_offset), but before any decorator inserted at that same
-            # offset (a function on the next line). apply_edits keeps
+            # Below the shebang / coding line / docstring / __future__ imports
+            # (see _import_offset), but above any decorator inserted at that
+            # same offset (a function on the next line): apply_edits keeps
             # same-offset insertions in list order, so it goes to the front.
             off = _import_offset(tree, source, starts)
-            edits.insert(0, Edit(off, off, RUNTIME_IMPORT))
+            text = RUNTIME_IMPORT
+            if off == len(source) and source and not source.endswith("\n"):
+                text = "\n" + RUNTIME_IMPORT  # file has no trailing newline
+            edits.insert(0, Edit(off, off, text))
 
         new_code = apply_edits(source, edits)
         return WrapResult(code=new_code, language=self.language, functions_wrapped=wrapped)

@@ -445,8 +445,10 @@ static inline void _ouro_enter(struct _ouro_call *c, const char *name,
 	vsnprintf(c->args, sizeof c->args, fmt, ap);
 	va_end(ap);
 	snprintf(c->result, sizeof c->result, "(no value)");
-	getnanouptime(&c->_t0);		/* start the duration clock */
 	_ouro_emit_entry(c);		/* p:in: entered (may never complete) */
+	/* Clock starts AFTER the entry record, so the sink's own formatting and
+	 * console write are not charged to the call being measured (SPEC.md §4). */
+	getnanouptime(&c->_t0);
 }
 
 static inline void _ouro_set_result(struct _ouro_call *c, const char *fmt, ...)
@@ -487,6 +489,11 @@ static inline void _ouro_emit(struct _ouro_call *c)
 #include <string.h>
 #include <time.h>
 #include <unistd.h>	/* getpid -- thread/process identity */
+#if defined(__linux__)
+#include <sys/syscall.h>	/* SYS_gettid -- thread id, no libpthread needed */
+#elif defined(__NetBSD__)
+#include <lwp.h>		/* _lwp_self -- thread id, in libc */
+#endif
 
 struct _ouro_call {
 	const char *name;
@@ -495,9 +502,41 @@ struct _ouro_call {
 	char args[512];
 	char result[256];
 	int ci;			/* CPU index at entry (-1: not available in userland) */
-	char th[24];		/* thread identity (process id) */
-	struct timespec _t0;	/* entry time, for duration */
+	char th[40];		/* thread identity "<pid>.<tid>" */
+	struct timespec _t0;	/* entry time (monotonic) for duration */
 };
+
+/*
+ * Thread id for the `th` field. Deliberately NOT pthread_self(): on NetBSD that
+ * would drag libpthread into a program that never asked for threads. The Linux
+ * syscall and the NetBSD lwp call are both in libc.
+ */
+static inline unsigned long long _ouro_tid(void)
+{
+#if defined(__linux__)
+	return (unsigned long long)syscall(SYS_gettid);
+#elif defined(__NetBSD__)
+	return (unsigned long long)_lwp_self();
+#else
+	return 0ULL;
+#endif
+}
+
+/*
+ * Monotonic clock for durations. `d` must measure elapsed time, and the wall
+ * clock does not: it steps on an NTP correction or a DST change, which can
+ * produce a negative duration or a call that appears to take an hour. Every
+ * other backend already uses a monotonic source (Python perf_counter, JS
+ * hrtime, C++ steady_clock, Elixir monotonic_time); this makes C agree.
+ */
+static inline void _ouro_mono(struct timespec *ts)
+{
+#if defined(CLOCK_MONOTONIC)
+	clock_gettime(CLOCK_MONOTONIC, ts);
+#else
+	timespec_get(ts, TIME_UTC);
+#endif
+}
 
 static inline const char *_ouro_path(void)
 {
@@ -607,14 +646,22 @@ static inline void _ouro_enter(struct _ouro_call *c, const char *name,
 	/* Thread/CPU identity. Userland has no portable stable CPU index (-1);
 	 * the process id distinguishes forked tracers sharing one debug.info. */
 	c->ci = -1;
-	snprintf(c->th, sizeof c->th, "%ld", (long)getpid());
+	/* "<pid>.<tid>" -- both halves, like every other backend. The pid alone
+	 * cannot tell two threads apart; the tid alone cannot tell two processes
+	 * apart, and SPEC.md lets several processes append to one debug.info. */
+	snprintf(c->th, sizeof c->th, "%ld.%llu", (long)getpid(), _ouro_tid());
 	va_start(ap, fmt);
 	vsnprintf(c->args, sizeof c->args, fmt, ap);
 	va_end(ap);
 	/* default outcome for void / fall-through / goto-out with no value */
 	snprintf(c->result, sizeof c->result, "(no value)");
-	timespec_get(&c->_t0, TIME_UTC);	/* start the duration clock */
-	_ouro_emit_entry(c);			/* p:in: entered */
+	_ouro_emit_entry(c);	/* p:in: entered */
+	/* Start the duration clock AFTER the entry record is written, so the
+	 * sink's own fopen/fprintf/fclose is not charged to the call being
+	 * measured. It used to be started first, which inflated every C duration
+	 * by the cost of one file append -- a median of 9 microseconds against
+	 * C++'s 0, for the same function. SPEC.md §4 requires this order. */
+	_ouro_mono(&c->_t0);
 }
 
 static inline void _ouro_set_result(struct _ouro_call *c, const char *fmt, ...)
@@ -628,14 +675,19 @@ static inline void _ouro_set_result(struct _ouro_call *c, const char *fmt, ...)
 
 static inline void _ouro_emit(struct _ouro_call *c)
 {
-	FILE *f = fopen(_ouro_path(), "a");
 	char en[256], er[512];
 	struct timespec now;
+	FILE *f;
 	long ds, dn;
 
+	/* Stop the clock BEFORE opening the file: fopen is the sink's cost, not the
+	 * call's. Reading it after the open charged every C duration with one file
+	 * open -- a median of 10 microseconds against C++'s 0 for the same
+	 * function, which made "calls slower than N" incomparable across languages. */
+	_ouro_mono(&now);
+	f = fopen(_ouro_path(), "a");
 	if (f == NULL)
 		return;
-	timespec_get(&now, TIME_UTC);
 	ds = (long)(now.tv_sec - c->_t0.tv_sec);
 	dn = now.tv_nsec - c->_t0.tv_nsec;
 	if (dn < 0) { ds--; dn += 1000000000L; }

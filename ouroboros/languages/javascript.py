@@ -47,6 +47,54 @@ _EXT_TO_KIND = {
     ".tsx": "tsx",
 }
 
+#: Extensions whose module system node decides from the name alone, whatever the
+#: file's own syntax looks like.
+_EXT_TO_MODULE_SYSTEM = {".mjs": "module", ".cjs": "script"}
+
+
+def _package_type(filename: str | None) -> str | None:
+    """``"module"`` / ``"commonjs"`` from the nearest ``package.json``, else None.
+
+    For a plain ``.js`` file the extension says nothing; node resolves the
+    module system from the closest ``package.json`` above it. Reading the same
+    file is the only way to agree with node about what the header should be.
+    """
+
+    if not filename:
+        return None
+    try:
+        here = Path(filename).resolve().parent
+        for d in (here, *here.parents):
+            pkg = d / "package.json"
+            if pkg.is_file():
+                declared = json.loads(pkg.read_text(encoding="utf-8")).get("type")
+                return declared if declared in ("module", "commonjs") else "commonjs"
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _module_system(filename: str | None, parsed_source_type: str | None) -> str:
+    """Decide between an ESM ``import`` header and a CommonJS ``require`` header.
+
+    The parser's own verdict is the *last* resort, not the first. Babel is asked
+    to parse "unambiguous", so a file with neither ``import`` nor ``export`` —
+    which is most files — comes back as a script even when node will load it as
+    an ES module. Emitting ``require`` into it produces a program that dies with
+    "require is not defined in ES module scope". The name decides first (``.mjs``
+    / ``.cjs``), then the nearest ``package.json``, and only then the syntax.
+    """
+
+    ext = Path(filename).suffix.lower() if filename else ""
+    by_ext = _EXT_TO_MODULE_SYSTEM.get(ext)
+    if by_ext is not None:
+        return by_ext
+    if ext in (".js", ".jsx"):
+        declared = _package_type(filename)
+        if declared is not None:
+            return "module" if declared == "module" else "script"
+    return "module" if parsed_source_type == "module" else "script"
+
 
 class JavaScriptTransformer(Transformer):
     language = "javascript"
@@ -108,8 +156,13 @@ class JavaScriptTransformer(Transformer):
             wrapped += 1
             name_lit = json.dumps(fn["name"])
             params = ", ".join(fn["params"])
+            # A leading ";" when the insertion point sits just after the
+            # function's own directive prologue: a directive without a
+            # semicolon ("use strict" then a newline) would otherwise run into
+            # our `const`.
+            lead = ";" if fn.get("hasDirectives") else ""
             entry = (
-                f" const __ouro_ctx = {_MARKER}.enter({name_lit}, [{params}]);"
+                f"{lead} const __ouro_ctx = {_MARKER}.enter({name_lit}, [{params}]);"
                 f" let __ouro_result, __ouro_threw = false; try {{"
             )
             exit_ = (
@@ -132,8 +185,14 @@ class JavaScriptTransformer(Transformer):
                                       " (__ouro_result = void 0)"))
 
         if wrapped:
-            header = _IMPORT_MODULE if data.get("sourceType") == "module" else _IMPORT_SCRIPT
-            edits.insert(0, Edit(0, 0, header))
+            header = (_IMPORT_MODULE
+                      if _module_system(filename, data.get("sourceType")) == "module"
+                      else _IMPORT_SCRIPT)
+            # Below the `#!` line and the file's own "use strict" (see
+            # emitter.js): a shebang only works from byte 0, and a directive
+            # only counts while it is still the first statement.
+            at = int(data.get("headerStart") or 0)
+            edits.insert(0, Edit(at, at, ("\n" + header) if at else header))
 
         new_code = apply_edits(source, edits)
         return WrapResult(code=new_code, language=self.language, functions_wrapped=wrapped)

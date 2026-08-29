@@ -74,6 +74,15 @@ function paramNames(params) {
   return names;
 }
 
+// End offset of a directive prologue ("use strict" and friends), or `fallback`
+// when there is none. Directives must stay the leading statements of their
+// block, so nothing may be spliced above them.
+function prologueEnd(directives, fallback) {
+  let end = fallback;
+  for (const d of directives || []) end = Math.max(end, d.end);
+  return end;
+}
+
 function isNode(v) {
   return v && typeof v === "object" && typeof v.type === "string";
 }
@@ -114,7 +123,12 @@ function main() {
           returns: [],
         };
         if (isBlock) {
-          entry.bodyStart = body.start + 1; // just after "{"
+          // After the body's own directive prologue, not just after "{". A
+          // function-level "use strict" only counts while it is still the first
+          // statement; pushing code above it silently drops the function out of
+          // strict mode (no error, different semantics).
+          entry.hasDirectives = (body.directives || []).length > 0;
+          entry.bodyStart = prologueEnd(body.directives, body.start + 1);
           entry.bodyEnd = body.end - 1; // the "}" position
         }
         functions.push(entry);
@@ -154,7 +168,13 @@ function main() {
     }
 
     recurse(ast.program, null, null);
-    process.stdout.write(JSON.stringify({ ok: true, sourceType: ast.program.sourceType, functions }));
+    // Where a file-level header may be spliced: below the `#!` line (the kernel
+    // reads it only from byte 0) and below the file's own directive prologue.
+    const interp = ast.program.interpreter;
+    const headerStart = prologueEnd(ast.program.directives, interp ? interp.end : 0);
+    process.stdout.write(
+      JSON.stringify({ ok: true, sourceType: ast.program.sourceType, headerStart, functions })
+    );
   });
 }
 
