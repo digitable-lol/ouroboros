@@ -290,7 +290,7 @@ printf '%s\n' \
 
 Больше переменных у инструмента нет
 ([`ouroboros/runtime.py:52`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L52),
-[`ouroboros/mcp/server.py:770`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L770)).
+[`ouroboros/mcp/server.py:886`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L886)).
 
 ## Дальше
 
