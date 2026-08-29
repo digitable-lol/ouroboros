@@ -1,4 +1,5 @@
 {
+  "version": "0.3.0",
   "tests": 580,
   "coverage_percent": 94,
   "coverage_exact": 93.53,
