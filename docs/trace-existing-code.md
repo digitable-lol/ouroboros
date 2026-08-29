@@ -226,7 +226,7 @@ def mutate(items):
 
 > На обычном Python поле `ci` всегда `-1`, а в разборе — `null`: функции
 > `os.sched_getcpu` в CPython нет, и помощник честно пишет «неизвестно»
-> ([`ouroboros/runtime.py:65`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L65)).
+> ([`ouroboros/runtime.py:75`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L75)).
 > Настоящий номер ядра приходит от записи в ядре операционной системы на C, а у
 > Elixir в этом поле — номер планировщика BEAM. Метка потока `th` есть везде.
 
@@ -244,7 +244,7 @@ def mutate(items):
 стоимость обычного прогона нельзя, и профилировщик она не заменяет. Отсчёт `d`
 начинается **после** записи строки входа, то есть стоимость самой этой записи в
 `d` не входит — но всё прочее, что добавила обмазка, входит
-([`ouroboros/runtime.py:142`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L142)).
+([`ouroboros/runtime.py:305`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L305)).
 
 ## Повторить вызов, на котором сломалось
 

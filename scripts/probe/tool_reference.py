@@ -125,31 +125,30 @@ async def main() -> None:
     calls = sample_calls(root)
     command = os.environ.get("OUROBOROS_MCP_COMMAND", "ouroboros-mcp")
     params = StdioServerParameters(command=command, args=[], env={**os.environ})
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            init = await session.initialize()
-            listed = await session.list_tools()
-            declared = {t.name: t for t in listed.tools}
-            missing = sorted(set(declared) - set(calls))
-            entries = []
-            for name in calls:
-                if name not in declared:
-                    entries.append({"name": name, "error": "сервер такого не объявил"})
-                    continue
-                t = declared[name]
-                res = await session.call_tool(name, calls[name])
-                entries.append({
-                    "name": name,
-                    "title": t.title,
-                    "description": t.description,
-                    "annotations": t.annotations.model_dump(exclude_none=True)
-                    if t.annotations else None,
-                    "arguments": t.inputSchema,
-                    "answer_schema": t.outputSchema,
-                    "example_call": trim(calls[name]),
-                    "example_answer": trim(res.structuredContent),
-                    "example_is_error": res.isError,
-                })
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        init = await session.initialize()
+        listed = await session.list_tools()
+        declared = {t.name: t for t in listed.tools}
+        missing = sorted(set(declared) - set(calls))
+        entries = []
+        for name in calls:
+            if name not in declared:
+                entries.append({"name": name, "error": "сервер такого не объявил"})
+                continue
+            t = declared[name]
+            res = await session.call_tool(name, calls[name])
+            entries.append({
+                "name": name,
+                "title": t.title,
+                "description": t.description,
+                "annotations": t.annotations.model_dump(exclude_none=True)
+                if t.annotations else None,
+                "arguments": t.inputSchema,
+                "answer_schema": t.outputSchema,
+                "example_call": trim(calls[name]),
+                "example_answer": trim(res.structuredContent),
+                "example_is_error": res.isError,
+            })
 
     out = {
         "taken_at": datetime.datetime.now().isoformat(timespec="seconds"),

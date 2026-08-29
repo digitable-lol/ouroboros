@@ -36,4 +36,9 @@ uv run python scripts/check_doc_links.py
 echo "== числа состояния в README и ARCHITECTURE =="
 uv run python scripts/state_numbers.py
 
+# Слово, где часть букв набрана не тем алфавитом, читается как обычное и глазами
+# не находится: `а`, `е`, `о`, `с`, `р`, `х` в двух алфавитах выглядят одинаково.
+echo "== слова со смешанными алфавитами =="
+uv run python scripts/check_no_mixed_script.py
+
 echo "== all gates passed =="

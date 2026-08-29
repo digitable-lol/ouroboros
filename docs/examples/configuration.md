@@ -81,7 +81,7 @@ references          call_hierarchy   describe_symbol
 | `OUROBOROS_MCP_TRANSPORT` | как сервер MCP разговаривает: `stdio` (по умолчанию), `sse` или `streamable-http`. Другое значение — сервер откажется запускаться и назовёт допустимые |
 
 Где они читаются:
-[`ouroboros/runtime.py:52`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L52)
+[`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 и
 [`ouroboros/mcp/server.py:886`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L886).
 

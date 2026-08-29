@@ -113,7 +113,7 @@ title: Запись трассы
 Длинные значения ограничивает короткое изображение значения: у Python это
 `reprlib` с `maxstring = maxother = 200`, а списки, словари и наборы обрезаются
 до первых десяти элементов
-([`ouroboros/runtime.py:43`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L43)).
+([`ouroboros/runtime.py:53`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L53)).
 Остальные языки держатся тех же пределов.
 
 Значение не обрезается «как-нибудь» и не восстанавливается по остатку. Соседний
