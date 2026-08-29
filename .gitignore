@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# NOTE: ouroboros/languages/_js/node_modules is deliberately NOT ignored.
+# The JS/TS backend shells out to _js/emitter.js, which resolves @babel/parser
+# from that directory; it is packaged into the wheel, so `uv tool install
+# git+...` gives a working JS/TS backend without a separate npm step.
+# Regenerate it with: npm ci --prefix ouroboros/languages/_js
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Trace output produced by instrumented code
+debug.info

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ouroboros": {
+      "command": "uv",
+      "args": ["run", "--directory", "/home/a/projects/uruboros-ai", "ouroboros-mcp"]
+    }
+  }
+}

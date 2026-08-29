@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ouroboros": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", ".", "ouroboros-mcp"],
+      "env": {}
+    }
+  }
+}

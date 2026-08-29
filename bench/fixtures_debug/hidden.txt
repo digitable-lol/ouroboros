@@ -1,0 +1,8 @@
+a1 cpu 10
+a2 cpu 20
+a3 mem 60
+a4 disk 30
+a5 net 80
+a6 mem bad
+a7 disk -1
+a8 net 20
