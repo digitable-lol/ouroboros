@@ -1,0 +1,25 @@
+claude
+-p
+You are in the current directory. It contains:
+- spec.md — describes the intended pipeline and the bug to fix; read it first
+- pipeline.py — the buggy program
+- sample.txt — input
+- sample_expected.txt — the correct output for sample.txt
+
+`python3 pipeline.py sample.txt` currently prints the wrong score. Find and fix
+the single bug in pipeline.py so its output matches sample_expected.txt exactly.
+Do not hardcode the answer — the fix is validated against a hidden input too.
+
+--output-format
+json
+--model
+claude-sonnet-4-6
+--add-dir
+/home/a/projects/uruboros-ai/bench/runs_debug/baseline_3/work
+--allowedTools
+Bash
+Read
+Write
+Edit
+Glob
+Grep

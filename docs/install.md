@@ -4,39 +4,73 @@ title: Установка
 
 # Установка
 
-Три способа поставить сам инструмент и один обязательный шаг после — подключить
-его к вашему агенту как сервер MCP.
-
-> **Выпуска ещё нет.** Формула Homebrew и плагин asdf лежат в хранилище
-> готовыми, но с пометками `TODO(выпуск)` на месте адреса архива, отпечатка и
-> номера версии: пока их не проставили, `brew install` и `asdf install` ничего
-> не поставят и скажут об этом прямо. Придуманные значения туда не подставлены
-> нарочно — по придуманным будут пробовать, и не сработает. Что именно надо
-> проставить и откуда взять, расписано в самих файлах:
-> [`packaging/homebrew/ouroboros.rb`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/homebrew/ouroboros.rb)
-> и [`packaging/asdf/`](https://github.com/digitable-lol/ouroboros/tree/main/packaging/asdf).
+Четыре способа поставить инструмент и один необязательный шаг после — подключить
+его к ИИ-агенту как сервер MCP.
 
 ## Что должно стоять на машине
 
 | нужно | когда |
 |---|---|
 | Python 3.12 или новее | всегда |
-| `libclang` | только для C и C++ |
-| Node | только для JavaScript и TypeScript |
+| `gcc` или `clang` | чтобы **собрать** обмазанный код на C |
+| `g++` или `clang++` | чтобы обмазать и собрать C++ |
+| Node | чтобы обмазать и запустить JavaScript и TypeScript |
+| `elixir` | чтобы собрать и запустить Elixir |
+| `clang-tidy`, `clangd` | только для команд `lint`, `symbols`, `refs`, `callers`, `describe` |
 
-Больше ничего: отдельной службы, базы данных или внешнего ключа серверу не нужно.
+`libclang` (разбор C и C++) ставится вместе с пакетом — это его зависимость,
+отдельно доставлять не надо. Разбор JavaScript и TypeScript тоже уложен внутрь:
+`@babel/parser` лежит в самом пакете, `npm install` не нужен, нужен только сам
+`node`.
 
-## Способ 1. Homebrew
+Отдельной службы, базы данных или внешнего ключа не требуется.
+
+## Способ 1. uv
+
+Самый короткий и не требующий выпуска:
+
+```sh
+uv tool install git+https://github.com/digitable-lol/ouroboros
+```
+
+```
+Installed 2 executables: ouroboros, ouroboros-mcp
+```
+
+Проверить:
+
+```sh
+ouroboros languages
+```
+
+```json
+{"languages": ["python", "javascript", "c", "cpp", "elixir"]}
+```
+
+Обновить и удалить:
+
+```sh
+uv tool upgrade ouroboros-logger
+uv tool uninstall ouroboros-logger
+```
+
+Имя пакета — `ouroboros-logger`, имена команд — `ouroboros` и `ouroboros-mcp`.
+
+## Способ 2. Homebrew
 
 ```sh
 brew install digitable-lol/tap/ouroboros
 ```
 
-Первая часть имени — `digitable-lol/tap` — это отдельное хранилище формул
-(в Homebrew такое называется tap; полное имя хранилища — `digitable-lol/homebrew-tap`).
-`brew` подключит его сам при первой установке, отдельная команда `brew tap` не
-нужна. Исходник формулы лежит здесь, в `packaging/homebrew/`; в tap он
-выкладывается при выпуске.
+Первая часть имени — `digitable-lol/tap` — отдельное хранилище формул
+(в Homebrew такое называется tap; полное имя хранилища —
+`digitable-lol/homebrew-tap`). `brew` подключит его сам, отдельная команда
+`brew tap` не нужна.
+
+Исходник формулы лежит здесь, в
+[`packaging/homebrew/ouroboros.rb`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/homebrew/ouroboros.rb);
+в tap он выкладывается при выпуске. Формула ставит пакет в собственное окружение
+Python и выносит наружу обе команды.
 
 Обновление и удаление — как у любой формулы:
 
@@ -45,107 +79,154 @@ brew upgrade ouroboros
 brew uninstall ouroboros
 ```
 
-## Способ 2. asdf
+## Способ 3. asdf
 
 `asdf` держит рядом несколько версий одного инструмента и переключает их по
 файлу `.tool-versions` в проекте.
 
 ```sh
-asdf plugin add ouroboros
-asdf install ouroboros latest
+asdf plugin add ouroboros https://github.com/digitable-lol/ouroboros.git
+asdf install ouroboros 0.2.0
+asdf set ouroboros 0.2.0
 ```
 
-Закрепить версию за проектом — записать её в файл `.tool-versions` рядом с
-исходниками. В asdf 0.16 и новее это `asdf set ouroboros latest`, в более
-старых — `asdf local ouroboros latest`.
+Версии берутся с тегов хранилища, поэтому `asdf list all ouroboros` работает
+сразу. В asdf старее 0.16 последняя строка пишется как
+`asdf local ouroboros 0.2.0`.
 
-> **Короткое имя `ouroboros` заработает не сразу.** По короткому имени `asdf`
-> ищет плагин в общем списке плагинов, и попасть туда — отдельный шаг после
-> выпуска. Пока плагин ставится по явному адресу того хранилища, в которое он
-> опубликован:
->
-> ```sh
-> asdf plugin add ouroboros <адрес хранилища плагина>
-> ```
->
-> Исходник плагина лежит здесь, в `packaging/asdf/`, но `asdf` ждёт `bin/` в
-> **корне** хранилища — поэтому при выпуске эти файлы выкладываются отдельным
-> хранилищем (`digitable-lol/asdf-ouroboros`), а не ставятся из этого напрямую.
+> **Про короткое имя.** `asdf plugin add ouroboros` без адреса ищет плагин в
+> общем списке плагинов asdf; попасть туда — отдельный шаг, который ещё не
+> сделан. До тех пор адрес хранилища указывают явно, как выше.
 
-Устройство плагина и что в нём осталось проставить —
+Устройство плагина —
 [`packaging/asdf/README.md`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/asdf/README.md).
 
-## Способ 3. Из исходников
-
-Сервер (`ouroboros-src`) в это хранилище пока **не перенесён** — здесь лежат
-документация и навык. Когда исходники окажутся у вас на машине, отдельной сборки
-им не нужно: сервер запускается прямо из своего каталога через `uv` — это
-запускатель Python-программ, который сам ставит зависимости в отдельное
-окружение.
+## Способ 4. Из исходников
 
 ```sh
-uv run --directory <путь>/ouroboros-src ouroboros-mcp-router
+git clone https://github.com/digitable-lol/ouroboros
+cd ouroboros
+uv sync
 ```
 
-`<путь>` — куда вы положили каталог сервера. Эта же строка стоит в настройке
-ниже: агент запускает сервер ровно так.
+Дальше либо через `uv run`:
+
+```sh
+uv run ouroboros languages
+uv run ouroboros-mcp        # сервер MCP через обычный ввод-вывод
+```
+
+либо проверить всё разом:
+
+```sh
+scripts/qa.sh
+```
+
+```
+== ruff (lint, ouroboros + tests) ==
+All checks passed!
+== mypy (strict, ouroboros) ==
+Success: no issues found in 24 source files
+== pytest ==
+............................................sss...ssss.s................ [ 43%]
+........................................................................ [ 86%]
+.......................                                                  [100%]
+159 passed, 8 skipped in 13.30s
+== all gates passed ==
+```
+
+Восемь пропущенных — проверки `clang-tidy` и `clangd`; они пропускаются, если
+этих программ нет на машине.
+
+## Один файл-программа и образ
+
+Кроме этого, пакет собирается в **один самодостаточный файл** (PyInstaller,
+около 47 МБ, Python на машине не нужен) и в **образ со всеми языками сразу**.
+Оба способа расписаны в
+[`packaging/README.md`](https://github.com/digitable-lol/ouroboros/blob/main/packaging/README.md):
+
+```sh
+uv run pyinstaller packaging/ouroboros.spec --noconfirm
+./dist/ouroboros languages
+```
+
+```sh
+docker build -t ouroboros-logger -f packaging/Dockerfile .
+docker run --rm -i ouroboros-logger
+```
 
 ## Подключить сервер MCP
 
-Уроборос разговаривает с ИИ-агентом по обычному порядку подключения внешних
-инструментов — MCP. Настройка из навыка, **дословно**:
+Это нужно, только если вы хотите, чтобы инструментом пользовался ИИ-агент. Для
+работы руками достаточно команды `ouroboros`.
+
+После установки через uv, Homebrew или asdf команда `ouroboros-mcp` лежит на
+`PATH`, и настройка короткая:
+
+```json
+{ "mcpServers": { "ouroboros": { "type": "stdio", "command": "ouroboros-mcp" } } }
+```
+
+Если работаете из исходников и ставить ничего не хотите:
 
 ```json
 { "mcpServers": { "ouroboros": {
     "type": "stdio", "command": "uv",
-    "args": ["run", "--directory", "<path>/ouroboros-src", "ouroboros-mcp-router"] } } }
+    "args": ["run", "--directory", "<путь к хранилищу>", "ouroboros-mcp"] } } }
 ```
 
-Разбор полей:
-
-| поле | что значит |
-|---|---|
-| `mcpServers` | список внешних инструментов, которые агент вправе звать |
-| `ouroboros` | имя, под которым он будет виден агенту |
-| `"type": "stdio"` | разговор идёт через обычный ввод-вывод запущенного процесса |
-| `"command": "uv"` | чем запускать |
-| `--directory <path>/ouroboros-src` | где лежит сервер; `<path>` подставляете свой |
-| `ouroboros-mcp-router` | что именно запускается |
+Ровно такая настройка лежит в хранилище в файле
+[`.mcp.json`](https://github.com/digitable-lol/ouroboros/blob/main/.mcp.json) —
+Claude Code подхватывает её из корня проекта сам.
 
 ### Куда положить этот кусок
 
-**Навык места не называет** — он говорит только «зарегистрируйте рядом с
-остальными серверами Digit». Место у каждого клиента своё, и каждый называет его
-в своей документации:
-
 | клиент | где обычно лежит |
 |---|---|
-| Claude Code | `.mcp.json` в корне проекта — эта настройка едет вместе с хранилищем и достаётся всей команде |
+| Claude Code | `.mcp.json` в корне проекта — едет вместе с хранилищем и достаётся всей команде |
 | Cursor | `.cursor/mcp.json` в проекте или `~/.cursor/mcp.json` для всех проектов сразу |
 | любой другой клиент | свой файл настроек внешних инструментов; смотрите его документацию |
 
-Строение блока при этом одно и то же: имя сервера, `type`, `command`, `args`.
-Если ваш клиент ждёт настройку без внешнего `mcpServers` — оставьте внутренность.
+Строение блока одно и то же: имя сервера, `type`, `command`, при необходимости
+`args`. Если ваш клиент ждёт настройку без внешнего `mcpServers` — оставьте
+внутренность.
 
 ### Проверить, что подключилось
 
-Спросите у агента список доступных ему инструментов. Должны появиться три —
-`ouroboros_capabilities`, `ouroboros_describe`, `ouroboros_invoke`. Именно три, а
-не девятнадцать: почему так, объяснено в [Начале работы](getting-started.md).
+Спросите у агента список доступных ему инструментов. Должно появиться
+**семнадцать** имён, начиная с `wrap_file`, `read_trace` и `trace_stats`. Полный
+список и что каждый делает — [Чтобы ИИ понимал, как код исполняется](with-ai.md).
+
+Проверить сервер без агента можно и руками — он разговаривает обычным JSON-RPC
+через ввод-вывод:
+
+```sh
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' \
+ | ouroboros-mcp
+```
+
+```json
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.27.2"}}}
+```
+
+> Число `1.27.2` в `serverInfo` — это версия библиотеки MCP, а не версия
+> уробороса. Так её проставляет сама библиотека; версия инструмента лежит в
+> `pyproject.toml` и сейчас равна `0.2.0`.
 
 ## Переменные среды
 
 | переменная | что делает |
 |---|---|
-| `OUROBOROS_DEBUG_INFO` | путь к файлу записей `debug.info`; его подставляет `execute` при запуске |
+| `OUROBOROS_DEBUG_INFO` | путь к файлу записей. Не задана — записи идут в `./debug.info` рядом с рабочим каталогом. `ouroboros execute` подставляет её сам |
+| `OUROBOROS_MCP_TRANSPORT` | как сервер MCP разговаривает: `stdio` (по умолчанию), `sse` или `streamable-http`. Другое значение — сервер откажется запускаться и скажет, какие бывают |
 
-Других переменных навык не называет.
-
-> `FLANG_WATCH` и `FLANG_PULSE` со страницы [Языки](languages.md) — это переменные
-> исполняющей машины flang, а не уробороса. К обмазке они отношения не имеют.
+Больше переменных у инструмента нет
+([`ouroboros/runtime.py:52`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L52),
+[`ouroboros/mcp/server.py:770`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L770)).
 
 ## Дальше
 
+- [Начало работы](getting-started.md) — все команды и порядок работы
 - [Прологировать чужой код](trace-existing-code.md) — первый настоящий прогон по шагам
-- [Чтобы ИИ понимал, как код исполняется](with-ai.md) — если ставили ради агента
-- [Границы](limits.md) — прочитать до того, как из трассы вырастет спецификация
+- [Границы](limits.md) — прочитать до того, как из трассы вырастут выводы

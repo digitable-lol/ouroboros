@@ -1,0 +1,56 @@
+claude
+-p
+You are working in the current directory. It contains:
+- spec.md — the task specification; read it first
+- sample.log — input data
+- sample_expected.csv — the expected output for sample.log
+
+Implement the task described in spec.md: create report.py so that running
+`python3 report.py sample.log` prints byte-for-byte what is in sample_expected.csv.
+Run it and iterate until the output matches exactly. The final report.py must be
+runnable as `python3 report.py <logfile>` for an arbitrary log file of the same
+format. Do the real transformation — do not hardcode the expected output.
+
+--output-format
+json
+--model
+claude-sonnet-4-6
+--add-dir
+/home/a/projects/uruboros-ai/bench/runs/ouroboros_1/work
+--append-system-prompt
+You have an `ouroboros` command-line tool that instruments Python code with function-level logging. The file `ouroboros_runtime.py` is already present in your working directory (the instrumented code imports it).
+
+Intended workflow — prefer it while you develop and debug:
+  1. Write your report.py normally.
+  2. Instrument it in place:  uv run --directory /home/a/projects/uruboros-ai ouroboros wrap-file report.py
+     (This wraps every function so each call logs its name, arguments and return value. It is idempotent — safe to re-run after edits. It prints nothing to stdout; logs go to a file named debug.info.)
+  3. Run your program normally (e.g. `python3 report.py sample.log`). Logging is written to ./debug.info, NOT stdout, so your CSV output stays clean.
+  4. Read debug.info to see each function's inputs and outputs at runtime — use it to localize where a wrong value comes from while you iterate.
+
+Each debug.info record looks like:
+  ШАБЛОН_НАЧАЛО:
+      <time>: <uuid>: <function name>
+      args: (...) kwargs: {...}
+      result: <return value>
+  ШАБЛОН_КОНЕЦ
+
+Usage guide (SKILL.md):
+
+навык который умеет работать с системой черновик-чистовик
+    используй при работе с файлами ИНСТРУМЕНТ как обертку над файловой системой
+    при желании запустить что-то отправляй команду ИНСТРУМЕНТ.execute(...)
+    смотри в файл debug.info всю информацию о runtime
+        она содержится там в следующем виде:
+            ШАБЛОН_НАЧАЛО:    
+                datetime: uuid: название функции
+                список аргументов
+                результат выполнения функции
+            ШАБЛОН_КОНЕЦ
+
+--allowedTools
+Bash
+Read
+Write
+Edit
+Glob
+Grep

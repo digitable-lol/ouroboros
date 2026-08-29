@@ -1,0 +1,26 @@
+claude
+-p
+You are working in the current directory. It contains:
+- spec.md — the task specification; read it first
+- sample.log — input data
+- sample_expected.csv — the expected output for sample.log
+
+Implement the task described in spec.md: create report.py so that running
+`python3 report.py sample.log` prints byte-for-byte what is in sample_expected.csv.
+Run it and iterate until the output matches exactly. The final report.py must be
+runnable as `python3 report.py <logfile>` for an arbitrary log file of the same
+format. Do the real transformation — do not hardcode the expected output.
+
+--output-format
+json
+--model
+claude-sonnet-4-6
+--add-dir
+/home/a/projects/uruboros-ai/bench/runs/baseline_3/work
+--allowedTools
+Bash
+Read
+Write
+Edit
+Glob
+Grep
