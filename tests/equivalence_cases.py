@@ -280,6 +280,12 @@ console.log(f());
 };
 o.v = 9; console.log(o.v);
 ''',
+    'non_bmp_characters': '''// \U0001F600 above the function
+function pick() {
+  return "\U0001F600 tail";
+}
+console.log(pick());
+''',
 }
 
 JAVASCRIPT: tuple[Case, ...] = tuple(
