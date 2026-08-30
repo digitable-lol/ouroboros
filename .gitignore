@@ -24,3 +24,6 @@ debug.info
 .probe-work/
 .coverage.json
 .trace-help-work/
+
+# Слепок падения BEAM: остаётся от прогонов Elixir, 11 МБ в корне.
+erl_crash.dump
