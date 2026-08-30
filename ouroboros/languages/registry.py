@@ -12,6 +12,7 @@ import os
 from .base import Transformer
 from .c_lang import CTransformer
 from .cpp_lang import CppTransformer
+from .csharp_lang import CSharpTransformer
 from .elixir_lang import ElixirTransformer
 from .go_lang import GoTransformer
 from .java_lang import JavaTransformer
@@ -28,6 +29,7 @@ _TRANSFORMERS: list[Transformer] = [
     ElixirTransformer(),
     GoTransformer(),
     JavaTransformer(),
+    CSharpTransformer(),
 ]
 
 _BY_EXT: dict[str, Transformer] = {}

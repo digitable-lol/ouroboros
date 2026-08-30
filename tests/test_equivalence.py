@@ -17,6 +17,7 @@ sink never collides between the two runs.
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import subprocess
@@ -44,7 +45,42 @@ _TOOLCHAIN = {
     # Java fits neither template: it compiles a whole directory of .java files
     # (the program plus the runtime helper) and runs a class name, not a file.
     "java": ("javac", None),
+    # C# is driven through a project file, not handed a source file.
+    "csharp": ("dotnet", None),
 }
+
+#: A minimal project for the C# cases. ``AllowUnsafeBlocks`` is on because one of
+#: them is about pointers, and a project switch is not what that case is testing.
+#:
+#: ``PathMap`` rewrites the source path .NET bakes into the debug information to a
+#: fixed string. Without it an unhandled exception prints the directory the copy
+#: happened to be built in, and the plain and wrapped copies live in different
+#: directories *by this suite's own design* — so the traces differed by their own
+#: path and by nothing else. The line numbers, which are the part that must
+#: match, stay exactly as they were.
+_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>{framework}</TargetFramework>
+    <AssemblyName>app</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PathMap>$(MSBuildProjectDirectory)=/case</PathMap>
+  </PropertyGroup>
+</Project>
+"""
+
+_DOTNET_ENV = {"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"}
+
+
+@functools.cache
+def _dotnet_framework() -> str:
+    """``netN.0`` for the installed SDK, rather than pinning the one this was
+    written against."""
+    proc = subprocess.run(["dotnet", "--version"], capture_output=True, text=True,
+                          timeout=TIMEOUT, check=True)
+    return f"net{proc.stdout.strip().split('.')[0]}.0"
 
 
 def _compile_argv(case: Case, *, wrapped: bool) -> list[str] | None:
@@ -109,6 +145,16 @@ def _execute(case: Case, root, *, wrapped: bool):
     'the wrapped copy no longer compiles' shows up as a behaviour difference —
     which is exactly what it is.
     """
+    if case.lang == "csharp":
+        framework = _dotnet_framework()
+        (root / "app.csproj").write_text(_CSPROJ.format(framework=framework),
+                                         encoding="utf-8")
+        rc, out, err = _run(["dotnet", "build", "-c", "Release", "--nologo"], root,
+                            _DOTNET_ENV)
+        if rc != 0:
+            return ("BUILD-FAILED", out, err)
+        return _run([str(root / "bin" / "Release" / framework / "app")], root,
+                    {**_DOTNET_ENV, **_debug_env(root, wrapped)})
     if case.lang == "java":
         sources = sorted(path.name for path in root.glob("*.java"))
         rc, out, err = _run(["javac", "-nowarn", "-d", ".", *sources], root)

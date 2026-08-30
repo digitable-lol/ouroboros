@@ -1178,10 +1178,671 @@ public class Prog {
     }.items()
 )
 
+#: A ``ref struct`` declared in ANOTHER file is the one thing this backend cannot
+#: see (it reads syntax, never resolving a name), so every case here keeps its
+#: types in the one file the wrap is given — which is also how the corpus stays a
+#: corpus of whole programs.
+CSHARP: tuple[Case, ...] = tuple(
+    Case("csharp", name, src, "Program.cs")
+    for name, src in {
+        'basics': r'''using System;
+
+namespace Demo
+{
+    class Outer
+    {
+        class Inner
+        {
+            public int Twice(int n) { return n * 2; }
+        }
+
+        static int Add(int a, int b)
+        {
+            return a + b;
+        }
+
+        static void Shout(string who)
+        {
+            if (who == null) { return; }
+            Console.WriteLine("hello, " + who);
+        }
+
+        static string Pick(bool yes)
+        {
+            if (!yes) { return null; }
+            return "yes";
+        }
+
+        static void Main()
+        {
+            Console.WriteLine(Add(2, 3));
+            Shout("world");
+            Shout(null);
+            Console.WriteLine(Pick(true));
+            Console.WriteLine(Pick(false) == null ? "nothing" : "something");
+            Console.WriteLine(new Inner().Twice(21));
+        }
+    }
+}
+''',
+        'iterator': r'''using System;
+using System.Collections.Generic;
+
+class Program
+{
+    static IEnumerable<int> Evens(int upTo)
+    {
+        for (int i = 0; i <= upTo; i += 2)
+        {
+            yield return i;
+        }
+        yield break;
+    }
+
+    static int Total(IEnumerable<int> xs)
+    {
+        int sum = 0;
+        foreach (int x in xs) { sum += x; }
+        return sum;
+    }
+
+    static void Main()
+    {
+        foreach (int x in Evens(6)) { Console.Write(x); Console.Write(' '); }
+        Console.WriteLine();
+        Console.WriteLine(Total(Evens(10)));
+    }
+}
+''',
+        'outparam': r'''using System;
+
+class Program
+{
+    static bool TryHalve(int n, out int half, out string note)
+    {
+        if (n % 2 != 0)
+        {
+            half = 0;
+            note = "odd";
+            return false;
+        }
+        half = n / 2;
+        note = "even";
+        return true;
+    }
+
+    static void Main()
+    {
+        int half;
+        string note;
+        Console.WriteLine(TryHalve(8, out half, out note));
+        Console.WriteLine(half + " " + note);
+        Console.WriteLine(TryHalve(7, out half, out note));
+        Console.WriteLine(half + " " + note);
+    }
+}
+''',
+        'async': r'''using System;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task<int> Doubled(int n)
+    {
+        await Task.Yield();
+        return n * 2;
+    }
+
+    static async Task Announce(string what)
+    {
+        await Task.Yield();
+        Console.WriteLine("got " + what);
+        if (what.Length == 0) { return; }
+        Console.WriteLine("length " + what.Length);
+    }
+
+    static async ValueTask<string> Label(int n)
+    {
+        await Task.Yield();
+        return "n=" + n;
+    }
+
+    static async Task Main()
+    {
+        Console.WriteLine(await Doubled(21));
+        await Announce("news");
+        Console.WriteLine(await Label(5));
+    }
+}
+''',
+        'exprbody': r'''using System;
+
+class Program
+{
+    static int Square(int x) => x * x;
+
+    static void Say(string s) => Console.WriteLine("say " + s);
+
+    static string Never() => throw new NotSupportedException("never");
+
+    static int Sum(int a, int b) => a + b;
+
+    static void Main()
+    {
+        Console.WriteLine(Square(7));
+        Say("hi");
+        Console.WriteLine(Sum(20, 22));
+        try {
+            Never();
+        } catch (NotSupportedException e) { Console.WriteLine("caught " + e.Message); }
+    }
+}
+''',
+        'localfn': r'''using System;
+
+class Program
+{
+    static int Compute(int n)
+    {
+        int Helper(int k)
+        {
+            if (k <= 0) { return 0; }
+            return k + Helper(k - 1);
+        }
+        if (n < 0) { return -1; }
+        return Helper(n);
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(Compute(4));
+        Console.WriteLine(Compute(-3));
+    }
+}
+''',
+        'lambda': r'''using System;
+using System.Collections.Generic;
+
+class Program
+{
+    static int Apply(Func<int, int> f, int x)
+    {
+        return f(x);
+    }
+
+    static Func<int, int> MakeAdder(int by)
+    {
+        return delegate(int x) { return x + by; };
+    }
+
+    static void Main()
+    {
+        Func<int, int> triple = x => { return x * 3; };
+        Console.WriteLine(Apply(triple, 5));
+        Console.WriteLine(Apply(MakeAdder(10), 5));
+        List<int> xs = new List<int> { 3, 1, 2 };
+        xs.Sort((a, b) => { return a - b; });
+        Console.WriteLine(string.Join(",", xs));
+    }
+}
+''',
+        'ctorbase': r'''using System;
+
+class Animal
+{
+    protected readonly string Name;
+
+    public Animal(string name)
+    {
+        Name = name;
+    }
+
+    public virtual string Speak()
+    {
+        return Name + " makes a sound";
+    }
+}
+
+class Dog : Animal
+{
+    private readonly int _legs;
+
+    public Dog(string name) : this(name, 4)
+    {
+        Console.WriteLine("dog ctor one arg");
+    }
+
+    public Dog(string name, int legs) : base(name)
+    {
+        _legs = legs;
+    }
+
+    public override string Speak()
+    {
+        return Name + " barks on " + _legs + " legs";
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        Console.WriteLine(new Dog("rex").Speak());
+        Console.WriteLine(new Animal("cow").Speak());
+    }
+}
+''',
+        'boom': r'''using System;
+
+class Program
+{
+    static int Divide(int a, int b)
+    {
+        return a / b;
+    }
+
+    static void Detonate()
+    {
+        throw new InvalidOperationException("boom");
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(Divide(10, 2));
+        Console.Error.WriteLine("about to fail");
+        Detonate();
+        Console.WriteLine("never printed");
+    }
+}
+''',
+        'emoji': r'''using System;
+
+class Program
+{
+    // 🙂 an emoji here shifts every later UTF-16 offset by one
+    static string Wrap(string s)
+    {
+        return "«" + s + "»";
+    }
+
+    /* 𝔘𝔫𝔦𝔠𝔬𝔡𝔢 outside the basic plane, in a block comment 🚀🚀 */
+    static int Length(string s)
+    {
+        return s.Length;
+    }
+
+    static void Main()
+    {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.WriteLine(Wrap("привет"));
+        Console.WriteLine(Length("🙂"));
+        Console.WriteLine(Wrap("🚀 полёт"));
+    }
+}
+''',
+        'generics': r'''using System;
+using System.Collections.Generic;
+
+class Program
+{
+    static T Bigger<T>(T a, T b) where T : IComparable<T>
+    {
+        if (a.CompareTo(b) >= 0) { return a; }
+        return b;
+    }
+
+    static List<T> Pair<T>(T a, T b)
+    {
+        return new List<T> { a, b };
+    }
+
+    static TValue Lookup<TKey, TValue>(Dictionary<TKey, TValue> map, TKey key)
+    {
+        TValue found;
+        if (map.TryGetValue(key, out found)) { return found; }
+        return default;
+    }
+
+    static void Main()
+    {
+        Console.WriteLine(Bigger(3, 7));
+        Console.WriteLine(Bigger("apple", "pear"));
+        Console.WriteLine(string.Join(",", Pair(1, 2)));
+        Dictionary<string, int> map = new Dictionary<string, int> { { "a", 1 } };
+        Console.WriteLine(Lookup(map, "a"));
+        Console.WriteLine(Lookup(map, "z"));
+    }
+}
+''',
+        'props': r'''using System;
+
+class Counter
+{
+    private int _n;
+    private readonly int[] _slots = new int[4];
+
+    public int Value
+    {
+        get { return _n; }
+        set { _n = value < 0 ? 0 : value; }
+    }
+
+    public string Label
+    {
+        get { return "n=" + _n; }
+    }
+
+    public int this[int i]
+    {
+        get { return _slots[i] + _n; }
+        set { _slots[i] = value; }
+    }
+
+    public void Bump()
+    {
+        Value = Value + 1;
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        Counter c = new Counter();
+        c.Value = 5;
+        c.Bump();
+        Console.WriteLine(c.Value);
+        Console.WriteLine(c.Label);
+        c[2] = 10;
+        Console.WriteLine(c[2]);
+        c.Value = -4;
+        Console.WriteLine(c.Value);
+    }
+}
+''',
+        'refin': r'''using System;
+
+class Program
+{
+    static void Bump(ref int n, in int by)
+    {
+        n = n + by;
+    }
+
+    static int Read(in int n)
+    {
+        return n * 10;
+    }
+
+    static void Swap(ref string a, ref string b)
+    {
+        string t = a;
+        a = b;
+        b = t;
+    }
+
+    static void Main()
+    {
+        int n = 5;
+        int by = 3;
+        Bump(ref n, in by);
+        Console.WriteLine(n);
+        Console.WriteLine(Read(in n));
+        string x = "left";
+        string y = "right";
+        Swap(ref x, ref y);
+        Console.WriteLine(x + " " + y);
+    }
+}
+''',
+        'structops': r'''using System;
+
+struct Vec
+{
+    public readonly int X;
+    public readonly int Y;
+
+    public Vec(int x, int y)
+    {
+        X = x;
+        Y = y;
+    }
+
+    public static Vec operator +(Vec a, Vec b)
+    {
+        return new Vec(a.X + b.X, a.Y + b.Y);
+    }
+
+    public static implicit operator int(Vec v)
+    {
+        return v.X + v.Y;
+    }
+
+    public override string ToString()
+    {
+        return "(" + X + "," + Y + ")";
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        Vec a = new Vec(1, 2);
+        Vec b = new Vec(10, 20);
+        Console.WriteLine(a + b);
+        int flat = a + b;
+        Console.WriteLine(flat);
+    }
+}
+''',
+        'refreturn': r'''using System;
+
+class Box
+{
+    private readonly int[] _cells = new int[4];
+
+    public ref int At(int i)
+    {
+        return ref _cells[i];
+    }
+
+    public int Sum()
+    {
+        int total = 0;
+        foreach (int c in _cells) { total += c; }
+        return total;
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        Box box = new Box();
+        box.At(1) = 41;
+        box.At(2) = 1;
+        Console.WriteLine(box.Sum());
+        Console.WriteLine(box.At(1));
+    }
+}
+''',
+        'unsafeptr': r'''using System;
+
+class Program
+{
+    static unsafe int SumPointer(int* data, int count)
+    {
+        int total = 0;
+        for (int i = 0; i < count; i++) { total += data[i]; }
+        return total;
+    }
+
+    static unsafe int* Nothing()
+    {
+        return null;
+    }
+
+    static int Safe(int a, int b)
+    {
+        return a * b;
+    }
+
+    static unsafe void Main()
+    {
+        int[] xs = new int[] { 1, 2, 3, 4 };
+        fixed (int* p = xs)
+        {
+            Console.WriteLine(SumPointer(p, 4));
+        }
+        Console.WriteLine(Nothing() == null);
+        Console.WriteLine(Safe(6, 7));
+    }
+}
+''',
+        'span': r'''using System;
+
+class Program
+{
+    static int SumSpan(Span<int> xs)
+    {
+        int total = 0;
+        foreach (int x in xs) { total += x; }
+        return total;
+    }
+
+    static ReadOnlySpan<char> FirstThree(string s)
+    {
+        return s.AsSpan(0, 3);
+    }
+
+    static string Plain(string s)
+    {
+        return s.ToUpperInvariant();
+    }
+
+    static void Main()
+    {
+        int[] xs = new int[] { 1, 2, 3, 4, 5 };
+        Console.WriteLine(SumSpan(xs));
+        Console.WriteLine(FirstThree("abcdef").ToString());
+        Console.WriteLine(Plain("done"));
+    }
+}
+''',
+        'exprprop': r'''using System;
+
+class Gauge
+{
+    private int _raw = 7;
+
+    public int Doubled => _raw * 2;
+
+    public int this[int i] => _raw + i;
+
+    public int Raw
+    {
+        get { return _raw; }
+        set { _raw = value; }
+    }
+
+    public string Describe() => "raw=" + _raw + " doubled=" + Doubled;
+}
+
+class Program
+{
+    static void Main()
+    {
+        Gauge g = new Gauge();
+        Console.WriteLine(g.Doubled);
+        Console.WriteLine(g[3]);
+        g.Raw = 10;
+        Console.WriteLine(g.Raw);
+        Console.WriteLine(g.Describe());
+    }
+}
+''',
+        'misc': r'''using System;
+using System.Collections.Generic;
+
+interface IGreeter
+{
+    string Name { get; }
+
+    string Greet()
+    {
+        return "hello from " + Name;
+    }
+}
+
+record Point(int X, int Y)
+{
+    public int Manhattan()
+    {
+        return Math.Abs(X) + Math.Abs(Y);
+    }
+}
+
+class Registry : IGreeter
+{
+    private static readonly List<string> Known;
+
+    static Registry()
+    {
+        Known = new List<string> { "one", "two" };
+    }
+
+    private EventHandler _changed;
+
+    public event EventHandler Changed
+    {
+        add { _changed += value; }
+        remove { _changed -= value; }
+    }
+
+    public string Name
+    {
+        get { return "registry"; }
+    }
+
+    public List<string> All()
+    {
+        return Known;
+    }
+
+    public int[] Empty()
+    {
+        return null;
+    }
+
+    public void Fire()
+    {
+        if (_changed == null) { return; }
+        _changed(this, EventArgs.Empty);
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        Registry r = new Registry();
+        Console.WriteLine(((IGreeter)r).Greet());
+        Console.WriteLine(string.Join(",", r.All()));
+        Console.WriteLine(r.Empty() == null);
+        r.Changed += (s, e) => { Console.WriteLine("changed"); };
+        r.Fire();
+        Console.WriteLine(new Point(-3, 4).Manhattan());
+    }
+}
+''',
+    }.items()
+)
+
 #: The corpus the acceptance number is quoted against: every one of these
 #: programs must behave identically wrapped and unwrapped. It was 79 programs
 #: across five languages before Go was added.
-CASES: tuple[Case, ...] = PYTHON + JAVASCRIPT + C + CPP + ELIXIR + GO + JAVA
+CASES: tuple[Case, ...] = PYTHON + JAVASCRIPT + C + CPP + ELIXIR + GO + JAVA + CSHARP
 
 #: Kept separate from CASES so the historical "16 of 79" stays comparable. Same
 #: programs, ES-module extension.

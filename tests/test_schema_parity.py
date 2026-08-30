@@ -1,8 +1,8 @@
 """Record-schema parity across all six backends.
 
 SPEC.md is only worth something if every backend writes the *same* record for
-the same call. Seven hand-written sinks (Python, JavaScript, C, C++, Elixir,
-Go, Java)
+the same call. Eight hand-written sinks (Python, JavaScript, C, C++, Elixir,
+Go, Java, C#)
 that must agree byte for byte drift silently: nothing fails, the traces just stop
 being comparable, and a cross-language question like "show me every call longer
 than a millisecond" quietly returns the wrong set.
@@ -24,6 +24,7 @@ Fields split into three groups:
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -54,16 +55,18 @@ _X_TYPE = {"python": "ValueError", "javascript": "Error",
            # Go has no exception type: the panic value's own type stands in, and
            # `panic("bad")` panics with a string.
            "go": "string",
-           "java": "java.lang.IllegalArgumentException"}
+           "java": "java.lang.IllegalArgumentException",
+           "csharp": "System.ArgumentException"}
 
 #: What each backend calls the function under test. `fn` is a *dialect* field
 #: (SPEC.md §2): the qualified-name form is each language's own. Six of the seven
 #: can declare a top-level `add`, so it was written as a fixed field until Java —
 #: where a method has to live in a class — showed that it never was one.
 _ADD = {"python": "add", "javascript": "add", "c": "add", "cpp": "add",
-        "elixir": "add", "go": "add", "java": "Prog.add"}
+        "elixir": "add", "go": "add", "java": "Prog.add", "csharp": "Prog.add"}
 _TICK = {"python": "tick", "javascript": "tick", "c": "tick", "cpp": "tick",
-         "elixir": "tick", "go": "tick", "java": "Prog.tick"}
+         "elixir": "tick", "go": "tick", "java": "Prog.tick",
+         "csharp": "Prog.tick"}
 
 
 def _sources(lang: str) -> tuple[str, str, str]:
@@ -128,6 +131,22 @@ def _sources(lang: str) -> tuple[str, str, str]:
             "Prog.java",
             "",
         )
+    if lang == "csharp":
+        # Like Java: no top level to append a driver to, so the driver is part of
+        # the source and is instrumented with it.
+        return (
+            "using System;\n"
+            "class Prog {\n"
+            "    static int add(int a, int b) { return a + b; }\n"
+            '    static int boom() { throw new ArgumentException("bad"); }\n'
+            "    static void Main() {\n"
+            "        add(2, 3);\n"
+            "        try { boom(); } catch (ArgumentException) { }\n"
+            "    }\n"
+            "}\n",
+            "Prog.cs",
+            "",
+        )
     raise AssertionError(lang)
 
 
@@ -148,6 +167,31 @@ def _instrument(lang: str, root, src: str, fname: str, tail: str) -> str | None:
         code = f'Code.require_file("{asset[0]}")\n' + code
     root.joinpath(fname).write_text(code + tail, encoding="utf-8")
     return None if asset is None else asset[0]
+
+
+#: A minimal project file. C# is the one backend that cannot be handed a bare
+#: source file: the compiler is driven through a project.
+_CSPROJ = """<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>{framework}</TargetFramework>
+    <AssemblyName>app</AssemblyName>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+</Project>
+"""
+
+_DOTNET_ENV = {**os.environ, "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"}
+
+
+@functools.cache
+def dotnet_major() -> int:
+    """Major version of the installed .NET SDK, so the target framework is not
+    pinned to whichever one this was written on."""
+    out = subprocess.run(["dotnet", "--version"], capture_output=True, text=True,
+                         timeout=TIMEOUT, check=True).stdout.strip()
+    return int(out.split(".")[0])
 
 
 def _build(lang: str, root, fname: str, asset_name: str | None) -> list[str]:
@@ -176,6 +220,13 @@ def _build(lang: str, root, fname: str, asset_name: str | None) -> list[str]:
         subprocess.run(["javac", "-nowarn", "-d", ".", *sources], cwd=root,
                        check=True, capture_output=True, timeout=TIMEOUT)
         return ["java", "-cp", ".", fname.removesuffix(".java")]
+    if lang == "csharp":
+        framework = f"net{dotnet_major()}.0"
+        (root / "app.csproj").write_text(_CSPROJ.format(framework=framework),
+                                         encoding="utf-8")
+        subprocess.run(["dotnet", "build", "-c", "Release", "--nologo"], cwd=root,
+                       check=True, capture_output=True, timeout=TIMEOUT, env=_DOTNET_ENV)
+        return [str(root / "bin" / "Release" / framework / "app")]
     return {"python": [sys.executable], "javascript": ["node"],
             "elixir": ["elixir"]}[lang] + [fname]
 
@@ -206,7 +257,7 @@ def _records(lang: str, root) -> list[dict]:
 
 
 _TOOL = {"python": None, "javascript": "node", "c": "gcc", "cpp": "g++",
-         "elixir": "elixir", "go": "go", "java": "javac"}
+         "elixir": "elixir", "go": "go", "java": "javac", "csharp": "dotnet"}
 _LANGS = tuple(_TOOL)
 
 
@@ -298,6 +349,14 @@ def _long_call_lines(lang: str, root) -> list[str]:
         tail = (f"\nint main(void) {{ many({args}); return 0; }}\n" if lang == "c"
                 else f"\nint main() {{ many({args}); }}\n")
         fname = "prog.c" if lang == "c" else "prog.cpp"
+    elif lang == "csharp":
+        sparams = ", ".join(f"string a{i}" for i in range(30))
+        src = (f"class Prog {{\n"
+               f'    static string many({sparams}) {{ return "{big}"; }}\n'
+               f"    static void Main() {{ many({args}); }}\n"
+               f"}}\n")
+        tail = ""
+        fname = "Prog.cs"
     elif lang == "java":
         jparams = ", ".join(f"String a{i}" for i in range(30))
         src = (f"public class Prog {{\n"
@@ -346,7 +405,7 @@ def test_reported_duration_excludes_the_sinks_own_write(lang: str, tmp_path) -> 
 #: in each language. Tuned by measurement, not by guess: the medians they produce
 #: are well inside the window the clock test asserts.
 _SPIN = {"python": 3000, "javascript": 60000, "c": 150000, "cpp": 150000,
-         "elixir": 20000, "go": 150000, "java": 200000}
+         "elixir": 20000, "go": 150000, "java": 200000, "csharp": 200000}
 
 
 def _tick_program(lang: str, calls: int) -> tuple[str, str, str]:
@@ -372,6 +431,13 @@ def _tick_program(lang: str, calls: int) -> tuple[str, str, str]:
                  f" for (int i=0;i<{calls};i++) v=tick(v); }}\n"
                  "}\n",
                  ""),
+        "csharp": ("Prog.cs",
+                   "class Prog {\n"
+                   "    static int tick(int a){ return a + 1; }\n"
+                   f"    static void Main() {{ int v=0;"
+                   f" for (int i=0;i<{calls};i++) v=tick(v); }}\n"
+                   "}\n",
+                   ""),
     }
     return progs[lang]
 
@@ -402,6 +468,14 @@ def _spin_program(lang: str, calls: int) -> tuple[str, str, str]:
                 f"defmodule M do\n  def tick(a), do:"
                 f" Enum.reduce(1..{n}, a, fn i, s -> s + i end)\nend\n",
                 f"\nEnum.reduce(1..{calls}, 0, fn _, v -> M.tick(v) end)\n")
+    if lang == "csharp":
+        return ("Prog.cs",
+                "class Prog {\n"
+                f"    static long tick(long a){{ long s = a;"
+                f" for (long i = 0; i < {n}; i++) s += i; return s; }}\n"
+                f"    static void Main() {{ long v=0;"
+                f" for (int i=0;i<{calls};i++) v=tick(v); }}\n"
+                "}\n", "")
     if lang == "java":
         return ("Prog.java",
                 "public class Prog {\n"
