@@ -118,7 +118,7 @@ are counted as `malformed`.
   and immediately rethrows can, and leaves control flow unchanged.
 - **Parameter NAMES are not recorded, in any language.** `a` carries values only
   (`"2, 3"`), because that is what the table above says it is, and the split
-  between `a` and `k` is the thing that lets one schema describe five languages.
+  between `a` and `k` is the thing that lets one schema describe six languages.
   C, C++ and Elixir build the record at wrap time, where the signature is parsed
   and the names ARE known, and earlier wrote `"a=2, b=3"` into `a`; that made
   those three disagree with Python and JS about what the field means, and the

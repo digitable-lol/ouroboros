@@ -10,7 +10,7 @@ needs only a C compiler on the host (which anyone instrumenting C has anyway).
 
 ```bash
 uv run pyinstaller packaging/ouroboros.spec --noconfirm
-./dist/ouroboros languages              # -> python, javascript, c, cpp, elixir
+./dist/ouroboros languages              # -> python, javascript, c, cpp, elixir, go
 ./dist/ouroboros mcp                     # MCP server over stdio
 echo 'int add(int a,int b){return a+b;}' | ./dist/ouroboros wrap-snippet -l c
 ```
@@ -24,6 +24,10 @@ echo 'int add(int a,int b){return a+b;}' | ./dist/ouroboros wrap-snippet -l c
 | C++      | needs `g++`/`clang++` on the host (include-path discovery + compile) |
 | JS/TS    | needs `node` on the host |
 | Elixir   | needs `elixir`/`erlang` on the host |
+| Go       | needs `go` on the host to wrap as well as to `execute`: the range
+             emitter is a Go program built at first use, and go/parser ships
+             with the toolchain rather than with us. Set `OUROBOROS_GO_EMITTER`
+             to a prebuilt emitter to skip the build. |
 
 Use this for a lightweight, easy-to-ship **Python+C edition**, or as the engine
 on a host that already has the other toolchains. MCP client config:
@@ -35,7 +39,9 @@ on a host that already has the other toolchains. MCP client config:
 ## B. Full multi-language image (`packaging/Dockerfile`)
 
 Every toolchain baked in (node+@babel, clang/libclang+gcc/g++, erlang+elixir+mix,
-git) so all five backends and `execute` work out of the box.
+golang-go, git) so all six backends and `execute` work out of the box. Verified
+by building the image and, inside it, wrapping / building / running a Go program
+end to end on Debian's Go 1.19.8.
 
 ```bash
 docker build -t ouroboros-logger -f packaging/Dockerfile .

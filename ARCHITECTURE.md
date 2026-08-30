@@ -53,7 +53,8 @@ Each new language is an external JSON helper + a thin `Transformer`:
 
 1. Write a small **range-emitter** in the native ecosystem (node/`@babel/parser`
    for JS/TS, `_clang/emitter.c` over libclang for C and C++, real
-   `Code.string_to_quoted` for Elixir, Roslyn for C#) that reads source on stdin
+   `Code.string_to_quoted` for Elixir, `_go/emitter.go` over `go/parser` for Go,
+   Roslyn for C#) that reads source on stdin
    and prints function-header / return byte-ranges as JSON on stdout. This is the
    Elixir-port-friendly shape: the core only orchestrates detect → ranges →
    splice → log. Every backend shipped today has one, so no backend holds a
@@ -64,7 +65,10 @@ Each new language is an external JSON helper + a thin `Transformer`:
    the wrap loop both share, and each language supplies only the text it injects.
 3. Ship a runtime helper (the language's analogue of `ouroboros_runtime.py`)
    that appends the exact [SPEC.md](SPEC.md) `ШАБЛОН` block to
-   `OUROBOROS_DEBUG_INFO`. **Not** via stdout.
+   `OUROBOROS_DEBUG_INFO`. **Not** via stdout. If the language resolves siblings
+   by directory rather than by import — Go does — the helper has to be told
+   which package it is joining: override `runtime_asset_for(source)` instead of
+   `runtime_asset()`, and the callers that hold the wrapped text will use it.
 4. Register it in `registry.py`.
 
 ## Status
@@ -108,6 +112,20 @@ Each new language is an external JSON helper + a thin `Transformer`:
   raises/throws/exits caught). Validated by compile+run incl. a hard module
   (multiple clauses, guards, default args, `defp`, raise). Compile-order: the
   trace module must be compiled before any module that `use`s it.
+- **Go**: complete end-to-end (`go_lang.py`). The parser ships with the language,
+  so `_go/emitter.go` over `go/parser` needs nothing installed beyond a Go
+  toolchain; it is built once per machine into the user's cache
+  (`OUROBOROS_GO_EMITTER` points at a prebuilt one instead). Instrumentation is a
+  `defer`red closure at the top of each body plus **named results** in the
+  signature, so no `return` is rewritten and `return f()` forwarding several
+  results needs no special case. There is no import line at all: the helper
+  (`_go/ouroboros_runtime.go`) is a file of the same package, which is why a
+  `//go:build` constraint and a package doc comment stay exactly where the
+  language requires them. The closure `recover()`s to name the panic and then
+  re-panics, so an UNCAUGHT panic prints `[recovered, repanicked]` on stderr
+  where the plain program printed one `panic:` line — exit status, stdout and
+  every recovered panic are unchanged. Function literals are skipped, the Go
+  analogue of skipping Python lambdas.
 - **C#**: not yet wired (dotnet 10 SDK present at `~/.dotnet`).
 
 C and C++ talk to libclang **out of process**, through one native range emitter
@@ -128,9 +146,9 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->742<!--/state--> tests,
+Suite: <!--state:tests-->835<!--/state--> tests,
 <!--state:coverage_percent-->99<!--/state-->% coverage (statements **and**
-branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir
+branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go
 (all by compile+run where applicable). MCP tools declared by the server:
 <!--state:mcp_tools-->17<!--/state-->.
 
@@ -153,11 +171,11 @@ no amount of work on the untested part could have produced it.
 That ceiling has since been passed, because the parts it was computed over were
 tested rather than argued about. At 100% of statements and branches: `clangtools/`
 (all three modules), `treeflags.py`, `toolchain.py`, `mcp/server.py`, `sandbox/`,
-`cli.py`, `trace.py`, `registry.py`, and the JavaScript, Elixir and Python
+`cli.py`, `trace.py`, `registry.py`, and the JavaScript, Elixir, Go and Python
 backends.
 
 Named honestly, what is left — <!--state:uncovered_units-->15<!--/state-->
-uncovered statement-and-branch units out of <!--state:total_units-->3068<!--/state-->:
+uncovered statement-and-branch units out of <!--state:total_units-->3323<!--/state-->:
 
 | where | uncovered units | why |
 | --- | --- | --- |

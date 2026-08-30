@@ -16,12 +16,14 @@ title: Установка
 | `g++` или `clang++` | чтобы обмазать и собрать C++ |
 | Node | чтобы обмазать и запустить JavaScript и TypeScript |
 | `elixir` | чтобы собрать и запустить Elixir |
+| `go` | чтобы обмазать, собрать и запустить Go |
 | `clang-tidy`, `clangd` | только для команд `lint`, `symbols`, `refs`, `callers`, `describe` |
 
 `libclang` (разбор C и C++) ставится вместе с пакетом — это его зависимость,
 отдельно доставлять не надо. Разбор JavaScript и TypeScript тоже уложен внутрь:
 `@babel/parser` лежит в самом пакете, `npm install` не нужен, нужен только сам
-`node`.
+`node`. Разбору Go не нужно ничего стороннего: `go/parser` входит в саму поставку
+языка, поэтому `go` нужен уже на обмазывании, а не только на сборке.
 
 Разбор C и C++ вынесен в отдельную маленькую программу на C. Она собирается один
 раз на машине при первом обмазывании и кладётся в кэш пользователя, поэтому
@@ -169,7 +171,7 @@ asdf list all ouroboros
 с теми же именами на машине.
 
 Проверено прогоном на asdf 0.20.0 при выпуске
-<!--state:version-->0.3.1<!--/state-->: `plugin add` по адресу выше, `list all`
+<!--state:version-->0.4.0<!--/state-->: `plugin add` по адресу выше, `list all`
 (печатает `0.2.0`, `0.2.1`, `0.3.0` и `0.3.1`), `install` — после чего наружу вынесены
 ровно два имени, а поставленный `ouroboros` обмазал настоящий файл, файл
 запустился и дал тот же вывод, что до обмазки, и записи прочитались: пять
@@ -292,7 +294,7 @@ printf '%s\n' \
 > Число в `serverInfo` — это версия библиотеки MCP, а не версия уробороса. Так
 > её проставляет сама библиотека, поэтому у вас будет та, которая приехала при
 > установке; в прогоне выше это `1.29.1`. Версия самого инструмента лежит в
-> `pyproject.toml` и сейчас равна `<!--state:version-->0.3.1<!--/state-->`.
+> `pyproject.toml` и сейчас равна `<!--state:version-->0.4.0<!--/state-->`.
 
 ## Переменные среды
 
@@ -303,7 +305,7 @@ printf '%s\n' \
 
 Больше переменных у инструмента нет
 ([`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62),
-[`ouroboros/mcp/server.py:886`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L886)).
+[`ouroboros/mcp/server.py:894`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L894)).
 
 ## Дальше
 

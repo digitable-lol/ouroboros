@@ -96,7 +96,8 @@ int add(int a, int b) {
 
 Способ обмазки у каждого языка свой: у Python — надстройка над функцией, у C —
 `__attribute__((cleanup))`, у C++ — сторож области видимости, у JavaScript —
-`try/finally`, у Elixir — переопределение `def`. Записи при этом одинаковые.
+`try/finally`, у Elixir — переопределение `def`, у Go — `defer` и именованные
+возвраты. Записи при этом одинаковые.
 [Языки](languages.md), [design/example.md](https://github.com/digitable-lol/ouroboros/blob/main/design/example.md).
 
 ### Прочитать записи
@@ -189,7 +190,8 @@ printf 'def broken(:\n    return 1\n' | ouroboros write /srv/tmp/разбор ba
 
 Код возврата 1, файла в черновике нет, записи в истории нет. Разбор делает
 родной для языка разборщик — `ast` у Python, libclang у C и C++, `@babel/parser`
-у JavaScript, `Code.string_to_quoted` у Elixir, — так что отдельного проверяльщика
+у JavaScript, `Code.string_to_quoted` у Elixir, `go/parser` у Go, — так что
+отдельного проверяльщика
 кода не нужно: не разобралось — значит испорчено
 ([`ouroboros/languages/base.py:18`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/languages/base.py#L18)).
 

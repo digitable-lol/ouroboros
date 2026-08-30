@@ -1,6 +1,6 @@
 [project]
 name = "ouroboros-logger"
-version = "0.3.1"
+version = "0.4.0"
 description = "Ouroboros-Logger: guaranteed function-level logging instrumentation for AI-authored code, exposed over MCP."
 readme = "README.md"
 requires-python = ">=3.12"

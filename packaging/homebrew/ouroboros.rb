@@ -33,9 +33,11 @@ class Ouroboros < Formula
   #
   #   libclang       — приходит зависимостью самого пакета, отдельно не нужен;
   #   @babel/parser  — лежит внутри пакета, npm install не нужен;
+  #   go/parser      — входит в поставку языка Go, отдельно не нужен;
   #   llvm, node,    — нужны, только чтобы СОБРАТЬ и ЗАПУСТИТЬ обмазанный код на
   #   elixir           C/C++, JavaScript и Elixir. Тянуть их каждому, кто ставит
   #                    инструмент ради Python, неправильно. См. caveats ниже.
+  #   go             — нужен и чтобы ОБМАЗАТЬ Go: разбор идёт его же средствами.
   def install
     # Пакет ставится в собственное окружение, наружу выносятся только его
     # команды — ouroboros и ouroboros-mcp.
@@ -69,6 +71,7 @@ class Ouroboros < Formula
         brew install llvm      # clang-tidy и clangd — для команд lint/symbols/refs/callers/describe
         brew install node      # запустить обмазанный JavaScript и TypeScript
         brew install elixir    # запустить обмазанный Elixir
+        brew install go        # обмазать, собрать и запустить Go
       Компилятор C и C++ берётся системный.
 
       Страницы: https://digitable-lol.github.io/ouroboros/

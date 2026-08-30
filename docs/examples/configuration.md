@@ -83,7 +83,7 @@ references          call_hierarchy   describe_symbol
 Где они читаются:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 и
-[`ouroboros/mcp/server.py:886`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L886).
+[`ouroboros/mcp/server.py:894`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L894).
 
 Пример: положить записи не рядом с программой, а в отдельный файл.
 
@@ -100,6 +100,7 @@ OUROBOROS_DEBUG_INFO=/путь/разбор.jsonl python3 stats.py
 | `g++` или `clang++` | обмазать и собрать C++ |
 | Node | обмазать и запустить JavaScript и TypeScript |
 | `elixir` | собрать и запустить Elixir |
+| `go` | обмазать, собрать и запустить Go |
 | `clang-tidy`, `clangd` | только для `lint`, `symbols`, `refs`, `callers`, `describe` |
 
 `libclang` и `@babel/parser` уложены внутрь пакета: доставлять их отдельно не
