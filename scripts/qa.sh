@@ -45,6 +45,13 @@ uv run python scripts/state_numbers.py
 echo "== слова со смешанными алфавитами =="
 uv run python scripts/check_no_mixed_script.py
 
+# Имена команд в рецепте Homebrew и в плагине asdf выглядят правдоподобно и
+# глазами не проверяются: в рецепте однажды стояла строка
+# assert_path_exists bin/"ouroboros-mcp-router" — имени, которого не было никогда.
+# Сверяется с [project.scripts] и с разборщиком командной строки.
+echo "== имена в упаковке =="
+uv run python scripts/check_packaging_names.py
+
 # Таблица полей записи в docs/languages.md печатается прогоном пяти языков.
 # Она однажды стала ложью от правки в обработчиках, а не в странице: см.
 # scripts/schema_facts.py.
