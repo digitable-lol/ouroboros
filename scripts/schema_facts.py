@@ -38,7 +38,7 @@ MARK = re.compile(
 #: Как называть языки в таблице.
 TITLES = {"python": "Python", "javascript": "JavaScript",
           "c": "C", "cpp": "C++", "elixir": "Elixir",
-          "go": "Go", "java": "Java"}
+          "go": "Go", "java": "Java", "csharp": "C#"}
 
 
 def measure() -> dict[str, Any]:

@@ -188,6 +188,26 @@ else
 	echo "== Java пропущен: нет javac"; echo
 fi
 
+# --------------------------------------------------------------------- C# ----
+if command -v dotnet >/dev/null 2>&1; then
+	echo "== C#"
+	D="$WORK/csharp"; mkdir -p "$D/plain" "$D/wrapped"
+	FW="net$(dotnet --version | cut -d. -f1).0"
+	for V in plain wrapped; do
+		cp "$SAMPLES/Add.cs" "$D/$V/Add.cs"
+		sed "s|net10\\.0|$FW|" "$SAMPLES/add.csproj" > "$D/$V/add.csproj"
+	done
+	ouroboros wrap-file "$D/wrapped/Add.cs"
+	cp ouroboros/languages/_csharp/OuroborosRuntime.cs "$D/wrapped/"
+	(cd "$D/plain"   && DOTNET_NOLOGO=1 dotnet build -c Release --nologo -v q >/dev/null)
+	(cd "$D/wrapped" && DOTNET_NOLOGO=1 dotnet build -c Release --nologo -v q >/dev/null)
+	measure "csharp-без" "$REPEATS" -               "$D/plain"   -- "$D/plain/bin/Release/$FW/add"   "$CALLS"
+	measure "csharp-с"   "$REPEATS" "$D/debug.info" "$D/wrapped" -- "$D/wrapped/bin/Release/$FW/add" "$CALLS"
+	echo
+else
+	echo "== C# пропущен: нет dotnet"; echo
+fi
+
 # ------------------------------------------------- глубина рекурсии Python ---
 echo "== глубина рекурсии в Python"
 D="$WORK/deep"; mkdir -p "$D"

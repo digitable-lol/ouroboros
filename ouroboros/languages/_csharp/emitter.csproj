@@ -1,0 +1,38 @@
+<!--
+  Build file for the Ouroboros C# range emitter.
+
+  Roslyn is NOT a download: Microsoft.CodeAnalysis[.CSharp].dll live inside the
+  installed .NET SDK, under <sdk root>/<version>/Roslyn/bincore. The directory is
+  deliberately NOT written here. csharp_lang.py locates it from the SDK list
+  `dotnet` prints and passes it in as the RoslynBinCore property, so this file
+  stays correct on a machine with a different SDK version or install prefix.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(OuroTargetFramework)</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>ouro_cs_emitter</AssemblyName>
+    <RootNamespace>Ouroboros.Emitter</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Emitter.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>$(RoslynBinCore)/Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>$(RoslynBinCore)/Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
