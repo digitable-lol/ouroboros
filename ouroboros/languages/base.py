@@ -157,3 +157,20 @@ class Transformer(ABC):
         helpers must emit the same ``debug.info`` schema (see SPEC.md)."""
 
         return None
+
+    def runtime_asset_for(self, source: str) -> tuple[str, str] | None:
+        """The runtime helper as it must look when placed beside ``source``.
+
+        Identical to :meth:`runtime_asset` for every language whose helper is
+        the same file wherever it lands — which is four of the six. Go is not
+        one of them: it has no file-scoped import of a sibling file, so its
+        helper joins the wrapped file's *package* and has to declare that
+        package's name, which only the source can supply. A helper whose package
+        clause disagrees with the file beside it does not compile, and nothing
+        else in the tree would notice.
+
+        Every caller that holds the wrapped text should use this one; the bare
+        :meth:`runtime_asset` is for callers that do not.
+        """
+
+        return self.runtime_asset()
