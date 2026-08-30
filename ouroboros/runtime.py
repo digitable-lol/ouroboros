@@ -135,10 +135,8 @@ def _bounded(obj: dict[str, Any]) -> str:
     obj = dict(obj)
     trimmed: set[str] = set()
     budget = MAX_RECORD_BYTES - 64  # headroom for the ellipsis markers added below
-    # Two ways out, and both of them happen: the record fits, or there is
-    # nothing shrinkable left (a qualified name alone over the ceiling — see
-    # _emit_entry, which never touches fn/id/t). Halving strictly shortens the
-    # longest field every pass, so the second exit is always reached.
+    # Both ways out happen: the record fits, or nothing shrinkable is left (a
+    # qualified name alone over the ceiling). Halving always reaches the second.
     while any(obj.get(name) for name in _SHRINKABLE):
         field = max(_SHRINKABLE, key=lambda name: len(obj.get(name, "")))
         value = obj.get(field, "")
