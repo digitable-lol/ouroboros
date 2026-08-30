@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import inspect
 import json
+import os
 import re
 
 import pytest
@@ -418,3 +419,43 @@ def test_the_name_wins_when_nothing_else_can_be_cut(debug_info):
     # that says something was there. `k` was empty all along and is left alone.
     assert entry["a"] == runtime._ELLIPSIS and entry["k"] == ""
     assert len(runtime._encode(entry).encode("utf-8")) > runtime.MAX_RECORD_BYTES
+
+
+# --------------------------------------------------------------------------- #
+# The `ci` field.
+#
+# `os.sched_getcpu` is Linux-only and even there the interpreter exposes it only
+# if it was built against a libc that offers it — the interpreter this is
+# measured on does not, so the reading path below never runs here. It runs on
+# the machines the traces are collected on, which is why it is pinned with the
+# call supplied rather than left to whatever the host happens to have.
+# --------------------------------------------------------------------------- #
+
+def test_the_cpu_the_call_ran_on_reaches_the_record(debug_info, monkeypatch):
+    monkeypatch.setattr(os, "sched_getcpu", lambda: 3, raising=False)
+
+    @runtime.log
+    def f():
+        return 1
+
+    f()
+
+    assert _lines(debug_info)[0]["ci"] == 3
+
+
+def test_a_refused_cpu_reading_is_recorded_as_unknown(debug_info, monkeypatch):
+    """The reading is a syscall and may fail (a CPU hot-unplugged under the
+    thread, a seccomp policy). Losing the column is acceptable; taking the
+    traced program down with an OSError raised from inside the logger is not."""
+
+    def refuse():
+        raise OSError("sched_getcpu refused")
+
+    monkeypatch.setattr(os, "sched_getcpu", refuse, raising=False)
+
+    @runtime.log
+    def f():
+        return 1
+
+    assert f() == 1                                   # the call itself survives
+    assert _lines(debug_info)[0]["ci"] == -1          # and the column reads unknown
