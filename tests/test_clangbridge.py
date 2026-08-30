@@ -386,6 +386,35 @@ def test_libclang_search_reports_absence_rather_than_guessing(monkeypatch):
         libclang_library.cache_clear()
 
 
+def test_a_libclang_name_that_is_not_a_shared_object_is_walked_past(monkeypatch, tmp_path):
+    """The system search takes the highest-numbered match first, and not every
+    name matching the pattern is a library. Removing an llvm package leaves a
+    dangling `libclang-20.so.1` symlink behind; a directory can carry the same
+    name. Either one opens as nothing, and the failure would land in the range
+    emitter at parse time, far from the choice that caused it. The search has to
+    walk past both to the copy that is really there."""
+
+    real = tmp_path / "libclang-18.so.1"
+    real.write_bytes(b"")                                             # a real file
+    (tmp_path / "libclang-19.so.1").mkdir()                           # a directory
+    (tmp_path / "libclang-20.so.1").symlink_to(tmp_path / "removed")  # dangling symlink
+    candidates = sorted(tmp_path.glob("libclang-*.so.1"))
+    assert len(candidates) == 3                                       # all three do match
+
+    monkeypatch.setattr(clangbridge.sys, "path", [])                  # no wheel copy
+    monkeypatch.setattr(clangbridge.Path, "glob",
+                        lambda _self, pattern: iter(candidates)
+                        if pattern == "usr/lib/*/libclang-*.so.*" else iter(()))
+    libclang_library.cache_clear()
+    try:
+        found = libclang_library()
+    finally:
+        monkeypatch.undo()
+        libclang_library.cache_clear()
+
+    assert found == str(real)     # not the newer two, which are not shared objects
+
+
 # --------------------------------------------------------------------------- #
 # the vendored libclang declarations, held to the real header
 # --------------------------------------------------------------------------- #
