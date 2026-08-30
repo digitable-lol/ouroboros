@@ -171,6 +171,23 @@ else
 	echo "== Go пропущен: нет go"; echo
 fi
 
+# ------------------------------------------------------------------- Java ----
+if command -v javac >/dev/null 2>&1; then
+	echo "== Java"
+	D="$WORK/java"; mkdir -p "$D/plain" "$D/wrapped"
+	cp "$SAMPLES/Add.java" "$D/plain/Add.java"
+	cp "$SAMPLES/Add.java" "$D/wrapped/Add.java"
+	ouroboros wrap-file "$D/wrapped/Add.java"
+	cp ouroboros/languages/_java/OuroborosRuntime.java "$D/wrapped/"
+	(cd "$D/plain" && javac -nowarn -d . Add.java)
+	(cd "$D/wrapped" && javac -nowarn -d . Add.java OuroborosRuntime.java)
+	measure "java-без" "$REPEATS" -               "$D/plain"   -- java -cp "$D/plain"   Add "$CALLS"
+	measure "java-с"   "$REPEATS" "$D/debug.info" "$D/wrapped" -- java -cp "$D/wrapped" Add "$CALLS"
+	echo
+else
+	echo "== Java пропущен: нет javac"; echo
+fi
+
 # ------------------------------------------------- глубина рекурсии Python ---
 echo "== глубина рекурсии в Python"
 D="$WORK/deep"; mkdir -p "$D"
