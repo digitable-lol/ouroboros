@@ -126,7 +126,37 @@ Each new language is an external JSON helper + a thin `Transformer`:
   where the plain program printed one `panic:` line — exit status, stdout and
   every recovered panic are unchanged. Function literals are skipped, the Go
   analogue of skipping Python lambdas.
-- **C#**: not yet wired (dotnet 10 SDK present at `~/.dotnet`).
+- **Java**: complete end-to-end (`java_lang.py`, `try/catch/finally` splice).
+  The range emitter (`_java/Emitter.java`) is the compiler that already ships
+  inside the JDK — `javax.tools` + `com.sun.source` — so the parser costs no
+  download at all; the emitter itself is built once per machine into the user's
+  cache (`OUROBOROS_JAVA_EMITTER` points at a prebuilt one instead). Methods and
+  constructors with a body are wrapped; a constructor's entry text goes AFTER its
+  explicit `super()`/`this()` call, which the JLS requires to stay first. Returns
+  go through a temp declared with the member's own return type
+  (`return (__ouro_result = expr)`), not through a generic helper: a generic
+  helper infers its type argument from the argument rather than from the method
+  and stops compiling on `char f() { return 65; }`. No import is spliced — the
+  helper (`_java/OuroborosRuntime.java`) is named in full — so the file header is
+  never touched. No inserted text contains a newline, so line numbers, and hence
+  stack traces, are unchanged. Lambdas and anonymous-class bodies are not wrapped
+  themselves and their `return`s are not attributed to the enclosing method.
+  Validated by javac compile + run.
+- **C#**: complete end-to-end (`csharp_lang.py`, `try/catch/finally` splice).
+  The range emitter (`_csharp/Emitter.cs`) uses Roslyn taken from inside the
+  installed .NET SDK — located from `dotnet --list-sdks`, never a hard-coded
+  path, and nothing is downloaded; the target framework is derived from the SDK
+  too, so a machine whose newest SDK is 9 still builds it. Expression bodies
+  (`int M() => e;`) are expanded into blocks without reprinting the expression.
+  Five kinds of member are left alone because wrapping them does not compile —
+  iterators (CS1626), `ref` returns (CS8150), pointers (CS0306), `ref struct`
+  types (CS9244) and expression-bodied properties — and each is reported as a
+  warning rather than silently skipped. `out` parameters are kept but left out of
+  the entry snapshot (CS0269). Rethrow is a bare `throw;` so the exception keeps
+  its original throw site. Known hole: a `ref struct` declared in a DIFFERENT
+  file of the same project is invisible to a syntax-only parse, and a member
+  using one is wrapped into code that does not build. Validated by dotnet build
+  + run.
 
 C and C++ talk to libclang **out of process**, through one native range emitter
 (`_clang/emitter.c`) shared by both: it parses, and prints body ranges, parameter
@@ -146,9 +176,9 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->835<!--/state--> tests,
+Suite: <!--state:tests-->991<!--/state--> tests,
 <!--state:coverage_percent-->99<!--/state-->% coverage (statements **and**
-branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go
+branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
 (all by compile+run where applicable). MCP tools declared by the server:
 <!--state:mcp_tools-->17<!--/state-->.
 
@@ -175,7 +205,7 @@ tested rather than argued about. At 100% of statements and branches: `clangtools
 backends.
 
 Named honestly, what is left — <!--state:uncovered_units-->15<!--/state-->
-uncovered statement-and-branch units out of <!--state:total_units-->3323<!--/state-->:
+uncovered statement-and-branch units out of <!--state:total_units-->3690<!--/state-->:
 
 | where | uncovered units | why |
 | --- | --- | --- |
