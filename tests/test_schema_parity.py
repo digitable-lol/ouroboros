@@ -103,37 +103,71 @@ def _sources(lang: str) -> tuple[str, str, str]:
     raise AssertionError(lang)
 
 
-def _records(lang: str, root) -> list[dict]:
-    src, fname, tail = _sources(lang)
+def _instrument(lang: str, root, src: str, fname: str, tail: str) -> str | None:
+    """Wrap ``src``, drop the language's runtime helper beside it, save both.
+
+    Returns the helper's filename, which the Go build needs on its command line.
+    """
     tx = transformer_for_language(lang)
     code = tx.wrap_source(src, filename=fname).code
-    asset = tx.runtime_asset()
+    # `runtime_asset_for`, not the bare `runtime_asset`: the Go helper joins the
+    # wrapped file's package and only the wrapped source can say which one.
+    asset = tx.runtime_asset_for(code)
     if asset is not None:
         root.joinpath(asset[0]).write_text(asset[1], encoding="utf-8")
     if lang == "elixir":
+        assert asset is not None
         code = f'Code.require_file("{asset[0]}")\n' + code
     root.joinpath(fname).write_text(code + tail, encoding="utf-8")
+    return None if asset is None else asset[0]
 
-    debug = root / "debug.info"
-    env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug)}
+
+def _build(lang: str, root, fname: str, asset_name: str | None) -> list[str]:
+    """Build where the language needs it; return the argv that runs the program.
+
+    Split from running on purpose: a test that starts the same program several
+    times must not pay for a compile between the runs, and one of them depends on
+    the runs landing close together in time.
+    """
     if lang == "go":
         # The Go helper is a sibling file of the same package, not an import, so
         # it is named on the build command line rather than resolved from the
         # source. `go build` also wants its flags ahead of the file list.
-        subprocess.run(["go", "build", "-o", "prog.bin", fname, asset[0]], cwd=root,
+        subprocess.run(["go", "build", "-o", "prog.bin", fname, asset_name], cwd=root,
                        check=True, capture_output=True, timeout=TIMEOUT)
-        argv = ["./prog.bin"]
-    elif lang in ("c", "cpp"):
+        return ["./prog.bin"]
+    if lang in ("c", "cpp"):
         cc = ["gcc", "-std=gnu11"] if lang == "c" else ["g++", "-std=c++17"]
         subprocess.run([*cc, fname, "-o", "prog.bin"], cwd=root, check=True,
                        capture_output=True, timeout=TIMEOUT)
-        argv = ["./prog.bin"]
-    else:
-        argv = {"python": [sys.executable], "javascript": ["node"],
-                "elixir": ["elixir"]}[lang] + [fname]
+        return ["./prog.bin"]
+    return {"python": [sys.executable], "javascript": ["node"],
+            "elixir": ["elixir"]}[lang] + [fname]
+
+
+def _run_built(argv: list[str], root, sink) -> None:
     subprocess.run(argv, cwd=root, check=True, capture_output=True,
-                   env=env, timeout=TIMEOUT)
-    return [json.loads(ln) for ln in debug.read_text(encoding="utf-8").splitlines() if ln.strip()]
+                   env={**os.environ, "OUROBOROS_DEBUG_INFO": str(sink)},
+                   timeout=TIMEOUT)
+
+
+def _trace_lines(lang: str, root, src: str, fname: str, tail: str,
+                 sink_name: str = "debug.info") -> list[str]:
+    """Instrument, build, run once, and return the raw record lines.
+
+    One copy, used by every test below. There used to be three near-identical
+    copies of this, one per test, and adding a backend meant editing all three —
+    which is how a backend ends up covered by one test and not the others.
+    """
+    asset_name = _instrument(lang, root, src, fname, tail)
+    sink = root / sink_name
+    _run_built(_build(lang, root, fname, asset_name), root, sink)
+    return [ln for ln in sink.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def _records(lang: str, root) -> list[dict]:
+    src, fname, tail = _sources(lang)
+    return [json.loads(ln) for ln in _trace_lines(lang, root, src, fname, tail)]
 
 
 _TOOL = {"python": None, "javascript": "node", "c": "gcc", "cpp": "g++",
@@ -212,65 +246,34 @@ def test_records_fit_under_pipe_buf(lang: str, tmp_path) -> None:
 def _long_call_lines(lang: str, root) -> list[str]:
     """Run one call with 30 long arguments and return the raw record lines."""
     big = "y" * 400
+    params = ", ".join(f"a{i}" for i in range(30))
+    args = ", ".join(f'"{big}"' for _ in range(30))
     if lang == "python":
-        params = ", ".join(f"a{i}" for i in range(30))
-        args = ", ".join(f'"{big}"' for _ in range(30))
         src = f"def many({params}):\n    return \"{big}\"\n"
         tail = f"\nmany({args})\n"
         fname = "prog.py"
     elif lang == "javascript":
-        params = ", ".join(f"a{i}" for i in range(30))
-        args = ", ".join(f'"{big}"' for _ in range(30))
         src = f'function many({params}) {{ return "{big}"; }}\n'
         tail = f"many({args});\n"
         fname = "prog.js"
     elif lang in ("c", "cpp"):
-        params = ", ".join(f"const char *a{i}" for i in range(30))
-        args = ", ".join(f'"{big}"' for _ in range(30))
+        cparams = ", ".join(f"const char *a{i}" for i in range(30))
         head = "#include <stdio.h>\n" if lang == "c" else "#include <string>\n"
-        src = f'{head}const char *many({params}) {{ return "{big}"; }}\n'
+        src = f'{head}const char *many({cparams}) {{ return "{big}"; }}\n'
         tail = (f"\nint main(void) {{ many({args}); return 0; }}\n" if lang == "c"
                 else f"\nint main() {{ many({args}); }}\n")
         fname = "prog.c" if lang == "c" else "prog.cpp"
     elif lang == "go":
-        params = ", ".join(f"a{i} string" for i in range(30))
-        args = ", ".join(f'"{big}"' for _ in range(30))
-        src = f'package main\n\nfunc many({params}) string {{ return "{big}" }}\n'
+        gparams = ", ".join(f"a{i} string" for i in range(30))
+        src = f'package main\n\nfunc many({gparams}) string {{ return "{big}" }}\n'
         tail = f"\nfunc main() {{ many({args}) }}\n"
         fname = "prog.go"
     else:
-        params = ", ".join(f"a{i}" for i in range(30))
-        args = ", ".join(f'"{big}"' for _ in range(30))
         src = f'defmodule M do\n  def many({params}), do: "{big}"\nend\n'
         tail = f"\nM.many({args})\n"
         fname = "prog.exs"
 
-    tx = transformer_for_language(lang)
-    code = tx.wrap_source(src, filename=fname).code
-    asset = tx.runtime_asset()
-    if asset is not None:
-        root.joinpath(asset[0]).write_text(asset[1], encoding="utf-8")
-    if lang == "elixir":
-        code = f'Code.require_file("{asset[0]}")\n' + code
-    root.joinpath(fname).write_text(code + tail, encoding="utf-8")
-
-    debug = root / "long.info"
-    env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug)}
-    if lang == "go":
-        subprocess.run(["go", "build", "-o", "long.bin", fname, asset[0]], cwd=root,
-                       check=True, capture_output=True, timeout=TIMEOUT)
-        argv = ["./long.bin"]
-    elif lang in ("c", "cpp"):
-        cc = ["gcc", "-std=gnu11"] if lang == "c" else ["g++", "-std=c++17"]
-        subprocess.run([*cc, fname, "-o", "long.bin"], cwd=root, check=True,
-                       capture_output=True, timeout=TIMEOUT)
-        argv = ["./long.bin"]
-    else:
-        argv = {"python": [sys.executable], "javascript": ["node"],
-                "elixir": ["elixir"]}[lang] + [fname]
-    subprocess.run(argv, cwd=root, check=True, capture_output=True,
-                   env=env, timeout=TIMEOUT)
-    return [ln for ln in debug.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return _trace_lines(lang, root, src, fname, tail, "long.info")
 
 
 @pytest.mark.parametrize("lang", _LANGS)
@@ -296,28 +299,15 @@ def test_reported_duration_excludes_the_sinks_own_write(lang: str, tmp_path) -> 
     assert median < 8e-6, f"{lang}: median reported duration {median * 1e6:.2f} us"
 
 
-@pytest.mark.parametrize("lang", ["c", "cpp"])
-def test_call_ids_differ_between_processes(lang: str, tmp_path) -> None:
-    """Two processes started in the same second must not draw the same call ids.
-
-    SPEC.md lets several processes append to one debug.info, and `id` is the only
-    thing pairing an `in` with its `out`. The C++ helper seeded rand() from the
-    clock alone, so two runs a fraction of a second apart produced the *same*
-    uuid sequence — 20 of 20 pairs collided. Records then pair across processes,
-    and the one thing two records per call exist for (an `in` with no `out` =
-    a call that never returned) stops being visible.
-    """
-    _skip_unless_available(lang)
-    ids = []
-    for run in range(6):
-        d = tmp_path / f"r{run}"
-        d.mkdir()
-        ids.append(_repeated_call_records(lang, d, calls=1)[0]["id"])
-    assert len(set(ids)) == len(ids), f"{lang}: repeated call ids across processes: {ids}"
+#: Turns of a counting loop that make one call last a few hundred microseconds
+#: in each language. Tuned by measurement, not by guess: the medians they produce
+#: are well inside the window the clock test asserts.
+_SPIN = {"python": 3000, "javascript": 60000, "c": 150000, "cpp": 150000,
+         "elixir": 20000, "go": 150000}
 
 
-def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict]:
-    """Run ``tick`` `calls` times in one process and return its records."""
+def _tick_program(lang: str, calls: int) -> tuple[str, str, str]:
+    """(filename, source, tail) for a program calling ``tick`` `calls` times."""
     progs = {
         "python": ("prog.py", "def tick(a):\n    return a + 1\n",
                    f"\nv = 0\nfor _ in range({calls}):\n    v = tick(v)\n"),
@@ -333,30 +323,109 @@ def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict]:
                f"\nfunc main() {{\n\tv := 0\n"
                f"\tfor i := 0; i < {calls}; i++ {{\n\t\tv = tick(v)\n\t}}\n\t_ = v\n}}\n"),
     }
-    fname, src, tail = progs[lang]
-    tx = transformer_for_language(lang)
-    code = tx.wrap_source(src, filename=fname).code
-    asset = tx.runtime_asset()
-    if asset is not None:
-        root.joinpath(asset[0]).write_text(asset[1], encoding="utf-8")
-    if lang == "elixir":
-        code = f'Code.require_file("{asset[0]}")\n' + code
-    root.joinpath(fname).write_text(code + tail, encoding="utf-8")
+    return progs[lang]
 
-    debug = root / "debug.info"
-    env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug)}
-    if lang == "go":
-        subprocess.run(["go", "build", "-o", "tick.bin", fname, asset[0]], cwd=root,
-                       check=True, capture_output=True, timeout=TIMEOUT)
-        argv = ["./tick.bin"]
-    elif lang in ("c", "cpp"):
-        cc = ["gcc", "-std=gnu11"] if lang == "c" else ["g++", "-std=c++17"]
-        subprocess.run([*cc, fname, "-o", "tick.bin"], cwd=root, check=True,
-                       capture_output=True, timeout=TIMEOUT)
-        argv = ["./tick.bin"]
-    else:
-        argv = {"python": [sys.executable], "javascript": ["node"],
-                "elixir": ["elixir"]}[lang] + [fname]
-    subprocess.run(argv, cwd=root, check=True, capture_output=True,
-                   env=env, timeout=TIMEOUT)
-    return [json.loads(ln) for ln in debug.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+def _spin_program(lang: str, calls: int) -> tuple[str, str, str]:
+    """(filename, source, tail) for a program whose `tick` does measurable work."""
+    n = _SPIN[lang]
+    if lang == "python":
+        return ("prog.py",
+                f"def tick(a):\n    s = a\n    for i in range({n}):\n"
+                f"        s += i\n    return s\n",
+                f"\nv = 0\nfor _ in range({calls}):\n    v = tick(v)\n")
+    if lang == "javascript":
+        return ("prog.js",
+                f"function tick(a){{ let s = a; for (let i = 0; i < {n}; i++) s += i;"
+                f" return s; }}\n",
+                f"let v = 0;\nfor (let i = 0; i < {calls}; i++) v = tick(v);\n")
+    if lang in ("c", "cpp"):
+        # `volatile` so the loop is not optimised away into nothing.
+        src = (f"volatile long sink;\nlong tick(long a){{ long s = a;"
+               f" for (long i = 0; i < {n}; i++) s += i; sink = s; return s; }}\n")
+        tail = (f"\nint main(void){{ long v=0; for(int i=0;i<{calls};i++)"
+                f" v=tick(v); return 0; }}\n" if lang == "c"
+                else f"\nint main(){{ long v=0; for(int i=0;i<{calls};i++) v=tick(v); }}\n")
+        return ("prog.c" if lang == "c" else "prog.cpp", src, tail)
+    if lang == "elixir":
+        return ("prog.exs",
+                f"defmodule M do\n  def tick(a), do:"
+                f" Enum.reduce(1..{n}, a, fn i, s -> s + i end)\nend\n",
+                f"\nEnum.reduce(1..{calls}, 0, fn _, v -> M.tick(v) end)\n")
+    return ("prog.go",
+            f"package main\n\nfunc tick(a int) int {{\n\ts := a\n"
+            f"\tfor i := 0; i < {n}; i++ {{\n\t\ts += i\n\t}}\n\treturn s\n}}\n",
+            f"\nfunc main() {{\n\tv := 0\n"
+            f"\tfor i := 0; i < {calls}; i++ {{\n\t\tv = tick(v)\n\t}}\n\t_ = v\n}}\n")
+
+
+@pytest.mark.parametrize("lang", _LANGS)
+def test_the_duration_clock_reads_finer_than_a_millisecond(lang: str, tmp_path) -> None:
+    """`d` must come from a clock with sub-millisecond resolution.
+
+    SPEC.md §2 requires a monotonic clock, and nothing here checked that any
+    backend used one. The failure this catches is the one that has already
+    happened once in this project — reaching for the wall clock — because every
+    handy wall clock is coarse: ``currentTimeMillis``, ``Date.now``,
+    ``:os.system_time(:millisecond)``, ``time()``. A call engineered to take a
+    few hundred microseconds then reports either 0.000000 or exactly 0.001000,
+    and both fall outside the window below. Nothing else notices: the durations
+    stay small and plausible, and a reader comparing two backends is comparing a
+    real measurement against a rounding artefact.
+
+    What this does NOT catch: a *fine-grained* wall clock (Python's
+    ``time.time()``, Go's ``time.Now()``). Those read to the microsecond and look
+    right until the machine's clock is stepped, which no test here can stage.
+    Reading the backend and seeing the monotonic clock named is still the only
+    guard against that one.
+    """
+    _skip_unless_available(lang)
+    fname, src, tail = _spin_program(lang, calls=30)
+    records = [json.loads(ln) for ln
+               in _trace_lines(lang, tmp_path, src, fname, tail)]
+    durations = sorted(r["d"] for r in records
+                       if r["p"] == "out" and r["fn"] == "tick")
+    assert len(durations) == 30
+    median = durations[len(durations) // 2]
+    assert 0 < median < 1e-3, (
+        f"{lang}: median duration {median:.6f} s for a call of a few hundred "
+        f"microseconds — a clock that reads only whole milliseconds"
+    )
+
+
+@pytest.mark.parametrize("lang", _LANGS)
+def test_call_ids_differ_between_processes(lang: str, tmp_path) -> None:
+    """Several processes started back to back must not draw the same call ids.
+
+    SPEC.md lets several processes append to one debug.info, and `id` is the only
+    thing pairing an `in` with its `out`. The C++ helper seeded rand() from the
+    clock alone, so two runs a fraction of a second apart produced the *same*
+    uuid sequence — 20 of 20 pairs collided. Records then pair across processes,
+    and the one thing two records per call exist for (an `in` with no `out` =
+    a call that never returned) stops being visible.
+
+    The program is built ONCE and then started repeatedly, so the runs land
+    within milliseconds of each other. This test used to rebuild between runs,
+    which spaced them a second or more apart — long enough for an id seeded from
+    the clock in whole seconds to draw a different value each time and pass. Fed
+    a deliberately time-seeded id, the old form did not notice; this one does.
+    It also used to run for C and C++ only, though every backend draws ids.
+    """
+    _skip_unless_available(lang)
+    fname, src, tail = _tick_program(lang, calls=1)
+    asset_name = _instrument(lang, tmp_path, src, fname, tail)
+    argv = _build(lang, tmp_path, fname, asset_name)
+    ids = []
+    for run in range(6):
+        sink = tmp_path / f"r{run}.info"
+        _run_built(argv, tmp_path, sink)
+        records = [json.loads(ln) for ln
+                   in sink.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        ids.append(next(r for r in records if r["p"] == "in")["id"])
+    assert len(set(ids)) == len(ids), f"{lang}: repeated call ids across processes: {ids}"
+
+
+def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict]:
+    """Run ``tick`` `calls` times in one process and return its records."""
+    fname, src, tail = _tick_program(lang, calls)
+    return [json.loads(ln) for ln in _trace_lines(lang, root, src, fname, tail)]
