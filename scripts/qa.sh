@@ -51,4 +51,20 @@ uv run python scripts/check_no_mixed_script.py
 echo "== таблица полей записи =="
 uv run python scripts/schema_facts.py
 
+# Сделано — это когда видно снаружи. Сборка страниц идёт на стороне GitHub и об
+# отказе не сообщает никому: 29 августа она упала на разборе docs/_config.yml и
+# сутки отдавала предыдущий слепок — пять языков при шести, выпуск 0.3.0 при
+# 0.4.0, 404 на странице из оглавления. Здесь спрашивается сам сайт по HTTP.
+# Код 2 — до сайта не достучались (нет сети); это не отказ гейта, но и не
+# «всё хорошо»: то же самое ежедневно проверяет .github/workflows/pages-live.yml,
+# где сеть есть всегда.
+echo "== живой сайт отдаёт нынешнее дерево =="
+live_status=0
+uv run python scripts/check_pages_live.py || live_status=$?
+if [ "$live_status" -eq 1 ]; then
+    exit 1
+elif [ "$live_status" -eq 2 ]; then
+    echo "   ВНИМАНИЕ: сайт не опрошен, снаружи не проверено."
+fi
+
 echo "== all gates passed =="
