@@ -9,8 +9,44 @@
 //
 // Usage:  node emitter.js <ext>     where <ext> is one of: js jsx ts tsx mjs cjs
 // Output: {"ok": true, "sourceType": "...", "functions": [...]}  or {"ok": false, "error": "..."}
+//
+// Offsets are CODE POINT offsets, not the UTF-16 indices babel reports. Python
+// indexes str by code point, so handing it a UTF-16 index splices in the wrong
+// place in any file containing a character outside the basic plane — one emoji
+// in a comment above a function is enough to corrupt every later edit and
+// produce a file that no longer parses.
 
 const parser = require("@babel/parser");
+
+// cpBefore[i] = how many code points precede UTF-16 index i. Built once per
+// parse; a per-offset conversion would be quadratic on a large file.
+let cpBefore = null;
+
+function buildCodePointTable(src) {
+  cpBefore = new Int32Array(src.length + 1);
+  let points = 0;
+  for (let i = 0; i < src.length; i++) {
+    cpBefore[i] = points;
+    const code = src.charCodeAt(i);
+    // A surrogate pair is two UTF-16 units and one code point: count the pair
+    // once, at its first unit.
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < src.length) {
+      const next = src.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        i++;
+        cpBefore[i] = points;
+      }
+    }
+    points++;
+  }
+  cpBefore[src.length] = points;
+}
+
+function cp(utf16Index) {
+  if (utf16Index === null || utf16Index === undefined) return utf16Index;
+  const i = Math.max(0, Math.min(utf16Index, cpBefore.length - 1));
+  return cpBefore[i];
+}
 
 const FUNCTION_TYPES = new Set([
   "FunctionDeclaration",
@@ -94,6 +130,7 @@ function main() {
   process.stdin.on("data", (c) => (src += c));
   process.stdin.on("end", () => {
     let ast;
+    buildCodePointTable(src);
     try {
       ast = parser.parse(src, {
         sourceType: "unambiguous",
@@ -128,8 +165,8 @@ function main() {
           // statement; pushing code above it silently drops the function out of
           // strict mode (no error, different semantics).
           entry.hasDirectives = (body.directives || []).length > 0;
-          entry.bodyStart = prologueEnd(body.directives, body.start + 1);
-          entry.bodyEnd = body.end - 1; // the "}" position
+          entry.bodyStart = cp(prologueEnd(body.directives, body.start + 1));
+          entry.bodyEnd = cp(body.end - 1); // the "}" position
         }
         functions.push(entry);
         // recurse with this function as the enclosing scope for returns
@@ -142,10 +179,10 @@ function main() {
       }
 
       if (node.type === "ReturnStatement" && enclosingFn) {
-        const ret = { start: node.start, keywordEnd: node.start + 6 };
+        const ret = { start: cp(node.start), keywordEnd: cp(node.start + 6) };
         if (node.argument) {
-          ret.argStart = node.argument.start;
-          ret.argEnd = node.argument.end;
+          ret.argStart = cp(node.argument.start);
+          ret.argEnd = cp(node.argument.end);
         } else {
           ret.argStart = null;
           ret.argEnd = null;
@@ -171,7 +208,7 @@ function main() {
     // Where a file-level header may be spliced: below the `#!` line (the kernel
     // reads it only from byte 0) and below the file's own directive prologue.
     const interp = ast.program.interpreter;
-    const headerStart = prologueEnd(ast.program.directives, interp ? interp.end : 0);
+    const headerStart = cp(prologueEnd(ast.program.directives, interp ? interp.end : 0));
     process.stdout.write(
       JSON.stringify({ ok: true, sourceType: ast.program.sourceType, headerStart, functions })
     );
