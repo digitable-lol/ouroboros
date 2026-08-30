@@ -176,8 +176,8 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->991<!--/state--> tests,
-<!--state:coverage_percent-->99<!--/state-->% coverage (statements **and**
+Suite: <!--state:tests-->999<!--/state--> tests,
+<!--state:coverage_percent-->100<!--/state-->% coverage (statements **and**
 branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
 (all by compile+run where applicable). MCP tools declared by the server:
 <!--state:mcp_tools-->17<!--/state-->.
@@ -199,42 +199,52 @@ The 91% was 9.5 points above the ceiling, not 25 points above the current state:
 no amount of work on the untested part could have produced it.
 
 That ceiling has since been passed, because the parts it was computed over were
-tested rather than argued about. At 100% of statements and branches: `clangtools/`
-(all three modules), `treeflags.py`, `toolchain.py`, `mcp/server.py`, `sandbox/`,
-`cli.py`, `trace.py`, `registry.py`, and the JavaScript, Elixir, Go and Python
-backends.
+tested rather than argued about. All 29 measured files are at 100% of statements
+and branches: `clangtools/`, `sandbox/`, `mcp/server.py`, `cli.py`, `trace.py`,
+`runtime.py`, and every backend under `languages/` together with its support
+modules.
 
-Named honestly, what is left — <!--state:uncovered_units-->15<!--/state-->
-uncovered statement-and-branch units out of <!--state:total_units-->3690<!--/state-->:
+What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
+statement-and-branch units out of <!--state:total_units-->3683<!--/state-->.
 
-| where | uncovered units | why |
-| --- | --- | --- |
-| `runtime.py` | 6 | unreachable, see below |
-| `languages/cpp_lang.py` | 4 | the C/C++ backends, not analysed unit by unit here |
-| `languages/c_lang.py` | 2 | same |
-| `languages/python_lang.py` | 2 | unreachable, see below |
-| `languages/clangbridge.py` | 1 | same as the backends |
+The last 15 closed in three different ways, and the ways are worth separating,
+because only one of them is "write a test".
 
-The C and C++ backends used to hold 50 of these; moving libclang out of process
-took them to 7, because most of what was uncovered was type-walking code that no
-longer exists. Those 7 are not claimed to be unreachable — they simply have not
-been gone through one at a time.
+**Seven were paths this machine never takes**, in the C and C++ backends
+(`cpp_lang.py` 4, `c_lang.py` 2, `clangbridge.py` 1). Each is reached by
+supplying the answer the host does not give, and each test was shown failing
+with its guard removed:
 
-The other eight ARE unreachable rather than untested, with a reason each:
+- three replies from `g++` about where it looks for system headers that this
+  machine does not produce — a named directory that does not exist, a list not
+  closed by `End of search list.`, and no `g++` on the machine at all;
+- a name matching the libclang search pattern that is not a file: a dangling
+  `libclang-20.so.1` left behind by a removed llvm package, which the search has
+  to step over instead of handing to the parser;
+- a bare `return;` inside a value-returning function, which standalone parsing
+  rejects at the corruption gate but in-tree parsing only records as a leftover
+  remark, so the skip runs there.
 
-- `runtime.py` `_cpu`, five units. `os.sched_getcpu` is Linux-only, and even on
-  Linux the interpreter has it only if it was built against a libc that offers
-  it. Neither CPython on this machine does, so the success path cannot run here.
-  Reaching it would mean substituting `os`, which measures the substitute.
-- `runtime.py` `_bounded`, one unit: the loop that halves the longest field runs
-  at most 64 times. It cannot use them up — halving empties any field in about
-  seventeen passes, and the empty-field `break` fires first. The bound is a
-  guard against a loop that cannot happen.
-- `python_lang.py` `wrap_source`, two units: the newline inserted when the
-  runtime import lands at the very end of a file that has none. The offset lands
-  at the end only when the file is nothing but shebang / coding line / docstring
-  / `__future__` imports — and such a file has no function to wrap, so the guard
-  is never reached from a wrap that does anything.
+**Five were an argument that did not hold.** `runtime.py` `_cpu` reads
+`os.sched_getcpu`, which is Linux-only and present only if the interpreter was
+built against a libc that offers it; neither CPython here has it. This file used
+to say that reaching the success path would mean substituting `os`, which
+measures the substitute. That reasoning was wrong: the path does run on the
+machines traces are collected on, and what lands in `ci` there is worth pinning
+rather than leaving to whatever the host happens to have. Both readings are
+checked now — the CPU index reaching the record, and an `OSError` out of the
+syscall being written as unknown without taking the traced program down with it.
+
+**Three were dead code, and were deleted rather than covered.** `_bounded`
+halved the longest field inside `for _ in range(64)`; the counter can only run
+out on a record with all four shrinkable fields large at once, and no real
+record has more than two of them filled, so that exit was unreachable. The loop
+now asks the question the counter stood in for — is there anything left to
+shrink — and both exits are live and under test. `python_lang.py` `wrap_source`
+carried a clause adding a newline when the runtime import landed at the very end
+of a file that has none; a sweep of 61 880 generated files produced no wrap that
+puts the import there, because everything owning the top of a file must sit
+above the first function. The clause is gone.
 
 Two hiding places were found and removed while measuring this. `mcp/server.py`'s
 `main` carried `# pragma: no cover - run() blocks`; it does not block forever —
