@@ -10,7 +10,7 @@ needs only a C compiler on the host (which anyone instrumenting C has anyway).
 
 ```bash
 uv run pyinstaller packaging/ouroboros.spec --noconfirm
-./dist/ouroboros languages              # -> python, javascript, c, cpp, elixir, go
+./dist/ouroboros languages     # -> python, javascript, c, cpp, elixir, go, java, csharp
 ./dist/ouroboros mcp                     # MCP server over stdio
 echo 'int add(int a,int b){return a+b;}' | ./dist/ouroboros wrap-snippet -l c
 ```
@@ -24,6 +24,12 @@ echo 'int add(int a,int b){return a+b;}' | ./dist/ouroboros wrap-snippet -l c
 | C++      | needs `g++`/`clang++` on the host (include-path discovery + compile) |
 | JS/TS    | needs `node` on the host |
 | Elixir   | needs `elixir`/`erlang` on the host |
+| Java     | needs a JDK on the host to wrap as well as to build: the range
+             emitter is a Java program built at first use, and the parser it
+             uses (javax.tools + com.sun.source) ships inside the JDK |
+| C#       | needs a .NET SDK on the host to wrap as well as to build: the range
+             emitter is a C# program built at first use, and the Roslyn it uses
+             lives inside the SDK |
 | Go       | needs `go` on the host to wrap as well as to `execute`: the range
              emitter is a Go program built at first use, and go/parser ships
              with the toolchain rather than with us. Set `OUROBOROS_GO_EMITTER`
@@ -39,7 +45,7 @@ on a host that already has the other toolchains. MCP client config:
 ## B. Full multi-language image (`packaging/Dockerfile`)
 
 Every toolchain baked in (node+@babel, clang/libclang+gcc/g++, erlang+elixir+mix,
-golang-go, git) so all six backends and `execute` work out of the box. Verified
+golang-go, git) so six of the eight backends and `execute` work out of the box (Java and C# need a JDK and a .NET SDK added to the image). Verified
 by building the image and, inside it, wrapping / building / running a Go program
 end to end on Debian's Go 1.19.8.
 

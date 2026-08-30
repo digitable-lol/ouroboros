@@ -101,6 +101,8 @@ OUROBOROS_DEBUG_INFO=/путь/разбор.jsonl python3 stats.py
 | Node | обмазать и запустить JavaScript и TypeScript |
 | `elixir` | собрать и запустить Elixir |
 | `go` | обмазать, собрать и запустить Go |
+| JDK (`javac`, `java`) | обмазать и собрать Java |
+| .NET SDK (`dotnet`) | обмазать и собрать C# |
 | `clang-tidy`, `clangd` | только для `lint`, `symbols`, `refs`, `callers`, `describe` |
 
 `libclang` и `@babel/parser` уложены внутрь пакета: доставлять их отдельно не
