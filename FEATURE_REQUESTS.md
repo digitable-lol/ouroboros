@@ -21,6 +21,118 @@ the history of what the tools learned to do stays visible.
 
 ---
 
+## Rust as the ninth language
+
+- **Date:** 2026-08-30
+- **Status:** open — reconnaissance done and working, nothing written into this tree yet.
+- **Numbers below:** every one came off a run. The ones marked *(re-measured)* were
+  taken again here, independently of the reconnaissance; the rest are the
+  reconnaissance's own and are attributed where they are used.
+
+**What is already proven.** A 122-line program, 14 functions wrapped, built with no
+warnings, wrapped and unwrapped stdout byte-identical, 27 calls recorded, 0 in
+flight, 0 malformed lines. Checked with our own reader rather than by eye
+*(re-measured)*: `ouroboros trace` on the probe's `debug.info` answers
+`calls_parsed: 27, malformed: 0, in_flight: []`.
+
+### What to take, and where it lies
+
+All of it sits under `/srv/tmp/razvedka-rust/`, **which is scratch space and gets
+wiped — move it into the tree before anything else:**
+
+| piece | file | lines |
+| --- | --- | --- |
+| boundary emitter, on `syn` | `emitter/src/main.rs` | 281 |
+| record helper | `ouroboros_runtime.rs` | 378 |
+| wrapper (locate-then-splice, reuses our `apply_edits`) | `wrap.py` | 93 |
+| 18 hard cases | `trudno/orig.rs` | 132 |
+
+The backend to copy is **Go, not Java or C#**: the Go helper also has to enter
+someone else's tree. Sizes of the two nearest backends, code plus assets plus tests
+*(re-measured)*: Go 1813 lines, C# 2188. Rust should land at 2200–2800 lines across
+13–15 files — C# plus about a quarter.
+
+### The five findings that cost money
+
+1. **Wrapping one file requires editing another.** The helper needs a `mod` line in
+   the crate root (`src/main.rs` or `src/lib.rs`); placed next to the wrapped file
+   it resolves to the wrong path. Wrapping `mnogofailov/src/util.rs` worked only
+   after `#[path = "ouroboros_runtime.rs"] mod __ouro_rt;` was added by hand to
+   `src/main.rs`. **No other backend has this action.** Cost it as its own slice:
+   150–250 lines with the checks — no crate root found, the line is already there,
+   a crate carrying both `main.rs` and `lib.rs`.
+2. **Wrapping a library changes its public face.** The helper's macros carry
+   `#[macro_export]`, which puts them at the crate root and exports them. Shown with
+   a consumer crate: `potrebitel` compiles `bibl::__ouro_repr!(&7i32)`, a macro that
+   did not exist in `bibl` before the wrap. Fix: `pub(crate) use`.
+3. **There is no local time in `std`.** The helper declares `localtime_r` as
+   `extern "C"` and lays out `struct tm` by hand. As it stands it will not build on
+   Windows. Carry that as unknown, not as solved.
+4. **Under `-C panic=abort` there are no completions at all** — entries with no
+   exits. `abort/debug.info` holds 2 entries and 0 exits *(re-measured)*. Document
+   it the way the other languages document their holes.
+5. **The parser does not come in the box.** `syn` sources have to be vendored.
+   Measured here *(re-measured)*: `syn` 2.3 MB, and 3.0 MB with `proc-macro2`,
+   `quote` and `unicode-ident`, all four pinned by the emitter's lockfile. The
+   comparison in the reconnaissance note was wrong in our favour: the vendored
+   `@babel/parser` is 2.0 MB, not 5.3, and the whole vendored `_js` tree is 4.8 MB.
+   So Rust's parser is not cheaper than the JavaScript one — only cheaper than
+   everything we vendor for JavaScript together.
+
+### Known already — do not rediscover
+
+- **Offsets are byte offsets** (`proc_macro2::Span::byte_range`) and Python must
+  slice `bytes`, as it does for C and C++. Checked on characters outside the basic
+  plane: the same offset counted in characters shifts exactly the way JavaScript
+  used to corrupt files.
+- **Gaps a full backend has to close.** Nested functions are not walked. `main` with
+  a tail expression records `r: "()"` where it should record `(no value)`, the way
+  Java, Go and C++ do *(re-measured: `run2/debug.info` shows `"r":"()"` for `main`)*.
+  `const fn` is skipped on purpose — a helper call is not allowed in a const
+  context; the reconnaissance counted 8444 of them in `std`.
+- **`d` means something else for an async function**: it counts from the first poll
+  and includes the idle between polls. A function that yields once around a 50 ms
+  sleep records `d: 0.050` *(re-measured)*. Write that down, do not hide it.
+- **stdout matches byte for byte, stderr does not.** A panic message carries the
+  source file name, so the probe's `orig.rs` and `prog.rs` differ there — but line
+  and column are identical (`93:9`), so the wrap shifts no line numbers. Wrap in
+  place, and pin stderr with a test of its own.
+- **Keep `cargo clippy -- -D warnings` in the set.** The reconnaissance hit a refusal
+  on the helper itself. As the helper now stands both wrapped crates pass clippy
+  *(re-measured, from a clean `target/`)* — the check stays anyway, because the
+  helper lands in other people's crates, where clippy is a gate we do not control.
+
+### Speed
+
+| | Rust | C |
+| --- | --- | --- |
+| per wrapped call, microseconds | 6.3 | 18.6 |
+
+*(re-measured)*: same binaries, 20 003 calls, median of five runs each, both within
+the same minute on this machine. The published C figure is 19.9, so the machine is
+comparable. Rust would be the cheapest of the nine. Parsing one file with `syn`:
+2.6 ms median on the 132-line hard-case file, against the published 322.8 ms for
+Java on a 202-line file — different files, but two orders apart.
+
+### What checks it
+
+`scripts/qa.sh` as it stands, plus `cargo clippy -- -D warnings` on a wrapped crate,
+plus a wrapped-versus-unwrapped byte comparison of **both** stdout and stderr.
+
+### What counts as done
+
+- Ninth language in `ouroboros languages`, wired into the CLI and the MCP server.
+- **100% of statements and branches on the new backend.** Java's and C#'s are at
+  exactly that *(re-measured: all 29 measured files are at 100%)*. Every refusal
+  branch is driven by a test: no `cargo`, the parser fails to build, the parser
+  crashes, the parser prints something that is not JSON, parsing is refused, and
+  every variable of the walk. This is the bulk of the work, not the wrapping.
+- `docs/languages.md` shows Rust beside the other eight, from a real run.
+- `docs/measurements.md` carries a Rust column, measured, not copied from here.
+- `scripts/state_numbers.py --measure` re-run and merged, and
+  `scripts/check_pages_live.py` answering 0 over HTTP.
+- Packaging and the release notes say nine languages.
+
 ## Readable `const char *` arguments in C/C++ traces, without the out-of-bounds read
 
 **What was lost and why.** C and C++ used to print a `const char *` argument as
