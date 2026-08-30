@@ -184,11 +184,13 @@ class PythonTransformer(Transformer):
             # (see _import_offset), but above any decorator inserted at that
             # same offset (a function on the next line): apply_edits keeps
             # same-offset insertions in list order, so it goes to the front.
+            # The offset is always the start of a line, never the end of the
+            # file: everything that owns the top of a file (shebang, coding
+            # line, docstring, __future__) must sit above the first function,
+            # so a file with a function to wrap always has a line left below
+            # the header.
             off = _import_offset(tree, source, starts)
-            text = RUNTIME_IMPORT
-            if off == len(source) and source and not source.endswith("\n"):
-                text = "\n" + RUNTIME_IMPORT  # file has no trailing newline
-            edits.insert(0, Edit(off, off, text))
+            edits.insert(0, Edit(off, off, RUNTIME_IMPORT))
 
         new_code = apply_edits(source, edits)
         return WrapResult(code=new_code, language=self.language, functions_wrapped=wrapped)
