@@ -253,3 +253,14 @@ passing.
     CLI (`lint`, `symbols`), tests in `tests/test_clangtools.py`. QA gate green (ruff +
     mypy-strict + 134 tests). clangd-18 installed on gpu; both verified live on the deployed
     package. (Live `mcp__ouroboros__*` exposes them after the client reconnects.)
+
+## Опыт «помогает ли трасса» на сотнях программ
+
+Расширить опыт с двенадцати программ до сотен, включая длинные, и ответить
+числом, где живёт прибавка от трассы. Готовое задание с картой — где лежит
+инструмент, прежний опыт, набор данных и уже измеренные числа:
+[`scripts/measure/trace-help/scale-up-master-prompt.md`](scripts/measure/trace-help/scale-up-master-prompt.md).
+
+Три угрозы достоверности названы там же и обязаны быть закрыты: заученность
+готовых задач моделями, шаблон генератора, связанность вопросов внутри одной
+программы.
