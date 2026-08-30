@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Снимает замеры по всем пяти языкам заново и печатает таблицы для docs/measurements.md.
+# Снимает замеры по всем шести языкам заново и печатает таблицы для docs/measurements.md.
 #
 # Ни одно число на странице замеров не вписано руками: всё, что там стоит, —
 # вывод этой команды. Прогон занимает пару минут.
@@ -15,7 +15,7 @@
 # Рабочий каталог по умолчанию — ./.measure-work; он стирается в конце.
 # Задайте свой, если хотите разобрать, что получилось.
 #
-# Что нужно на машине: python3, node, gcc, g++, elixir и команда `ouroboros`.
+# Что нужно на машине: python3, node, gcc, g++, elixir, go и команда `ouroboros`.
 # Чего нет — тот язык пропускается с явным сообщением, остальные считаются.
 set -euo pipefail
 
@@ -132,6 +132,43 @@ if command -v elixirc >/dev/null 2>&1; then
 	echo
 else
 	echo "== Elixir пропущен: нет elixirc"; echo
+fi
+
+# --------------------------------------------------------------------- Go ----
+if command -v go >/dev/null 2>&1; then
+	echo "== Go"
+	D="$WORK/go"; mkdir -p "$D"
+	cp "$SAMPLES/add.go" "$D/add.go"
+	cp "$SAMPLES/add.go" "$D/add_plain.go"
+	cp "$SAMPLES/goroutine_id.go" "$D/goroutine_id.go"
+	ouroboros wrap-file "$D/add.go"
+	# Помощник — файл того же пакета, а не ввоз: в сборке его надо назвать.
+	(cd "$D" && go build -o add_plain add_plain.go \
+	          && go build -o add add.go ouroboros_runtime.go \
+	          && go build -o goroutine_id goroutine_id.go)
+	measure "go-без" "$REPEATS" -               "$D" -- "$D/add_plain" "$CALLS"
+	measure "go-с"   "$REPEATS" "$D/debug.info" "$D" -- "$D/add"       "$CALLS"
+	echo "-- во что обходится узнать номер горутины (поле th):"
+	(cd "$D" && ./goroutine_id)
+	# Та же программа с тем же помощником, у которого номер горутины заменён
+	# постоянным числом. Разница двух замеров и есть цена поля th — единственное,
+	# чем Go отличается от прочих языков по расходам на запись.
+	mkdir -p "$D/bez_th"
+	python3 - "$D/ouroboros_runtime.go" "$D/bez_th/ouroboros_runtime.go" <<-'PY'
+		import pathlib, sys
+		src = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+		start = src.index("func _ouroGoroutine() uint64 {")
+		end = src.index("\n}\n", start) + 3
+		stub = "func _ouroGoroutine() uint64 {\n\treturn 1\n}\n"
+		out = (src[:start] + stub + src[end:]).replace('\t"runtime"\n', "")
+		pathlib.Path(sys.argv[2]).write_text(out, encoding="utf-8")
+	PY
+	cp "$D/add.go" "$D/bez_th/add.go"
+	(cd "$D/bez_th" && go build -o add add.go ouroboros_runtime.go)
+	measure "go-без-th" "$REPEATS" "$D/bez_th/debug.info" "$D/bez_th" -- "$D/bez_th/add" "$CALLS"
+	echo
+else
+	echo "== Go пропущен: нет go"; echo
 fi
 
 # ------------------------------------------------- глубина рекурсии Python ---
