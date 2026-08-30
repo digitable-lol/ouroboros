@@ -265,3 +265,17 @@ def test_an_emitter_that_cannot_run_is_named_as_the_reason(tx, monkeypatch, tmp_
 
     with pytest.raises(CorruptedSourceError, match="emitter crashed"):
         tx.wrap_source("function f() { return 1; }\n", filename="m.js")
+
+
+def test_offsets_are_counted_in_code_points_not_utf16(tx):
+    """babel reports UTF-16 indices and Python slices by code point.
+
+    One character outside the basic plane above a function is enough to push
+    every later edit off by one. It did: `return a + 1;` came back as
+    `return (__ouro_result = ( + 1;)) }` — a file that no longer parses, from a
+    file that was fine. Nothing warned; the wrap reported success.
+    """
+    src = '// \U0001F600\nfunction f(a) { return a + 1; }\n'
+    res = tx.wrap_source(src, filename="emoji.js")
+    assert "(__ouro_result = (a + 1))" in res.code
+    assert "// \U0001F600\n" in res.code
