@@ -40,7 +40,7 @@ _EXCLUDE_NAMES = {
 #: Compiled output of the languages the sandbox runs: Python bytecode and BEAM
 #: modules are produced by ``execute``, not authored, so they are not source.
 #: The rest are the other build products measured coming out of the sandbox's
-#: five backends: object files and libraries, Java classes, and the text
+#: six backends: object files and libraries, Java classes, and the text
 #: intermediates ``gcc -save-temps`` leaves behind (``.i``, ``.ii``, ``.s`` —
 #: text, so no content check would ever catch them).
 _EXCLUDE_SUFFIXES = {
@@ -62,7 +62,7 @@ _CORE_DUMP = re.compile(r"\Acore\.\d+\Z")
 #: 246 source files: zero of them are dropped.
 _TEXTUAL_SUFFIXES = {
     ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx",
-    ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".ex", ".exs",
+    ".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".ex", ".exs", ".go",
     ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini",
     ".csv", ".tsv", ".xml", ".html", ".css", ".sh", ".sql", ".rst", ".map",
 }

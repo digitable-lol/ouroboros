@@ -282,7 +282,7 @@ def test_drop_runtime_asset_none_means_no_helper_needed(tmp_path):
     target = tmp_path / "x.nohelper"
     target.write_text("hi", encoding="utf-8")
 
-    assert _drop_runtime_asset(_NoHelperTransformer(), target) is None
+    assert _drop_runtime_asset(_NoHelperTransformer(), target, "hi") is None
     assert list(tmp_path.iterdir()) == [target]   # and nothing was dropped
 
 

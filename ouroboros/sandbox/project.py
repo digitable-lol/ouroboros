@@ -68,7 +68,7 @@ class Project:
         # helper for the language on the first write (see sandbox/crud.py), and
         # `wrap_file` installs one next to the file it wraps, so nothing needs a
         # helper before it exists. Measured: with this removed, first-write plus
-        # execute works for all five backends, and the C output tree loses only
+        # execute works for all six backends, and the C output tree loses only
         # the stray Python file.
         (draft / ".gitignore").write_text(f"{DEBUG_INFO_NAME}\n", encoding="utf-8")
         proj._git("add", "-A")

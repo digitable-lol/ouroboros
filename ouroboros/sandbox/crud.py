@@ -66,7 +66,11 @@ def write_file(project: Project, rel_path: str, content: str) -> WriteOutcome:
     # This also matches what wrap_file already does (`_drop_runtime_asset` writes
     # beside its target), so the two ways into the same tree now agree.
     if tx is not None:
-        asset = tx.runtime_asset()
+        # `runtime_asset_for`, not `runtime_asset`: the Go helper joins the
+        # written file's package instead of being imported, so it has to carry
+        # that package's name. For the other five backends the two answer the
+        # same thing.
+        asset = tx.runtime_asset_for(final_text)
         if asset is not None:
             asset_name, asset_src = asset
             asset_path = target.parent / asset_name

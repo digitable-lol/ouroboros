@@ -101,7 +101,7 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
-def _drop_runtime_asset(tx: Transformer, target: Path) -> str | None:
+def _drop_runtime_asset(tx: Transformer, target: Path, source: str) -> str | None:
     """Place the language's runtime helper next to an IN-PLACE wrapped file so its
     injected ``#include "ouroboros_runtime.h"`` (a quote-include → resolves in the
     file's own directory) actually compiles.
@@ -118,8 +118,14 @@ def _drop_runtime_asset(tx: Transformer, target: Path) -> str | None:
     helper at all. A failed write raises ``OSError`` instead of returning ``None``:
     the two used to be the same answer, so a caller could not tell "nothing was
     needed" from "the header the wrapped source includes is missing", and reported
-    success for a file that cannot compile. Callers must let that failure through."""
-    asset = tx.runtime_asset()
+    success for a file that cannot compile. Callers must let that failure through.
+
+    ``source`` is the wrapped text the helper will sit beside. Go needs it: its
+    helper joins the file's package rather than being imported, so it has to
+    declare the same package name (see ``Transformer.runtime_asset_for``). For
+    the other five backends the helper is the same file whatever it sits next
+    to, and the argument is ignored."""
+    asset = tx.runtime_asset_for(source)
     if asset is None:
         return None
     asset_name, asset_src = asset
@@ -227,7 +233,8 @@ def tool_wrap_file(path: str, minimal: bool = False) -> dict[str, Any]:
     # the helper first means a failure here leaves the original file untouched
     # instead of leaving the caller a broken tree it was told was fine.
     try:
-        runtime_header = _drop_runtime_asset(tx, p) if result.functions_wrapped else None
+        runtime_header = (_drop_runtime_asset(tx, p, result.code)
+                          if result.functions_wrapped else None)
     except OSError as e:
         return {"ok": False,
                 "error": f"cannot write the runtime helper next to {path}: {e}; "
@@ -296,7 +303,8 @@ def tool_wrap_functions(path: str, functions: list[str],
         return {"ok": False, "error": str(e), "language": tx.language}
     # Helper first — see the same comment in tool_wrap_file.
     try:
-        runtime_header = _drop_runtime_asset(tx, p) if result.functions_wrapped else None
+        runtime_header = (_drop_runtime_asset(tx, p, result.code)
+                          if result.functions_wrapped else None)
     except OSError as e:
         return {"ok": False,
                 "error": f"cannot write the runtime helper next to {path}: {e}; "
