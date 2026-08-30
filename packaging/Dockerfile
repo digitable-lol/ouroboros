@@ -1,9 +1,10 @@
 # Ouroboros-Logger — full multi-language MCP server image.
 #
-# Bundles every toolchain so all five backends work out of the box AND
+# Bundles every toolchain so all six backends work out of the box AND
 # `execute` can compile/run the instrumented code:
 #   Python (stdlib) · JS/TS (node + @babel) · C/C++ (clang/libclang + gcc/g++)
-#   · Elixir (erlang/OTP + elixir + mix) · git for the draft sandbox
+#   · Elixir (erlang/OTP + elixir + mix) · Go (its own parser ships with it)
+#   · git for the draft sandbox
 #   · clangd + clang-tidy for the six C/C++ navigation tools.
 #
 # Build:  docker build -t ouroboros-logger -f packaging/Dockerfile .
@@ -27,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         clang clangd clang-tidy gcc g++ \
         nodejs npm \
         erlang-base erlang-crypto elixir \
+        golang-go \
         git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -50,6 +52,12 @@ RUN cd /app/ouroboros/languages/_js && npm install --omit=dev --no-audit --no-fu
 # image build if it cannot be built. It is a small C program over libclang
 # (ouroboros/languages/_clang/emitter.c); the gcc installed above builds it.
 RUN python -c "from ouroboros.languages.clangbridge import emitter_path; print(emitter_path())"
+
+# Same for the Go range emitter (ouroboros/languages/_go/emitter.go). It needs
+# nothing but the Go toolchain installed above — go/parser ships with the
+# language — and building it here means the image fails loudly rather than the
+# first wrap of a .go file.
+RUN python -c "from ouroboros.languages.go_lang import emitter_path; print(emitter_path())"
 
 # Fail the build if the engine can't enumerate its backends.
 RUN ouroboros languages

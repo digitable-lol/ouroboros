@@ -47,7 +47,7 @@ undefined, and a sanitizer still reports it — which defeats the point.
 **What would actually work: make it opt-in.** A wrap-time flag (alongside
 `minimal`) that turns string rendering back on, for a caller who knows their
 `const char *` are strings. Default stays the safe rendering. The cost is
-plumbing a second flag through `Transformer.wrap_source`, all five backends, the
+plumbing a second flag through `Transformer.wrap_source`, all six backends, the
 CLI and the MCP tools — which is why it is written down here rather than done in
 passing.
 
