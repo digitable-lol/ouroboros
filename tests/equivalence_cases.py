@@ -543,9 +543,339 @@ IO.puts(Outer.g())
 )
 
 
-#: The corpus the acceptance number is quoted against: 79 programs across five
-#: languages, every one of which must behave identically wrapped and unwrapped.
-CASES: tuple[Case, ...] = PYTHON + JAVASCRIPT + C + CPP + ELIXIR
+GO: tuple[Case, ...] = tuple(
+    Case("go", name, src, "prog.go")
+    for name, src in {
+        'simple': r"""package main
+
+import "fmt"
+
+func add(a, b int) int { return a + b }
+
+func main() { fmt.Println(add(2, 3)) }
+""",
+        'multiple_results': r"""package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+func div(a, b int) (int, error) {
+	if b == 0 {
+		return 0, errors.New("divide by zero")
+	}
+	return a / b, nil
+}
+
+func main() {
+	fmt.Println(div(6, 3))
+	fmt.Println(div(1, 0))
+}
+""",
+        'named_results_naked_return': r"""package main
+
+import "fmt"
+
+func split(n int) (half int, rest int) {
+	half = n / 2
+	rest = n - half
+	return
+}
+
+func main() { fmt.Println(split(7)) }
+""",
+        'blank_result': r"""package main
+
+import "fmt"
+
+func f() (_ int, err error) { return 3, nil }
+
+func main() { fmt.Println(f()) }
+""",
+        'deferred_result_change': r"""package main
+
+import "fmt"
+
+func f() (n int) {
+	defer func() { n *= 10 }()
+	return 4
+}
+
+func main() { fmt.Println(f()) }
+""",
+        'defer_order': r"""package main
+
+import "fmt"
+
+func f() int {
+	defer fmt.Println("second")
+	defer fmt.Println("first")
+	return 1
+}
+
+func main() { fmt.Println(f()) }
+""",
+        'recover_in_caller': r"""package main
+
+import "fmt"
+
+func boom() int { panic("bad") }
+
+func main() {
+	defer func() { fmt.Println("caught:", recover()) }()
+	fmt.Println(boom())
+}
+""",
+        'recover_in_self': r"""package main
+
+import "fmt"
+
+func safe() (out string) {
+	defer func() {
+		if r := recover(); r != nil {
+			out = fmt.Sprint("caught:", r)
+		}
+	}()
+	panic("inner")
+}
+
+func main() { fmt.Println(safe()) }
+""",
+        'recursion': r"""package main
+
+import "fmt"
+
+func fib(n int) int {
+	if n < 2 {
+		return n
+	}
+	return fib(n-1) + fib(n-2)
+}
+
+func main() { fmt.Println(fib(18)) }
+""",
+        'variadic': r"""package main
+
+import "fmt"
+
+func sum(xs ...int) (total int) {
+	for _, v := range xs {
+		total += v
+	}
+	return
+}
+
+func main() { fmt.Println(sum(1, 2, 3), sum()) }
+""",
+        'method_receivers': r"""package main
+
+import "fmt"
+
+type Counter struct{ n int }
+
+func (c *Counter) Bump(by int) int {
+	c.n += by
+	return c.n
+}
+
+func (c Counter) Value() int { return c.n }
+
+func main() {
+	c := &Counter{}
+	c.Bump(2)
+	c.Bump(3)
+	fmt.Println(c.Value())
+}
+""",
+        'interface_satisfaction': r"""package main
+
+import "fmt"
+
+type Shape interface{ Area() int }
+
+type Square struct{ side int }
+
+func (s Square) Area() int { return s.side * s.side }
+
+func describe(s Shape) string { return fmt.Sprint("area=", s.Area()) }
+
+func main() { fmt.Println(describe(Square{side: 4})) }
+""",
+        'goroutines_channel': r"""package main
+
+import (
+	"fmt"
+	"sort"
+	"sync"
+)
+
+func work(i int) int { return i * i }
+
+func main() {
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	got := []int{}
+	for i := 1; i <= 4; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			v := work(n)
+			mu.Lock()
+			got = append(got, v)
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
+	sort.Ints(got)
+	fmt.Println(got)
+}
+""",
+        'closure_literal': r"""package main
+
+import "fmt"
+
+func apply(f func(int) int, v int) int { return f(v) }
+
+func main() {
+	double := func(x int) int { return x * 2 }
+	fmt.Println(apply(double, 21))
+}
+""",
+        'os_exit_code': r"""package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func leave(code int) {
+	fmt.Println("leaving")
+	os.Exit(code)
+}
+
+func main() { leave(3) }
+""",
+        'stdout_and_stderr': r"""package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func warn(msg string) int {
+	fmt.Fprintln(os.Stderr, "E:", msg)
+	return 1
+}
+
+func main() {
+	fmt.Println("O")
+	os.Exit(warn("bad"))
+}
+""",
+        'struct_return': r"""package main
+
+import "fmt"
+
+type Point struct{ X, Y int }
+
+func mk(a int) Point { return Point{X: a, Y: a * 2} }
+
+func main() {
+	p := mk(3)
+	fmt.Println(p.X, p.Y)
+}
+""",
+        'build_tag_and_doc_comment': r"""//go:build !ouroboros_never
+
+// Package main greets.
+package main
+
+import "fmt"
+
+func greet() string { return "hi" }
+
+func main() { fmt.Println(greet(), len("//go:build")) }
+""",
+        'generic_function': r"""package main
+
+import "fmt"
+
+func first[T any](xs []T, fallback T) T {
+	if len(xs) == 0 {
+		return fallback
+	}
+	return xs[0]
+}
+
+func main() {
+	fmt.Println(first([]int{7, 8}, 0))
+	fmt.Println(first([]string{}, "none"))
+}
+""",
+        'init_function': r"""package main
+
+import "fmt"
+
+var seed int
+
+func init() { seed = 5 }
+
+func use() int { return seed * 2 }
+
+func main() { fmt.Println(use()) }
+""",
+        'unicode_source': r"""package main
+
+import "fmt"
+
+// Считает длину строки в рунах.
+func длина(строка string) int { return len([]rune(строка)) }
+
+func main() { fmt.Println(длина("привет"), длина("hi")) }
+""",
+        'labeled_break': r"""package main
+
+import "fmt"
+
+func find(target int) int {
+	i := 0
+outer:
+	for ; i < 10; i++ {
+		for j := 0; j < 10; j++ {
+			if i*j == target {
+				break outer
+			}
+		}
+	}
+	return i
+}
+
+func main() { fmt.Println(find(12)) }
+""",
+        'shadowed_result_name': r"""package main
+
+import "fmt"
+
+func f(n int) (err error) {
+	if n > 0 {
+		err := fmt.Errorf("inner %d", n)
+		_ = err
+		return nil
+	}
+	return fmt.Errorf("outer")
+}
+
+func main() { fmt.Println(f(1), f(-1)) }
+""",
+    }.items()
+)
+
+
+#: The corpus the acceptance number is quoted against: every one of these
+#: programs must behave identically wrapped and unwrapped. It was 79 programs
+#: across five languages before Go was added.
+CASES: tuple[Case, ...] = PYTHON + JAVASCRIPT + C + CPP + ELIXIR + GO
 
 #: Kept separate from CASES so the historical "16 of 79" stays comparable. Same
 #: programs, ES-module extension.

@@ -1,8 +1,8 @@
-"""Record-schema parity across all five backends.
+"""Record-schema parity across all six backends.
 
 SPEC.md is only worth something if every backend writes the *same* record for
-the same call. Five hand-written sinks (Python, JavaScript, C, C++, Elixir) that
-must agree byte for byte drift silently: nothing fails, the traces just stop
+the same call. Six hand-written sinks (Python, JavaScript, C, C++, Elixir, Go)
+that must agree byte for byte drift silently: nothing fails, the traces just stop
 being comparable, and a cross-language question like "show me every call longer
 than a millisecond" quietly returns the wrong set.
 
@@ -49,7 +49,10 @@ _TH_RE = re.compile(r"[^.\s]+\.\S+$")
 #: Pinned per language because the type names are native; what must hold
 #: everywhere is that both halves are there.
 _X_TYPE = {"python": "ValueError", "javascript": "Error",
-           "cpp": "std::runtime_error", "elixir": "ArgumentError"}
+           "cpp": "std::runtime_error", "elixir": "ArgumentError",
+           # Go has no exception type: the panic value's own type stands in, and
+           # `panic("bad")` panics with a string.
+           "go": "string"}
 
 
 def _sources(lang: str) -> tuple[str, str, str]:
@@ -89,6 +92,14 @@ def _sources(lang: str) -> tuple[str, str, str]:
             "prog.exs",
             "\nM.add(2, 3)\ntry do\n  M.boom()\nrescue\n  _ -> :ok\nend\n",
         )
+    if lang == "go":
+        return (
+            "package main\n\nfunc add(a, b int) int { return a + b }\n\n"
+            'func boom() { panic("bad") }\n',
+            "prog.go",
+            "\nfunc main() {\n\tadd(2, 3)\n"
+            "\tdefer func() { _ = recover() }()\n\tboom()\n}\n",
+        )
     raise AssertionError(lang)
 
 
@@ -105,7 +116,14 @@ def _records(lang: str, root) -> list[dict]:
 
     debug = root / "debug.info"
     env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug)}
-    if lang in ("c", "cpp"):
+    if lang == "go":
+        # The Go helper is a sibling file of the same package, not an import, so
+        # it is named on the build command line rather than resolved from the
+        # source. `go build` also wants its flags ahead of the file list.
+        subprocess.run(["go", "build", "-o", "prog.bin", fname, asset[0]], cwd=root,
+                       check=True, capture_output=True, timeout=TIMEOUT)
+        argv = ["./prog.bin"]
+    elif lang in ("c", "cpp"):
         cc = ["gcc", "-std=gnu11"] if lang == "c" else ["g++", "-std=c++17"]
         subprocess.run([*cc, fname, "-o", "prog.bin"], cwd=root, check=True,
                        capture_output=True, timeout=TIMEOUT)
@@ -118,7 +136,8 @@ def _records(lang: str, root) -> list[dict]:
     return [json.loads(ln) for ln in debug.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
 
-_TOOL = {"python": None, "javascript": "node", "c": "gcc", "cpp": "g++", "elixir": "elixir"}
+_TOOL = {"python": None, "javascript": "node", "c": "gcc", "cpp": "g++",
+         "elixir": "elixir", "go": "go"}
 _LANGS = tuple(_TOOL)
 
 
@@ -213,6 +232,12 @@ def _long_call_lines(lang: str, root) -> list[str]:
         tail = (f"\nint main(void) {{ many({args}); return 0; }}\n" if lang == "c"
                 else f"\nint main() {{ many({args}); }}\n")
         fname = "prog.c" if lang == "c" else "prog.cpp"
+    elif lang == "go":
+        params = ", ".join(f"a{i} string" for i in range(30))
+        args = ", ".join(f'"{big}"' for _ in range(30))
+        src = f'package main\n\nfunc many({params}) string {{ return "{big}" }}\n'
+        tail = f"\nfunc main() {{ many({args}) }}\n"
+        fname = "prog.go"
     else:
         params = ", ".join(f"a{i}" for i in range(30))
         args = ", ".join(f'"{big}"' for _ in range(30))
@@ -231,7 +256,11 @@ def _long_call_lines(lang: str, root) -> list[str]:
 
     debug = root / "long.info"
     env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug)}
-    if lang in ("c", "cpp"):
+    if lang == "go":
+        subprocess.run(["go", "build", "-o", "long.bin", fname, asset[0]], cwd=root,
+                       check=True, capture_output=True, timeout=TIMEOUT)
+        argv = ["./long.bin"]
+    elif lang in ("c", "cpp"):
         cc = ["gcc", "-std=gnu11"] if lang == "c" else ["g++", "-std=c++17"]
         subprocess.run([*cc, fname, "-o", "long.bin"], cwd=root, check=True,
                        capture_output=True, timeout=TIMEOUT)
@@ -255,7 +284,7 @@ def test_reported_duration_excludes_the_sinks_own_write(lang: str, tmp_path) -> 
     C++'s 0 for the same function. Nothing failed; the numbers were simply not
     comparable between languages, and a filter like "show calls slower than a
     millisecond" returned a different set depending on which backend wrote the
-    trace. The measured medians for this function are 0-3 us across the five
+    trace. The measured medians for this function are 0-3 us across the six
     backends, so the bound below has real headroom over a correct sink and no
     room at all for a leaked file open.
     """
@@ -300,6 +329,9 @@ def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict]:
                 f"\nint main(){{ int v=0; for(int i=0;i<{calls};i++) v=tick(v); }}\n"),
         "elixir": ("prog.exs", "defmodule M do\n  def tick(a), do: a + 1\nend\n",
                    f"\nEnum.reduce(1..{calls}, 0, fn _, v -> M.tick(v) end)\n"),
+        "go": ("prog.go", "package main\n\nfunc tick(a int) int { return a + 1 }\n",
+               f"\nfunc main() {{\n\tv := 0\n"
+               f"\tfor i := 0; i < {calls}; i++ {{\n\t\tv = tick(v)\n\t}}\n\t_ = v\n}}\n"),
     }
     fname, src, tail = progs[lang]
     tx = transformer_for_language(lang)
@@ -313,7 +345,11 @@ def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict]:
 
     debug = root / "debug.info"
     env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug)}
-    if lang in ("c", "cpp"):
+    if lang == "go":
+        subprocess.run(["go", "build", "-o", "tick.bin", fname, asset[0]], cwd=root,
+                       check=True, capture_output=True, timeout=TIMEOUT)
+        argv = ["./tick.bin"]
+    elif lang in ("c", "cpp"):
         cc = ["gcc", "-std=gnu11"] if lang == "c" else ["g++", "-std=c++17"]
         subprocess.run([*cc, fname, "-o", "tick.bin"], cwd=root, check=True,
                        capture_output=True, timeout=TIMEOUT)

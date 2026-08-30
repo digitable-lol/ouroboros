@@ -26,6 +26,7 @@ import pytest
 from equivalence_cases import CASES, EXTRA_CASES, Case
 
 from ouroboros.languages import transformer_for_language
+from ouroboros.languages.go_lang import RUNTIME_NAME as GO_RUNTIME_NAME
 
 TIMEOUT = 180
 
@@ -39,7 +40,26 @@ _TOOLCHAIN = {
     "elixir": ("elixir", None),
     "c": ("gcc", ["gcc", "-std=gnu11"]),
     "cpp": ("g++", ["g++", "-std=c++17"]),
+    "go": ("go", ["go", "build"]),
 }
+
+
+def _compile_argv(case: Case, *, wrapped: bool) -> list[str] | None:
+    """argv that turns the case's source into ``./prog.bin``, or None when the
+    language is interpreted.
+
+    Go is why this is a function rather than one template: ``go build`` wants
+    its flags ahead of the file list, and the runtime helper is a sibling file
+    of the same package rather than something the source imports, so it has to
+    be named on the command line too.
+    """
+    _tool, compile_argv = _TOOLCHAIN[case.lang]
+    if compile_argv is None:
+        return None
+    if case.lang == "go":
+        files = [case.filename] + ([GO_RUNTIME_NAME] if wrapped else [])
+        return [*compile_argv, "-o", "prog.bin", *files]
+    return [*compile_argv, case.filename, "-o", "prog.bin"]
 
 
 def _have(tool: str | None) -> bool:
@@ -70,7 +90,10 @@ def _materialise(case: Case, root, code: str, *, wrapped: bool) -> None:
     if not wrapped:
         return
     tx = transformer_for_language(case.lang)
-    asset = tx.runtime_asset()
+    # `runtime_asset_for`, not the bare `runtime_asset`: the Go helper joins the
+    # wrapped file's package instead of being imported, so it has to carry that
+    # package's name. This is the same call the sandbox and the MCP tools make.
+    asset = tx.runtime_asset_for(code)
     if asset is not None:
         name, text = asset
         (root / name).write_text(text, encoding="utf-8")
@@ -83,9 +106,9 @@ def _execute(case: Case, root, *, wrapped: bool):
     'the wrapped copy no longer compiles' shows up as a behaviour difference —
     which is exactly what it is.
     """
-    _tool, compile_argv = _TOOLCHAIN[case.lang]
+    compile_argv = _compile_argv(case, wrapped=wrapped)
     if compile_argv is not None:
-        rc, out, err = _run([*compile_argv, case.filename, "-o", "prog.bin"], root)
+        rc, out, err = _run(compile_argv, root)
         if rc != 0:
             return ("BUILD-FAILED", out, err)
         return _run(["./prog.bin"], root, _debug_env(root, wrapped))
