@@ -878,10 +878,310 @@ func main() { fmt.Println(f(1), f(-1)) }
 )
 
 
+JAVA: tuple[Case, ...] = tuple(
+    Case("java", name, src, "Prog.java")
+    for name, src in {
+        'simple': r'''public class Prog {
+    static int add(int a, int b) { return a + b; }
+    public static void main(String[] args) { System.out.println(add(2, 3)); }
+}
+''',
+        'ctor_super_and_final_field': r'''class Base {
+    Base(int x) { System.out.println("base " + x); }
+}
+public class Prog extends Base {
+    private final int kept;
+    Prog(int x) { super(x); this.kept = x * 2; }
+    int kept() { return kept; }
+    public static void main(String[] args) { System.out.println(new Prog(4).kept()); }
+}
+''',
+        'ctor_this_delegation': r'''public class Prog {
+    private final String label;
+    Prog() { this("fallback"); }
+    Prog(String label) { this.label = label; }
+    String label() { return label; }
+    public static void main(String[] args) { System.out.println(new Prog().label()); }
+}
+''',
+        'narrowing_returns': r'''public class Prog {
+    static long asLong() { return 1; }
+    static double asDouble() { return 2; }
+    static float asFloat() { return 3; }
+    static short asShort() { return 4; }
+    static byte asByte() { return 5; }
+    static char asChar() { return 65; }
+    public static void main(String[] args) {
+        System.out.println("" + asLong() + asDouble() + asFloat()
+                           + asShort() + asByte() + asChar());
+    }
+}
+''',
+        'lambda_return_target_type': r'''import java.util.function.*;
+public class Prog {
+    static Supplier<Integer> maker(int n) { return () -> n * 2; }
+    static Function<Integer, Integer> blocky() { return x -> { return x + 1; }; }
+    public static void main(String[] args) {
+        System.out.println(maker(5).get());
+        System.out.println(blocky().apply(1));
+    }
+}
+''',
+        'checked_exception_rethrow': r'''import java.io.*;
+public class Prog {
+    static String read(boolean fail) throws IOException {
+        if (fail) throw new IOException("no file");
+        return "ok";
+    }
+    public static void main(String[] args) throws Exception {
+        System.out.println(read(false));
+        try {
+            read(true);
+        } catch (IOException e) { System.out.println("caught " + e.getMessage()); }
+    }
+}
+''',
+        'interface_default_and_private': r'''interface Greeter {
+    private int base() { return 10; }
+    String name();
+    default String greet() { return "hello, " + name() + base(); }
+}
+public class Prog implements Greeter {
+    public String name() { return "world"; }
+    public static void main(String[] args) { System.out.println(new Prog().greet()); }
+}
+''',
+        'enum_with_method': r'''public class Prog {
+    enum Colour {
+        RED, GREEN;
+        String label() { return name().toLowerCase(); }
+    }
+    public static void main(String[] args) { System.out.println(Colour.GREEN.label()); }
+}
+''',
+        'record_compact_constructor': r'''public class Prog {
+    record Point(int x, int y) {
+        Point {
+            if (x < 0) throw new IllegalArgumentException("negative x");
+        }
+        int sum() { return x + y; }
+    }
+    public static void main(String[] args) {
+        System.out.println(new Point(1, 2).sum());
+        try { new Point(-1, 0); } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+}
+''',
+        'varargs_and_arrays': r'''public class Prog {
+    static int total(int... xs) { int s = 0; for (int x : xs) s += x; return s; }
+    static String join(String... xs) { return String.join("-", xs); }
+    public static void main(String[] args) {
+        System.out.println(total(1, 2, 3));
+        System.out.println(join("a", "b"));
+    }
+}
+''',
+        'anonymous_and_local_class': r'''public class Prog {
+    static int run() {
+        class Local { int twice(int x) { return x * 2; } }
+        Runnable r = new Runnable() { public void run() { System.out.println("anon"); } };
+        r.run();
+        return new Local().twice(21);
+    }
+    public static void main(String[] args) { System.out.println(run()); }
+}
+''',
+        'static_initializer_untouched': r'''public class Prog {
+    static final int SEED;
+    static { SEED = 7; System.out.println("static block"); }
+    static int use() { return SEED; }
+    public static void main(String[] args) { System.out.println(use()); }
+}
+''',
+        'try_with_resources': r'''public class Prog {
+    static class Res implements AutoCloseable {
+        public void close() { System.out.println("closed"); }
+        int value() { return 42; }
+    }
+    static int use() {
+        try (Res r = new Res()) { return r.value(); }
+    }
+    public static void main(String[] args) { System.out.println(use()); }
+}
+''',
+        'non_bmp_characters': '''public class Prog {
+    // \U0001F600 above the method
+    static String pick() { return "\U0001F600 tail"; }
+    public static void main(String[] args) { System.out.println(pick()); }
+}
+''',
+        'uncaught_exception': r'''public class Prog {
+    static int explode(int n) { return 10 / n; }
+    public static void main(String[] args) {
+        System.out.println("before");
+        System.out.println(explode(0));
+    }
+}
+''',
+        'system_exit_mid_call': r'''public class Prog {
+    static void quit(int code) { System.out.println("leaving"); System.exit(code); }
+    public static void main(String[] args) { quit(3); }
+}
+''',
+        'recursion': r'''public class Prog {
+    static int depth(int n) { return n == 0 ? 0 : 1 + depth(n - 1); }
+    public static void main(String[] args) { System.out.println(depth(50)); }
+}
+''',
+        'return_inside_finally': r'''public class Prog {
+    @SuppressWarnings("finally")
+    static int odd() {
+        try { return 1; } finally { return 2; }
+    }
+    public static void main(String[] args) { System.out.println(odd()); }
+}
+''',
+        'nested_try_finally_flow': r'''public class Prog {
+    static String flow(int n) {
+        StringBuilder log = new StringBuilder();
+        try {
+            try {
+                if (n == 0) throw new RuntimeException("zero");
+                return "ok" + log;
+            } finally { log.append("[inner]"); }
+        } catch (RuntimeException e) {
+            return "caught" + log;
+        } finally { log.append("[outer]"); }
+    }
+    public static void main(String[] args) { System.out.println(flow(1) + " " + flow(0)); }
+}
+''',
+        'threads': r'''public class Prog {
+    static int work(int n) { return n * n; }
+    public static void main(String[] args) throws Exception {
+        Thread t = new Thread(() -> System.out.println(work(4)));
+        t.start();
+        t.join();
+        System.out.println(work(5));
+    }
+}
+''',
+        'stack_trace_line_numbers': r'''public class Prog {
+    static int level3() { throw new IllegalStateException("deep"); }
+    static int level2() { return level3(); }
+    static int level1() { return level2(); }
+    public static void main(String[] args) {
+        try { level1(); } catch (IllegalStateException e) {
+            for (StackTraceElement el : e.getStackTrace()) {
+                if (el.getClassName().equals("Prog")) {
+                    System.out.println(el.getMethodName() + ":" + el.getLineNumber());
+                }
+            }
+        }
+    }
+}
+''',
+        'switch_expression_and_yield': r'''public class Prog {
+    static String label(int n) {
+        return switch (n) {
+            case 1 -> "one";
+            case 2 -> { yield "two"; }
+            default -> "many";
+        };
+    }
+    public static void main(String[] args) { System.out.println(label(2) + label(9)); }
+}
+''',
+        'text_block': '''public class Prog {
+    static String block() {
+        return """
+            line one
+            line two""";
+    }
+    public static void main(String[] args) { System.out.println(block()); }
+}
+''',
+        'sealed_and_pattern_switch': r'''public class Prog {
+    sealed interface Shape permits Circle, Square {}
+    record Circle(double r) implements Shape {}
+    record Square(double s) implements Shape {}
+    static double area(Shape sh) {
+        return switch (sh) {
+            case Circle c -> 3 * c.r() * c.r();
+            case Square s -> s.s() * s.s();
+        };
+    }
+    public static void main(String[] args) { System.out.println(area(new Square(3))); }
+}
+''',
+        'generics_and_bounds': r'''import java.util.*;
+public class Prog {
+    static <T extends Comparable<T>> T biggest(List<T> xs) {
+        T best = xs.get(0);
+        for (T x : xs) { if (x.compareTo(best) > 0) best = x; }
+        return best;
+    }
+    @SafeVarargs
+    static <T> T[] firstTwo(T... xs) { return Arrays.copyOf(xs, 2); }
+    public static void main(String[] args) {
+        System.out.println(biggest(List.of(3, 9, 4)));
+        System.out.println(Arrays.toString(firstTwo("a", "b", "c")));
+    }
+}
+''',
+        'empty_and_comment_only_bodies': r'''public class Prog {
+    static void nothing() {}
+    static void onlyComment() { /* empty */ }
+    static int afterComment() { // trailing comment
+        return 5;
+    }
+    public static void main(String[] args) {
+        nothing();
+        onlyComment();
+        System.out.println(afterComment());
+    }
+}
+''',
+        'names_that_clash_with_the_helper': r'''public class Prog {
+    static class OuroborosRuntime { static String enter() { return "theirs"; } }
+    static int enter(int x) { return x + 1; }
+    static String use() { return OuroborosRuntime.enter(); }
+    public static void main(String[] args) { System.out.println(use() + enter(1)); }
+}
+''',
+        'unicode_identifiers': '''public class Prog {
+    static int \u0441\u0443\u043c\u043c\u0430(int \u0430, int \u0431) { return \u0430 + \u0431; }
+    public static void main(String[] args) {
+        System.out.println(\u0441\u0443\u043c\u043c\u0430(1, 2));
+    }
+}
+''',
+        'thirty_long_arguments': r'''public class Prog {
+    static String many(String a0, String a1, String a2, String a3, String a4, String a5,
+                       String a6, String a7, String a8, String a9, String a10, String a11,
+                       String a12, String a13, String a14, String a15, String a16,
+                       String a17, String a18, String a19, String a20, String a21,
+                       String a22, String a23, String a24, String a25, String a26,
+                       String a27, String a28, String a29) {
+        return a0.substring(0, 3);
+    }
+    public static void main(String[] args) {
+        String big = "y".repeat(400);
+        System.out.println(many(big, big, big, big, big, big, big, big, big, big,
+                                big, big, big, big, big, big, big, big, big, big,
+                                big, big, big, big, big, big, big, big, big, big));
+    }
+}
+''',
+    }.items()
+)
+
 #: The corpus the acceptance number is quoted against: every one of these
 #: programs must behave identically wrapped and unwrapped. It was 79 programs
 #: across five languages before Go was added.
-CASES: tuple[Case, ...] = PYTHON + JAVASCRIPT + C + CPP + ELIXIR + GO
+CASES: tuple[Case, ...] = PYTHON + JAVASCRIPT + C + CPP + ELIXIR + GO + JAVA
 
 #: Kept separate from CASES so the historical "16 of 79" stays comparable. Same
 #: programs, ES-module extension.

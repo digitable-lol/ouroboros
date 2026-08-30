@@ -37,13 +37,14 @@ MARK = re.compile(
 
 #: Как называть языки в таблице.
 TITLES = {"python": "Python", "javascript": "JavaScript",
-          "c": "C", "cpp": "C++", "elixir": "Elixir", "go": "Go"}
+          "c": "C", "cpp": "C++", "elixir": "Elixir",
+          "go": "Go", "java": "Java"}
 
 
 def measure() -> dict[str, Any]:
     """Гоняет один и тот же вызов на всех языках и смотрит, что записалось."""
 
-    from test_schema_parity import _LANGS, _records, _skip_unless_available
+    from test_schema_parity import _ADD, _LANGS, _records, _skip_unless_available
 
     out: dict[str, Any] = {}
     for lang in _LANGS:
@@ -55,7 +56,11 @@ def measure() -> dict[str, Any]:
             continue
         with tempfile.TemporaryDirectory(dir="/srv/tmp") as td:
             recs = _records(lang, Path(td))
-        entry = next(r for r in recs if r["p"] == "in")
+        # The record for `add(2, 3)` specifically. Java has no file level to
+        # append a driver to, so its `main` is instrumented along with the rest
+        # and is the FIRST `in` line — taking that one would print `main`'s own
+        # arguments into a table that says it is about `add`.
+        entry = next(r for r in recs if r["p"] == "in" and r["fn"] == _ADD[lang])
         out[lang] = {"a": entry["a"], "k": entry["k"]}
         print(f"  {lang}: a={entry['a']!r} k={entry['k']!r}")
     return out

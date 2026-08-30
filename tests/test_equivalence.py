@@ -41,6 +41,9 @@ _TOOLCHAIN = {
     "c": ("gcc", ["gcc", "-std=gnu11"]),
     "cpp": ("g++", ["g++", "-std=c++17"]),
     "go": ("go", ["go", "build"]),
+    # Java fits neither template: it compiles a whole directory of .java files
+    # (the program plus the runtime helper) and runs a class name, not a file.
+    "java": ("javac", None),
 }
 
 
@@ -106,6 +109,13 @@ def _execute(case: Case, root, *, wrapped: bool):
     'the wrapped copy no longer compiles' shows up as a behaviour difference —
     which is exactly what it is.
     """
+    if case.lang == "java":
+        sources = sorted(path.name for path in root.glob("*.java"))
+        rc, out, err = _run(["javac", "-nowarn", "-d", ".", *sources], root)
+        if rc != 0:
+            return ("BUILD-FAILED", out, err)
+        return _run(["java", "-cp", ".", case.filename.removesuffix(".java")],
+                    root, _debug_env(root, wrapped))
     compile_argv = _compile_argv(case, wrapped=wrapped)
     if compile_argv is not None:
         rc, out, err = _run(compile_argv, root)
