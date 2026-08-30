@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import sys
+import types
 
 import pytest
 
@@ -204,6 +206,30 @@ def test_coding_declaration_stays_in_the_first_two_lines(tx):
     assert lines[0].startswith("#!")
     assert "coding" in lines[1]
     assert "from ouroboros_runtime import log" in lines[2]
+
+
+def test_a_coding_comment_under_real_code_is_not_a_coding_declaration(tx, monkeypatch):
+    """PEP 263 is read on the SECOND line only when the first is blank or a
+    comment. CPython refuses a `# coding:` on line 2 of a file whose line 1 is
+    code — it reports "no encoding declared" and will not even parse such a
+    file. Reading that comment as a declaration anyway pushed the insertion
+    point past the whole file, so the runtime import landed BELOW the function
+    it serves and the wrapped module died on its own first line with
+    `NameError: _ouro_log`."""
+
+    src = "def f(x): return x\n# coding: utf-8\n"
+
+    res = tx.wrap_source(src, filename="m.py")
+
+    assert res.functions_wrapped == 1
+    assert res.code.index("from ouroboros_runtime import") < res.code.index(DECORATOR)
+
+    stub = types.ModuleType("ouroboros_runtime")
+    stub.log = lambda fn: fn
+    monkeypatch.setitem(sys.modules, "ouroboros_runtime", stub)
+    namespace: dict = {}
+    exec(compile(res.code, "m.py", "exec"), namespace)   # the point: it still runs
+    assert namespace["f"](3) == 3
 
 
 def test_runtime_module_is_never_instrumented(tx):

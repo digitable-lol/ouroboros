@@ -50,7 +50,13 @@ def _import_offset(tree: ast.Module, source: str, starts: list[int]) -> int:
     * ``#!`` — the kernel reads a shebang only from byte 0, so a script whose
       ``#!`` moved to line 2 stops being runnable: ``Exec format error``.
     * a PEP 263 ``coding:`` comment — the interpreter honours it only on the
-      first two lines, so a demoted one stops selecting the encoding.
+      first two lines, so a demoted one stops selecting the encoding. The
+      second line counts only when the first is blank or a comment, which is
+      the rule the interpreter itself applies: it refuses to parse a file whose
+      line 1 is code and whose line 2 says ``coding:`` ("no encoding
+      declared"). A comment that merely mentions the word there is an ordinary
+      comment, and treating it as a declaration pushed the insertion point past
+      the file's own functions.
     * a module **docstring** — it stops being ``__doc__`` the moment any
       statement precedes it; it silently degrades to a bare string expression.
     * ``from __future__ import ...`` **must** be the first statement — putting
@@ -66,7 +72,9 @@ def _import_offset(tree: ast.Module, source: str, starts: list[int]) -> int:
     lines = source.splitlines()
     if lines and lines[0].startswith("#!"):
         last_line = 1
-    for i in range(min(2, len(lines))):
+    first = lines[0].strip() if lines else ""
+    scan = 2 if (not first or first.startswith("#")) else 1
+    for i in range(min(scan, len(lines))):
         if _CODING_RE.match(lines[i].encode("utf-8", "replace")):
             last_line = max(last_line, i + 1)
     for i, node in enumerate(tree.body):
