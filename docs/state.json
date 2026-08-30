@@ -1,10 +1,10 @@
 {
   "version": "0.5.0",
-  "tests": 991,
-  "uncovered_units": 15,
-  "total_units": 3690,
-  "coverage_percent": 99,
-  "coverage_exact": 99.59,
+  "tests": 999,
+  "uncovered_units": 0,
+  "total_units": 3683,
+  "coverage_percent": 100,
+  "coverage_exact": 100.0,
   "mcp_tools": 17,
   "languages": 8,
   "measured_with": "pytest --cov (statements and branches)"
