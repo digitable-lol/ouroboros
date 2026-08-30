@@ -279,10 +279,11 @@ def test_an_existing_runtime_import_is_not_added_a_second_time(tx):
 
 
 def test_a_file_without_a_trailing_newline_still_parses_after_wrapping(tx):
-    """When everything above the insertion point is a docstring that runs to the
-    last byte, the import is appended at the very end — straight onto the last
-    line unless a newline is put in first, which would make the file
-    unparseable."""
+    """A file whose last byte is not a newline still has to parse after wrapping.
+
+    Nothing here owns the top of the file, so the import goes to offset 0 and
+    the missing trailing newline never reaches it — but the file shape is the
+    one that would expose an insertion made at the end, so it is pinned."""
 
     src = 'def f(x):\n    return x\n\n"""tail docstring, no trailing newline"""'
 
