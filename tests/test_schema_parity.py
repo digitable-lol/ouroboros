@@ -1,7 +1,8 @@
 """Record-schema parity across all six backends.
 
 SPEC.md is only worth something if every backend writes the *same* record for
-the same call. Six hand-written sinks (Python, JavaScript, C, C++, Elixir, Go)
+the same call. Seven hand-written sinks (Python, JavaScript, C, C++, Elixir,
+Go, Java)
 that must agree byte for byte drift silently: nothing fails, the traces just stop
 being comparable, and a cross-language question like "show me every call longer
 than a millisecond" quietly returns the wrong set.
@@ -52,7 +53,17 @@ _X_TYPE = {"python": "ValueError", "javascript": "Error",
            "cpp": "std::runtime_error", "elixir": "ArgumentError",
            # Go has no exception type: the panic value's own type stands in, and
            # `panic("bad")` panics with a string.
-           "go": "string"}
+           "go": "string",
+           "java": "java.lang.IllegalArgumentException"}
+
+#: What each backend calls the function under test. `fn` is a *dialect* field
+#: (SPEC.md §2): the qualified-name form is each language's own. Six of the seven
+#: can declare a top-level `add`, so it was written as a fixed field until Java —
+#: where a method has to live in a class — showed that it never was one.
+_ADD = {"python": "add", "javascript": "add", "c": "add", "cpp": "add",
+        "elixir": "add", "go": "add", "java": "Prog.add"}
+_TICK = {"python": "tick", "javascript": "tick", "c": "tick", "cpp": "tick",
+         "elixir": "tick", "go": "tick", "java": "Prog.tick"}
 
 
 def _sources(lang: str) -> tuple[str, str, str]:
@@ -100,6 +111,23 @@ def _sources(lang: str) -> tuple[str, str, str]:
             "\nfunc main() {\n\tadd(2, 3)\n"
             "\tdefer func() { _ = recover() }()\n\tboom()\n}\n",
         )
+    if lang == "java":
+        # Java has no top level to append a driver to — everything lives inside
+        # the class — so the driver is part of the source and gets instrumented
+        # with it. The assertions below select records by `fn`, so the extra
+        # `main` records are simply not looked at.
+        return (
+            "public class Prog {\n"
+            "    static int add(int a, int b) { return a + b; }\n"
+            '    static int boom() { throw new IllegalArgumentException("bad"); }\n'
+            "    public static void main(String[] args) {\n"
+            "        add(2, 3);\n"
+            "        try { boom(); } catch (IllegalArgumentException e) { }\n"
+            "    }\n"
+            "}\n",
+            "Prog.java",
+            "",
+        )
     raise AssertionError(lang)
 
 
@@ -141,6 +169,13 @@ def _build(lang: str, root, fname: str, asset_name: str | None) -> list[str]:
         subprocess.run([*cc, fname, "-o", "prog.bin"], cwd=root, check=True,
                        capture_output=True, timeout=TIMEOUT)
         return ["./prog.bin"]
+    if lang == "java":
+        # The helper is a second .java file and has to be compiled with the
+        # program; the runnable name is the class, not the file.
+        sources = sorted(path.name for path in root.glob("*.java"))
+        subprocess.run(["javac", "-nowarn", "-d", ".", *sources], cwd=root,
+                       check=True, capture_output=True, timeout=TIMEOUT)
+        return ["java", "-cp", ".", fname.removesuffix(".java")]
     return {"python": [sys.executable], "javascript": ["node"],
             "elixir": ["elixir"]}[lang] + [fname]
 
@@ -171,7 +206,7 @@ def _records(lang: str, root) -> list[dict]:
 
 
 _TOOL = {"python": None, "javascript": "node", "c": "gcc", "cpp": "g++",
-         "elixir": "elixir", "go": "go"}
+         "elixir": "elixir", "go": "go", "java": "javac"}
 _LANGS = tuple(_TOOL)
 
 
@@ -186,9 +221,9 @@ def test_entry_record_matches_the_contract(lang: str, tmp_path) -> None:
     """The `in` line of ``add(2, 3)``: fixed fields equal, shaped fields shaped."""
     _skip_unless_available(lang)
     recs = _records(lang, tmp_path)
-    entry = next(r for r in recs if r["p"] == "in" and r["fn"] == "add")
+    entry = next(r for r in recs if r["p"] == "in" and r["fn"] == _ADD[lang])
     assert set(entry) == {"p", "t", "id", "ci", "th", "fn", "a", "k"}
-    assert entry["fn"] == "add"
+    assert entry["fn"] == _ADD[lang]
     assert entry["a"] == "2, 3", "`a` carries positional values, `k` carries names"
     assert entry["k"] == ""
     assert _T_RE.match(entry["t"]), f"`t` needs millisecond precision, got {entry['t']!r}"
@@ -211,7 +246,7 @@ def test_entry_record_matches_the_contract(lang: str, tmp_path) -> None:
 def test_completion_record_matches_the_contract(lang: str, tmp_path) -> None:
     _skip_unless_available(lang)
     recs = _records(lang, tmp_path)
-    entry = next(r for r in recs if r["p"] == "in" and r["fn"] == "add")
+    entry = next(r for r in recs if r["p"] == "in" and r["fn"] == _ADD[lang])
     out = next(r for r in recs if r["p"] == "out" and r["id"] == entry["id"])
     assert set(out) == {"p", "id", "fn", "r", "d"}
     assert out["r"] == "5"
@@ -263,6 +298,14 @@ def _long_call_lines(lang: str, root) -> list[str]:
         tail = (f"\nint main(void) {{ many({args}); return 0; }}\n" if lang == "c"
                 else f"\nint main() {{ many({args}); }}\n")
         fname = "prog.c" if lang == "c" else "prog.cpp"
+    elif lang == "java":
+        jparams = ", ".join(f"String a{i}" for i in range(30))
+        src = (f"public class Prog {{\n"
+               f'    static String many({jparams}) {{ return "{big}"; }}\n'
+               f"    public static void main(String[] x) {{ many({args}); }}\n"
+               f"}}\n")
+        tail = ""
+        fname = "Prog.java"
     elif lang == "go":
         gparams = ", ".join(f"a{i} string" for i in range(30))
         src = f'package main\n\nfunc many({gparams}) string {{ return "{big}" }}\n'
@@ -293,7 +336,7 @@ def test_reported_duration_excludes_the_sinks_own_write(lang: str, tmp_path) -> 
     """
     _skip_unless_available(lang)
     durations = sorted(r["d"] for r in _repeated_call_records(lang, tmp_path)
-                       if r["p"] == "out")
+                       if r["p"] == "out" and r["fn"] == _TICK[lang])
     assert len(durations) == 200
     median = durations[len(durations) // 2]
     assert median < 8e-6, f"{lang}: median reported duration {median * 1e6:.2f} us"
@@ -303,7 +346,7 @@ def test_reported_duration_excludes_the_sinks_own_write(lang: str, tmp_path) -> 
 #: in each language. Tuned by measurement, not by guess: the medians they produce
 #: are well inside the window the clock test asserts.
 _SPIN = {"python": 3000, "javascript": 60000, "c": 150000, "cpp": 150000,
-         "elixir": 20000, "go": 150000}
+         "elixir": 20000, "go": 150000, "java": 200000}
 
 
 def _tick_program(lang: str, calls: int) -> tuple[str, str, str]:
@@ -322,6 +365,13 @@ def _tick_program(lang: str, calls: int) -> tuple[str, str, str]:
         "go": ("prog.go", "package main\n\nfunc tick(a int) int { return a + 1 }\n",
                f"\nfunc main() {{\n\tv := 0\n"
                f"\tfor i := 0; i < {calls}; i++ {{\n\t\tv = tick(v)\n\t}}\n\t_ = v\n}}\n"),
+        "java": ("Prog.java",
+                 "public class Prog {\n"
+                 "    static int tick(int a){ return a + 1; }\n"
+                 f"    public static void main(String[] x) {{ int v=0;"
+                 f" for (int i=0;i<{calls};i++) v=tick(v); }}\n"
+                 "}\n",
+                 ""),
     }
     return progs[lang]
 
@@ -352,6 +402,14 @@ def _spin_program(lang: str, calls: int) -> tuple[str, str, str]:
                 f"defmodule M do\n  def tick(a), do:"
                 f" Enum.reduce(1..{n}, a, fn i, s -> s + i end)\nend\n",
                 f"\nEnum.reduce(1..{calls}, 0, fn _, v -> M.tick(v) end)\n")
+    if lang == "java":
+        return ("Prog.java",
+                "public class Prog {\n"
+                f"    static long tick(long a){{ long s = a;"
+                f" for (long i = 0; i < {n}; i++) s += i; return s; }}\n"
+                f"    public static void main(String[] x) {{ long v=0;"
+                f" for (int i=0;i<{calls};i++) v=tick(v); }}\n"
+                "}\n", "")
     return ("prog.go",
             f"package main\n\nfunc tick(a int) int {{\n\ts := a\n"
             f"\tfor i := 0; i < {n}; i++ {{\n\t\ts += i\n\t}}\n\treturn s\n}}\n",
@@ -384,7 +442,7 @@ def test_the_duration_clock_reads_finer_than_a_millisecond(lang: str, tmp_path) 
     records = [json.loads(ln) for ln
                in _trace_lines(lang, tmp_path, src, fname, tail)]
     durations = sorted(r["d"] for r in records
-                       if r["p"] == "out" and r["fn"] == "tick")
+                       if r["p"] == "out" and r["fn"] == _TICK[lang])
     assert len(durations) == 30
     median = durations[len(durations) // 2]
     assert 0 < median < 1e-3, (
@@ -421,7 +479,8 @@ def test_call_ids_differ_between_processes(lang: str, tmp_path) -> None:
         _run_built(argv, tmp_path, sink)
         records = [json.loads(ln) for ln
                    in sink.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        ids.append(next(r for r in records if r["p"] == "in")["id"])
+        ids.append(next(r for r in records
+                        if r["p"] == "in" and r["fn"] == _TICK[lang])["id"])
     assert len(set(ids)) == len(ids), f"{lang}: repeated call ids across processes: {ids}"
 
 
