@@ -9,7 +9,8 @@ import subprocess
 
 import pytest
 
-from ouroboros.languages import CorruptedSourceError, transformer_for_path
+from ouroboros.languages import CorruptedSourceError, cpp_lang, transformer_for_path
+from ouroboros.languages.clangbridge import clang_resource_dir_args
 from ouroboros.languages.cpp_lang import CppTransformer
 from ouroboros.sandbox import Project, execute, write_file
 from ouroboros.trace import load
@@ -174,3 +175,98 @@ def test_end_to_end_via_sandbox(tmp_path):
     square = [c for c in loaded.calls if c.name == "square"]
     assert len(square) == 1
     assert square[0].outcome_kind == "result" and square[0].outcome == "36"
+
+
+# --------------------------------------------------------------------------- #
+# Where the libstdc++ headers come from.
+#
+# `_cxx_args` asks g++ where it looks for system headers and hands the answer to
+# the parser as `-isystem`. Without it a self-contained C++ file that includes
+# anything from the standard library does not parse, and the corruption gate
+# blames the file. The three cases below are the ones the host this runs on
+# never produces: g++ answering in a shape the reader does not fully recognise,
+# naming a directory that is not there, or not being on the machine at all.
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def fresh_cxx_args():
+    """`_cxx_args` caches its one answer for the process; these cases replace it,
+    so the cache is emptied on the way in and on the way out."""
+    cpp_lang._cxx_args.cache_clear()
+    yield
+    cpp_lang._cxx_args.cache_clear()
+
+
+def _fake_gxx(stderr, monkeypatch):
+    """Answer for g++ only; everything else (the clang resource-dir probe next
+    door) still goes to the real subprocess."""
+    real_run = subprocess.run
+
+    def run(argv, **kwargs):
+        if argv[0] != "g++":
+            return real_run(argv, **kwargs)
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr=stderr)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+
+def test_only_real_directories_from_the_search_list_are_passed_on(
+        fresh_cxx_args, monkeypatch, tmp_path):
+    """g++ prints paths it merely considered, and a tree can be moved or cleaned
+    between builds. A `-isystem` pointing at nothing is not inert: clang counts
+    it, and a stale one hides the failure that the header search found nothing."""
+
+    real = tmp_path / "real-include"
+    real.mkdir()
+    gone = tmp_path / "removed-include"           # never created
+    _fake_gxx(
+        'ignoring nonexistent directory "/nowhere"\n'
+        '#include "..." search starts here:\n'
+        "#include <...> search starts here:\n"
+        f" {real}\n"
+        f" {gone}\n"
+        "End of search list.\n", monkeypatch)
+
+    args = cpp_lang._cxx_args()
+
+    assert args[args.index(str(real)) - 1] == "-isystem"
+    assert str(gone) not in args
+    assert "#include <...> search starts here:" not in args     # the heading is not a path
+
+
+def test_a_search_list_with_no_terminator_is_still_used(
+        fresh_cxx_args, monkeypatch, tmp_path):
+    """"End of search list." ends the list; a build that stops early, a g++ whose
+    output was truncated, or a future wording leaves it out. The directories
+    already read are still the right ones — dropping them would silently strip
+    every libstdc++ path and turn ordinary C++ into "corrupted source"."""
+
+    real = tmp_path / "real-include"
+    real.mkdir()
+    _fake_gxx("#include <...> search starts here:\n"
+              f" {real}\n", monkeypatch)                        # nothing follows
+
+    args = cpp_lang._cxx_args()
+
+    assert ["-isystem", str(real)] == args[-2:]
+    assert args[:3] == ["-x", "c++", "-std=c++17"]              # base flags intact
+
+
+def test_no_gxx_on_the_machine_leaves_the_base_flags(fresh_cxx_args, monkeypatch):
+    """A machine with clang but no g++ still has to wrap plain C++. Asking a g++
+    that is not there raises, and that must cost the header paths, not the wrap."""
+
+    real_run = subprocess.run
+
+    def missing(argv, **kwargs):
+        if argv[0] != "g++":
+            return real_run(argv, **kwargs)
+        raise FileNotFoundError(2, "No such file or directory", "g++")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+
+    args = cpp_lang._cxx_args()
+
+    # Exactly the self-contained base, and nothing g++ would have contributed.
+    assert args == ["-x", "c++", "-std=c++17", "-ferror-limit=0",
+                    *clang_resource_dir_args()]
