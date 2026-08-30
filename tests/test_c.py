@@ -93,6 +93,33 @@ def test_compdb_miss_warns_about_degraded_flags(tx, tmp_path):
     assert "compile_commands.json" in res.warnings[0]
 
 
+def test_a_bare_return_in_a_value_returning_function_is_left_alone(tx, tmp_path):
+    """`return;` inside a function that returns a value is a constraint
+    violation the compiler refuses, so a self-contained parse never gets past
+    the corruption gate and this never comes up there. A TREE file does: it is
+    parsed with the tree's own flags against sources some other compiler built,
+    where the gate records residual diagnostics instead of failing (see
+    gate_diagnostics), and gcc lets exactly this through as a warning.
+
+    There is no expression to capture, so the return-value rewrite has to skip
+    it — the offsets it would splice at are not there — and let the cleanup
+    handler write the completion record on the way out, which it does for every
+    exit path anyway."""
+
+    (tmp_path / ".ouroboros.json").write_text(
+        json.dumps({"c": {"cflags": ["-std=gnu17"]}}), encoding="utf-8")
+    src = "int f(int a) {\n    if (a) return;\n    return 1;\n}\n"
+    f = tmp_path / "m.c"
+    f.write_text(src, encoding="utf-8")
+
+    res = tx.wrap_source(src, filename=str(f))
+
+    assert res.functions_wrapped == 1
+    assert "    if (a) return;\n" in res.code               # left exactly as it was
+    assert "_ouro_set_result" in res.code                   # the valued return still captured
+    assert res.code.count("_ouro_set_result") == 1          # and only that one
+
+
 def test_compdb_no_config_no_warning(tx):
     """No .ouroboros.json in play -> self-contained parse is expected, not a miss."""
     res = tx.wrap_source("int f(void){return 0;}\n", filename="/nowhere/m.c")
