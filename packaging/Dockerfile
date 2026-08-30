@@ -1,11 +1,19 @@
 # Ouroboros-Logger — full multi-language MCP server image.
 #
-# Bundles every toolchain so all six backends work out of the box AND
-# `execute` can compile/run the instrumented code:
+# Bundles the toolchains for six of the eight backends so they work out of the
+# box AND `execute` can compile/run the instrumented code:
 #   Python (stdlib) · JS/TS (node + @babel) · C/C++ (clang/libclang + gcc/g++)
 #   · Elixir (erlang/OTP + elixir + mix) · Go (its own parser ships with it)
 #   · git for the draft sandbox
 #   · clangd + clang-tidy for the six C/C++ navigation tools.
+#
+# NOT bundled: the JDK (Java) and the .NET SDK (C#). Both parsers live inside
+# those SDKs and neither is a download the tool makes — but together they add
+# well over half a gigabyte to an image whose whole point is to be runnable, so
+# they are left to whoever needs those two languages. Add `openjdk-21-jdk-headless`
+# and/or `dotnet-sdk-8.0` to the apt line below and both backends work; without
+# them `ouroboros languages` still lists all eight, and wrapping a .java or .cs
+# file reports a missing toolchain rather than pretending the source is corrupt.
 #
 # Build:  docker build -t ouroboros-logger -f packaging/Dockerfile .
 # Run  :  docker run --rm -i ouroboros-logger          # MCP server over stdio
