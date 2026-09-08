@@ -87,7 +87,7 @@ There are two, both read in the source, and there are no others.
 Where they are read:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 and
-[`ouroboros/mcp/server.py:908`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L908).
+[`ouroboros/mcp/server.py:909`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L909).
 
 An example: put the records into a file of their own instead of next to the
 program.
