@@ -321,6 +321,7 @@ them — 0 runs out of 3. The negative result, with the exact boundary, is in
 | [`design/`](design/) | the original brief and the per-language study of how to instrument |
 | [`SPEC.md`](SPEC.md) | the record-format contract, shared by all eight languages |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how it works inside and how to add a language |
+| [`docs/ouroboros.flang`](docs/ouroboros.flang) | the same tool described in Russian as a program the flang compiler checks |
 
 Build and check it yourself:
 
@@ -345,6 +346,28 @@ scripts/qa.sh    # ruff, mypy, pytest
 | [What it looks like](docs/examples/index.md) | records, summary, configuration — in full |
 
 The same pages are published at <https://digitable-lol.github.io/ouroboros/>.
+
+## The Russian description is a program
+
+[`docs/ouroboros.flang`](docs/ouroboros.flang) says the same things in Russian,
+but as a program rather than as prose: eight languages, eleven record keys, two
+lines per call, `r` and `x` mutually exclusive, hanging calls, the two ways to
+instrument, the corruption gate.
+
+The [flang](https://github.com/digitable-lol/flang) compiler checks it. Types,
+termination proved for all 28 functions, and 40 examples that live inside the
+functions themselves — including the arithmetic: two lines per call, never fewer
+open calls than zero, and eight entry keys plus six exit keys minus eleven keys
+in total equals the three that appear in both lines.
+
+```sh
+npm i -g @digitable-lol/flang
+flang check docs/ouroboros.flang    # 28 functions, 28 with proven termination, 5 types
+flang test  docs/ouroboros.flang    # 40 examples, 40 passed
+```
+
+Prose drifts from the code the day after it is merged, and drifts silently.
+There is nothing here to drift: lying in this file means failing to compile it.
 
 ## State
 

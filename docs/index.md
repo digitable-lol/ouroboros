@@ -95,6 +95,7 @@ explained](examples/trace-record.md).
 | [Limits](limits.md) | what the tool does not do — the most important page |
 | [Why it exists](why.md) | what it is for and what work it takes off you |
 | [What it looks like](examples/index.md) | records, summary, configuration — in full |
+| [MCP tool reference](mcp-tools.md) | all 17 tools, recorded from a live conversation with the server |
 
 ## If you read only one page
 
