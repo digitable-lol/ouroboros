@@ -1,0 +1,21 @@
+C4Context
+    title Ouroboros in the system it is used in
+
+    Person(dev, "Developer", "Wants to know what the code did on this run, not what it should do")
+    Person(agent, "AI coding agent", "Asks the same questions over MCP")
+
+    System_Boundary(machine, "Your machine") {
+        System(ouro, "Ouroboros", "CLI and MCP server. Rewrites sources, then reads the trace back")
+        System_Ext(src, "Your source tree", "Python, JS/TS, C, C++, Elixir, Go, Java, C#")
+        System_Ext(chain, "The toolchain you already have", "python3, node, gcc, g++, elixir, go, javac, dotnet")
+        SystemDb(sink, "debug.info", "One append-only JSONL file. Two lines per call")
+    }
+
+    Rel(dev, ouro, "wrap-file, trace", "shell")
+    Rel(agent, ouro, "17 tools", "MCP over stdio")
+    Rel(ouro, src, "reads, and writes back in place")
+    Rel(ouro, chain, "asks it to parse, then to build and run")
+    Rel(chain, sink, "the running program appends to it")
+    Rel(ouro, sink, "reads and filters")
+
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

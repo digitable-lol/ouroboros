@@ -1,0 +1,65 @@
+{
+  "ok": true,
+  "path": "debug.info",
+  "calls_parsed": 4,
+  "malformed": 0,
+  "matched": 4,
+  "returned": 4,
+  "next_cursor": null,
+  "in_flight": [],
+  "in_flight_truncated": false,
+  "records": [
+    {
+      "index": 0,
+      "started": "2026-09-08T15:43:19.135",
+      "call_id": "1530daf8-2cfc-4685-944b-48ea6bde9f03",
+      "name": "subtotal",
+      "args": "['tea', 'mug', 'kettle']",
+      "kwargs": "",
+      "outcome_kind": "result",
+      "outcome": "52.0",
+      "duration": 3e-06,
+      "cpu": null,
+      "thread": "4065309.140405652486016"
+    },
+    {
+      "index": 1,
+      "started": "2026-09-08T15:43:19.135",
+      "call_id": "9396a0b9-c6fc-4801-bb31-f336b05a2a01",
+      "name": "discount",
+      "args": "52.0",
+      "kwargs": "",
+      "outcome_kind": "result",
+      "outcome": "5.2",
+      "duration": 2e-06,
+      "cpu": null,
+      "thread": "4065309.140405652486016"
+    },
+    {
+      "index": 2,
+      "started": "2026-09-08T15:43:19.135",
+      "call_id": "a64b426b-fcd8-4835-85d5-f1710830ea45",
+      "name": "delivery",
+      "args": "46.8",
+      "kwargs": "",
+      "outcome_kind": "result",
+      "outcome": "5.0",
+      "duration": 1e-06,
+      "cpu": null,
+      "thread": "4065309.140405652486016"
+    },
+    {
+      "index": 3,
+      "started": "2026-09-08T15:43:19.135",
+      "call_id": "fd796d30-cea8-43d3-a967-5d11751f4f3a",
+      "name": "total",
+      "args": "['tea', 'mug', 'kettle']",
+      "kwargs": "",
+      "outcome_kind": "result",
+      "outcome": "51.8",
+      "duration": 0.000231,
+      "cpu": null,
+      "thread": "4065309.140405652486016"
+    }
+  ]
+}
