@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from mcp.types import ToolAnnotations
 
+from .. import __version__
 from ..clangtools import (
     call_hierarchy as clang_call_hierarchy,
     describe_symbol as clang_describe_symbol,
@@ -648,6 +649,20 @@ def build_server() -> FastMCP:
     from mcp.server.fastmcp import FastMCP
 
     mcp = FastMCP("ouroboros-logger", instructions=_INSTRUCTIONS)
+
+    # На `initialize` сервер отвечает полем serverInfo.version, и агент читает его как
+    # версию ИНСТРУМЕНТА. FastMCP версию не принимает и оставляет её незаполненной, а
+    # нижний слой подставляет тогда версию пакета `mcp` — то есть сервер честно
+    # представлялся как "1.30.0", версия чужой библиотеки. Агент, которому важно, с чем
+    # он говорит (а этому инструменту важно: он про то, что было на самом деле),
+    # получал в ответ число не про нас.
+    #
+    # Проставляется через _mcp_server, потому что другого пути нет: FastMCP такого
+    # довода не имеет во всём разрешённом диапазоне (mcp>=1.2,<2). Поэтому — с
+    # проверкой наличия: если поле однажды переименуют, сервер не упадёт, а вернётся к
+    # прежнему поведению.
+    if hasattr(mcp, "_mcp_server") and hasattr(mcp._mcp_server, "version"):
+        mcp._mcp_server.version = __version__
 
     @mcp.tool(
         title="Wrap code snippet",
