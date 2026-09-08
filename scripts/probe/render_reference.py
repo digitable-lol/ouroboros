@@ -16,8 +16,9 @@
 
 Запуск (обычно через ``scripts/probe/build-reference.sh``)::
 
-    uv run python scripts/probe/render_reference.py docs/mcp-tools.json > docs/mcp-tools.md
-    uv run python scripts/probe/render_reference.py docs/mcp-tools.json --lang ru > docs/mcp-tools.ru.md
+    R=scripts/probe/render_reference.py
+    uv run python $R docs/mcp-tools.json > docs/mcp-tools.md
+    uv run python $R docs/mcp-tools.json --lang ru > docs/mcp-tools.ru.md
 """
 from __future__ import annotations
 
@@ -295,7 +296,7 @@ def render(doc: dict[str, Any], lang: str = "en") -> str:
 
 
 def main() -> None:
-    args = [a for a in sys.argv[1:]]
+    args = list(sys.argv[1:])
     lang = "en"
     if "--lang" in args:
         i = args.index("--lang")
