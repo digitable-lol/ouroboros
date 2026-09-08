@@ -1,6 +1,6 @@
-title: Уроборос
-description: "Записывает, как код на самом деле исполнялся: вызовы, доводы, результаты, исключения, длительности"
-lang: ru
+title: Ouroboros
+description: "Records how the code actually ran: calls, arguments, results, exceptions, durations"
+lang: en
 
 theme: jekyll-theme-minimal
 

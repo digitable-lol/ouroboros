@@ -8,7 +8,7 @@ title: Сводка по записям
 
 Что печатают `trace-stats` и `trace`, полностью и без сокращений. Всё ниже —
 вывод настоящего прогона той же программы из
-[README](https://github.com/digitable-lol/ouroboros#четыре-шага): три функции,
+[README](https://github.com/digitable-lol/ouroboros/blob/main/README.ru.md#четыре-шага): три функции,
 семь вызовов, два из них с исключением.
 
 ## `trace-stats` — сводка целиком
