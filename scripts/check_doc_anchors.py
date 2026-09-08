@@ -128,7 +128,9 @@ def config_problems() -> list[str]:
     """
 
     if not CONFIG.exists():
-        return []
+        # Not "nothing to check": without this file the site does not build at
+        # all. Returning an empty list here is how a check stops checking.
+        return [f"{CONFIG}: missing — the site has no build configuration"]
     return unquoted_colon_problems(CONFIG, CONFIG.read_text(encoding="utf-8"),
                                    first_lineno=1, what="build configuration")
 
@@ -167,40 +169,52 @@ def pages() -> list[Path]:
     return list(seen)
 
 
-def main() -> int:
-    cache: dict[Path, set[str]] = {}
+def link_problems(page: Path, cache: dict[Path, set[str]]) -> tuple[list[str], int]:
+    """Every link out of one page: does the file exist, does the heading exist?
+
+    ``cache`` holds the anchors already read off a page, so a page linked from
+    forty others is parsed once. Returns the complaints and how many links were
+    looked at.
+    """
+
     bad: list[str] = []
     checked = 0
+    rel = page.relative_to(ROOT)
+    for target in LINK.findall(page.read_text(encoding="utf-8")):
+        if target.startswith(("http://", "https://", "mailto:", "#!")):
+            continue
+        path_part, _, fragment = target.partition("#")
+        checked += 1
 
-    for problem in config_problems():
-        bad.append(f"  - {problem.replace(str(ROOT) + '/', '')}")
-
-    for page in pages():
-        for problem in front_matter_problems(page):
-            bad.append(f"  - {problem.replace(str(ROOT) + '/', '')}")
-
-    for page in pages():
-        rel = page.relative_to(ROOT)
-        for target in LINK.findall(page.read_text(encoding="utf-8")):
-            if target.startswith(("http://", "https://", "mailto:", "#!")):
+        if path_part:
+            dest = (page.parent / path_part).resolve()
+            if not dest.exists():
+                bad.append(f"  - {rel}: no such file: {path_part}")
                 continue
-            path_part, _, fragment = target.partition("#")
-            checked += 1
+        else:
+            dest = page  # a link into the same page
 
-            if path_part:
-                dest = (page.parent / path_part).resolve()
-                if not dest.exists():
-                    bad.append(f"  - {rel}: no such file: {path_part}")
-                    continue
-            else:
-                dest = page  # a link into the same page
+        if fragment and dest.suffix == ".md":
+            if dest not in cache:
+                cache[dest] = anchors(dest)
+            if fragment not in cache[dest]:
+                where = dest.relative_to(ROOT)
+                bad.append(f"  - {rel}: {where} has no heading with anchor #{fragment}")
+    return bad, checked
 
-            if fragment and dest.suffix == ".md":
-                if dest not in cache:
-                    cache[dest] = anchors(dest)
-                if fragment not in cache[dest]:
-                    where = dest.relative_to(ROOT)
-                    bad.append(f"  - {rel}: {where} has no heading with anchor #{fragment}")
+
+def main() -> int:
+    cache: dict[Path, set[str]] = {}
+    bad = [f"  - {p.replace(str(ROOT) + '/', '')}" for p in config_problems()]
+    for page in pages():
+        bad += [f"  - {p.replace(str(ROOT) + '/', '')}"
+                for p in front_matter_problems(page)]
+
+    checked = 0
+    for page in pages():
+        found, n = link_problems(page, cache)
+        bad += found
+        checked += n
 
     if bad:
         print("Problems in the documentation pages:\n", file=sys.stderr)

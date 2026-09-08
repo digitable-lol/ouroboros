@@ -193,7 +193,7 @@ def rule_package_version(e: Evidence) -> list[str]:
         f"the version is written into ouroboros/__init__.py as a literal ({value}). It "
         "agrees with pyproject.toml right now, but nothing holds it there except "
         "attention, and once it already failed to hold. Read it from the installation "
-        "metadata instead: importlib.metadata.version(\"ouroboros-logger\")"
+        'metadata instead: importlib.metadata.version("ouroboros-logger")'
     ]
 
 
@@ -423,7 +423,7 @@ def git_modes() -> dict[str, str]:
 # --------------------------------------------------------------------------- #
 
 
-class Unreachable(Exception):
+class UnreachableError(Exception):
     """The published thing could not be reached. Neither "all is well" nor "they differ"."""
 
 
@@ -441,10 +441,10 @@ def fetch(url: str, accept: str | None = None) -> bytes:
             return body
     except urllib.error.HTTPError as e:
         if e.code in (403, 429):
-            raise Unreachable(f"{url}: {e.code} — GitHub is rate-limiting us") from e
-        raise Unreachable(f"{url}: answered {e.code}") from e
+            raise UnreachableError(f"{url}: {e.code} — GitHub is rate-limiting us") from e
+        raise UnreachableError(f"{url}: answered {e.code}") from e
     except (urllib.error.URLError, OSError) as e:
-        raise Unreachable(f"{url}: {e}") from e
+        raise UnreachableError(f"{url}: {e}") from e
 
 
 def remote_tags() -> list[str]:
@@ -457,7 +457,7 @@ def remote_tags() -> list[str]:
             env=env, check=True, capture_output=True, text=True, timeout=TIMEOUT,
         ).stdout
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
-        raise Unreachable(f"git ls-remote {REPO_URL}: {e}") from e
+        raise UnreachableError(f"git ls-remote {REPO_URL}: {e}") from e
     versions = []
     for line in out.splitlines():
         name = line.rsplit("/", 1)[-1]
@@ -483,11 +483,11 @@ def published_formula() -> bytes:
     url = f"https://api.github.com/repos/{TAP_REPO}/contents/{TAP_PATH}?ref=main"
     payload = json.loads(fetch(url, accept="application/vnd.github+json").decode("utf-8"))
     if payload.get("encoding") != "base64":
-        raise Unreachable(f"{url}: unexpected encoding {payload.get('encoding')!r}")
+        raise UnreachableError(f"{url}: unexpected encoding {payload.get('encoding')!r}")
     return base64.b64decode(payload["content"])
 
 
-def collect(online: bool) -> tuple[Evidence, list[str]]:
+def collect(*, online: bool) -> tuple[Evidence, list[str]]:
     """The evidence, plus a list of what could not be asked."""
 
     version = pyproject_version()
@@ -508,15 +508,15 @@ def collect(online: bool) -> tuple[Evidence, list[str]]:
     missed: list[str] = []
     try:
         evidence = replace(evidence, tags=remote_tags())
-    except Unreachable as e:
+    except UnreachableError as e:
         missed.append(f"repository tags: {e}")
     try:
         evidence = replace(evidence, archive_sha=archive_sha(url))
-    except Unreachable as e:
+    except UnreachableError as e:
         missed.append(f"release archive: {e}")
     try:
         evidence = replace(evidence, published=published_formula())
-    except Unreachable as e:
+    except UnreachableError as e:
         missed.append(f"the formula from {TAP_REPO}: {e}")
     return evidence, missed
 

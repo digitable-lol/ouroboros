@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -86,7 +87,7 @@ def test_offsets_point_at_the_bytes_the_splicer_expects():
 def test_offsets_are_bytes_not_characters():
     """Non-ASCII source is the case a character-offset boundary gets wrong."""
 
-    source = '/* здравствуй */\nint f(int a) { return a; }\n'
+    source = "/* здравствуй */\nint f(int a) { return a; }\n"
     fn = _emit_c(source).functions[0]
     raw = source.encode("utf-8")
     assert raw[fn.body_start:fn.body_start + 1] == b"{"
@@ -355,7 +356,7 @@ def test_a_helper_that_never_finishes_is_given_up_on(tmp_path, monkeypatch):
 
 def test_building_without_a_c_compiler_says_so(monkeypatch, tmp_path):
     monkeypatch.delenv("CC", raising=False)
-    monkeypatch.setattr(clangbridge.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
     with pytest.raises(ClangEmitterError) as excinfo:
         build_emitter(tmp_path / "out")
     assert "no C compiler found" in str(excinfo.value)
@@ -375,8 +376,8 @@ def test_libclang_shared_object_is_found():
 
 
 def test_libclang_search_reports_absence_rather_than_guessing(monkeypatch):
-    monkeypatch.setattr(clangbridge.sys, "path", [])
-    monkeypatch.setattr(clangbridge.Path, "glob", lambda _self, _pattern: iter(()))
+    monkeypatch.setattr(sys, "path", [])
+    monkeypatch.setattr(Path, "glob", lambda _self, _pattern: iter(()))
     libclang_library.cache_clear()
     try:
         with pytest.raises(ClangEmitterError) as excinfo:
@@ -401,8 +402,8 @@ def test_a_libclang_name_that_is_not_a_shared_object_is_walked_past(monkeypatch,
     candidates = sorted(tmp_path.glob("libclang-*.so.1"))
     assert len(candidates) == 3                                       # all three do match
 
-    monkeypatch.setattr(clangbridge.sys, "path", [])                  # no wheel copy
-    monkeypatch.setattr(clangbridge.Path, "glob",
+    monkeypatch.setattr(sys, "path", [])                  # no wheel copy
+    monkeypatch.setattr(Path, "glob",
                         lambda _self, pattern: iter(candidates)
                         if pattern == "usr/lib/*/libclang-*.so.*" else iter(()))
     libclang_library.cache_clear()
@@ -431,7 +432,7 @@ def _system_clang_c() -> tuple[str, str] | None:
     roots = []
     if shutil.which("llvm-config"):
         out = subprocess.run(["llvm-config", "--prefix"], capture_output=True,
-                             text=True, timeout=30).stdout.strip()
+                             text=True, timeout=30, check=False).stdout.strip()
         if out:
             roots.append(Path(out))
     roots += sorted(Path("/").glob("usr/lib/llvm-*"), reverse=True)
@@ -453,7 +454,7 @@ _CROSS_CHECK_SOURCES = [
      "static const char *label(int i, unsigned u, long l, const char *s,\n"
      "                         double d, struct S *p) {\n"
      "    if (i) return s;\n"
-     "    return \"x\";\n"
+     '    return "x";\n'
      "}\n"
      "const int fixed(void) { return 1; }\n"
      "void quiet(void) { return; }\n"),
@@ -500,7 +501,7 @@ def test_vendored_header_matches_the_real_one(tmp_path):
                                   input=source.encode("utf-8"),
                                   capture_output=True, timeout=120,
                                   env={**os.environ,
-                                       "OUROBOROS_LIBCLANG": library})
+                                       "OUROBOROS_LIBCLANG": library}, check=False)
             assert proc.returncode == 0, proc.stderr.decode()
             runs.append(proc.stdout)
         assert json.loads(runs[0])["functions"], f"{filename} produced no functions"
@@ -563,7 +564,7 @@ def test_ouroboros_instruments_its_own_range_emitter(tmp_path):
     build = subprocess.run(
         [shutil.which("cc") or "gcc", "-O2", "-o", str(instrumented),
          str(tmp_path / "emitter.c"), "-I", str(tmp_path)],
-        capture_output=True, text=True, timeout=300)
+        capture_output=True, text=True, timeout=300, check=False)
     assert build.returncode == 0, build.stderr
 
     probe = "static int add(int a, const char *s) { if (a) return a + 1; return 0; }\n"
@@ -573,7 +574,7 @@ def test_ouroboros_instruments_its_own_range_emitter(tmp_path):
     for binary in (emitter_path(), str(instrumented)):
         proc = subprocess.run([binary, "c", "probe.c", *_c_args()],
                               input=probe.encode("utf-8"), capture_output=True,
-                              timeout=120, env=env)
+                              timeout=120, env=env, check=False)
         assert proc.returncode == 0, proc.stderr.decode()
         answers.append(proc.stdout)
     assert answers[0] == answers[1], "instrumentation changed what the emitter says"
@@ -691,7 +692,7 @@ def test_a_compiler_that_cannot_be_started_says_so(monkeypatch, tmp_path):
     def refuse(*_args, **_kwargs):
         raise OSError("no such thing")
 
-    monkeypatch.setattr(clangbridge.subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "run", refuse)
     with pytest.raises(ClangEmitterError) as excinfo:
         build_emitter(tmp_path / "out")
     assert "cannot run the C compiler" in str(excinfo.value)
@@ -706,7 +707,7 @@ def test_the_control_build_needs_a_library_named(tmp_path):
 def test_libclang_is_also_found_without_the_python_package(monkeypatch):
     """The fallback for an install that got libclang from the distribution."""
 
-    monkeypatch.setattr(clangbridge.sys, "path", [])
+    monkeypatch.setattr(sys, "path", [])
     libclang_library.cache_clear()
     try:
         found = Path(libclang_library())
@@ -716,7 +717,7 @@ def test_libclang_is_also_found_without_the_python_package(monkeypatch):
 
 
 def test_resource_dir_lookup_survives_a_missing_clang(monkeypatch):
-    monkeypatch.setattr(clangbridge.subprocess, "run",
+    monkeypatch.setattr(subprocess, "run",
                         lambda *_a, **_k: (_ for _ in ()).throw(OSError("gone")))
     clangbridge.clang_resource_dir_args.cache_clear()
     try:
@@ -729,7 +730,7 @@ def test_resource_dir_lookup_ignores_a_clang_that_answers_nothing(monkeypatch):
     class Empty:
         stdout = "\n"
 
-    monkeypatch.setattr(clangbridge.subprocess, "run", lambda *_a, **_k: Empty())
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: Empty())
     clangbridge.clang_resource_dir_args.cache_clear()
     try:
         assert clangbridge.clang_resource_dir_args() == []

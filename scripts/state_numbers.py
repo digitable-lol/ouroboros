@@ -58,7 +58,7 @@ def measure() -> dict[str, Any]:
     print("== running the tests with coverage (this is not quick) ==")
     proc = subprocess.run(
         ["uv", "run", "pytest", "--cov", "--cov-report=json:.coverage.json"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT, capture_output=True, text=True, check=False,
     )
     sys.stdout.write(proc.stdout[-2000:])
     if proc.returncode != 0:
@@ -133,7 +133,7 @@ def collected_tests() -> int:
 
     proc = subprocess.run(
         ["uv", "run", "pytest", "--collect-only"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT, capture_output=True, text=True, check=False,
     )
     # pytest prints the collection total in two different ways: usually as the
     # line "N tests collected", and under double quiet (`-q` is already in

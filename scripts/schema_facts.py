@@ -69,11 +69,14 @@ def measure() -> dict[str, Any]:
     for lang in _LANGS:
         try:
             _skip_unless_available(lang)
-        except Exception as e:  # pytest.skip.Exception and the like
+        # BLE001: `_skip_unless_available` signals "no toolchain here" by raising
+        # pytest.skip.Exception, which is not an Exception subclass this file can
+        # name without importing pytest into a script that does not need it.
+        except Exception as e:  # noqa: BLE001
             out[lang] = {"unavailable": str(e)[:120]}
             print(f"  {lang}: skipped — {e}")
             continue
-        with tempfile.TemporaryDirectory(dir="/srv/tmp") as td:
+        with tempfile.TemporaryDirectory() as td:
             recs = _records(lang, Path(td))
         # The record for `add(2, 3)` specifically. Java has no file level to
         # append a driver to, so its `main` is instrumented along with the rest

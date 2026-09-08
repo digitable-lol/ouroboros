@@ -146,7 +146,7 @@ def test_offsets_are_counted_in_code_points_not_utf16(tx):
     """javac reports UTF-16 indices and Python slices by code point. One
     character outside the basic plane above a method is enough to push every
     later edit off by one, which produces a file that no longer parses."""
-    src = ('public class A {\n    // \U0001F600\n    int f() { return 1; }\n}\n')
+    src = ("public class A {\n    // \U0001F600\n    int f() { return 1; }\n}\n")
     res = tx.wrap_source(src, filename="A.java")
     assert "{ ouroboros.OuroborosRuntime.Ctx __ouro_ctx" in res.code
     assert "(__ouro_result = 1)" in res.code

@@ -46,6 +46,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -86,11 +87,12 @@ def bad(message: str) -> None:
 # the facts the pages are allowed to quote
 # --------------------------------------------------------------------------- #
 
-def read_json(path: Path) -> dict:
+def read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         bad(f"missing {path.relative_to(ROOT)} — run site/examples/capture.py")
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    loaded: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return loaded
 
 
 @dataclass
@@ -98,9 +100,9 @@ class Facts:
     """Everything a page may quote as a number, and where it came from."""
 
     captures: dict[str, str] = field(default_factory=dict)
-    measured: dict = field(default_factory=dict)
-    state: dict = field(default_factory=dict)
-    run: dict = field(default_factory=dict)
+    measured: dict[str, Any] = field(default_factory=dict)
+    state: dict[str, Any] = field(default_factory=dict)
+    run: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> Facts:
@@ -166,9 +168,9 @@ def tree_origin() -> str:
 
     try:
         rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
-                             capture_output=True, text=True, timeout=30)
+                             capture_output=True, text=True, timeout=30, check=False)
         date = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%cs"],
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError):
         return "an unversioned tree"
     if rev.returncode != 0:
@@ -201,9 +203,7 @@ def inline(text: str, links: list[str]) -> str:
     def link(m: re.Match[str]) -> str:
         href = m.group(2)
         links.append(href)
-        extra = "" if href.startswith("#") or "." not in href.split("/")[0] else ""
-        if href.startswith("http"):
-            extra = ' rel="noopener"'
+        extra = ' rel="noopener"' if href.startswith("http") else ""
         return stash(f'<a href="{html.escape(href, quote=True)}"{extra}>{m.group(1)}</a>')
 
     out = LINK.sub(link, out)
@@ -330,7 +330,7 @@ class Renderer:
             figure.append(f'<img class="{theme}" src="diagrams/{name}.{theme}.svg" alt="{alt}">')
         if caption:
             figure.append(f"<figcaption>{inline(caption, self.links)}</figcaption>")
-        figure.append('<details><summary>The mermaid source of this diagram</summary>')
+        figure.append("<details><summary>The mermaid source of this diagram</summary>")
         figure.append(code_block(source.read_text(encoding="utf-8"), "mermaid"))
         figure.append("</details></figure>")
         self.out.append("".join(figure))
@@ -365,7 +365,11 @@ class Renderer:
             [html.escape(h) for h in head],
             [[inline(str(c), self.links) for c in row] for row in body]))
 
-    DIRECTIVES = {"capture": capture, "source": source, "diagram": diagram, "table": table}
+    # RUF012: the table is read, never written; it maps a directive name to the
+    # method that renders it, and it is a class attribute so a subclass can add one.
+    DIRECTIVES = {  # noqa: RUF012
+        "capture": capture, "source": source, "diagram": diagram, "table": table,
+    }
 
     # -- inline substitution ------------------------------------------------ #
 
@@ -452,7 +456,7 @@ class Renderer:
                 continue
 
             if line.startswith("|"):
-                block, i = [], i
+                block = []
                 while i < len(lines) and lines[i].startswith("|"):
                     block.append(lines[i])
                     i += 1
@@ -460,7 +464,7 @@ class Renderer:
                 continue
 
             if line.startswith("> "):
-                block, i = [], i
+                block = []
                 while i < len(lines) and lines[i].startswith(">"):
                     block.append(lines[i].lstrip(">").strip())
                     i += 1
@@ -471,7 +475,7 @@ class Renderer:
 
             if re.match(r"^([-*]|\d+\.) ", line):
                 ordered = bool(re.match(r"^\d+\. ", line))
-                items, i = [], i
+                items = []
                 while i < len(lines) and re.match(r"^([-*]|\d+\.) ", lines[i]):
                     item = re.sub(r"^([-*]|\d+\.) ", "", lines[i])
                     i += 1
@@ -489,7 +493,7 @@ class Renderer:
                 i += 1
                 continue
 
-            block, i = [], i
+            block = []
             while i < len(lines) and lines[i].strip() and not lines[i].startswith(
                     ("#", "|", ">", "```", ":::", "{{")) and not re.match(
                     r"^([-*]|\d+\.) ", lines[i]):
@@ -765,7 +769,7 @@ class DocsRenderer:
                 continue
 
             if line.startswith("|"):
-                block, i = [], i
+                block = []
                 while i < len(lines) and lines[i].startswith("|"):
                     block.append(lines[i])
                     i += 1
@@ -773,7 +777,7 @@ class DocsRenderer:
                 continue
 
             if line.startswith(">"):
-                block, i = [], i
+                block = []
                 while i < len(lines) and lines[i].startswith(">"):
                     block.append(re.sub(r"^>[ \t]?", "", lines[i]))
                     i += 1
@@ -784,7 +788,7 @@ class DocsRenderer:
                 i = self.list_block(lines, i)
                 continue
 
-            block, i = [], i
+            block = []
             while (i < len(lines) and lines[i].strip()
                    and not lines[i].startswith(("#", "|", ">", "```"))
                    and not (lines[i].startswith("<")

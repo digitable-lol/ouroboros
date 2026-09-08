@@ -27,7 +27,7 @@ def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> str:
     full = dict(os.environ)
     if env:
         full.update(env)
-    done = subprocess.run(cmd, cwd=cwd, env=full, capture_output=True, text=True)
+    done = subprocess.run(cmd, cwd=cwd, env=full, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         print(f"упало: {' '.join(cmd)}\n{done.stdout}\n{done.stderr}", file=sys.stderr)
         raise SystemExit(1)
@@ -40,8 +40,8 @@ def ouroboros(*args: str) -> None:
 
 def read_trace(path: Path) -> list[dict]:
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
         if line.startswith("{"):
             out.append(json.loads(line))
     return out

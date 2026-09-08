@@ -44,7 +44,8 @@ def _parse(argv):
 #: One command line per tool subcommand, with every optional flag given a value
 #: that differs from its default — a flag left at its default cannot show that
 #: it was routed to the right parameter.
-PLANNED = {
+PLANNED: dict[str, tuple[list[str], cli.ToolFn, tuple[object, ...],
+                         dict[str, object], int | None]] = {
     "wrap-file": (
         ["wrap-file", "m.py", "--minimal"],
         server.tool_wrap_file, ("m.py",), {"minimal": True}, cli.COMPACT),
@@ -140,13 +141,16 @@ def test_every_subcommand_is_either_a_tool_call_or_a_named_special():
 
     sub = next(a for a in cli._build_parser()._actions if a.choices and a.dest == "command")
 
+    assert sub.choices is not None
     assert set(sub.choices) == set(cli.TOOL_COMMANDS) | cli.SPECIAL_COMMANDS
 
 
 def test_wrap_file_leaves_the_table_when_asked_for_stdout():
     """`--stdout` must not reach `tool_wrap_file`: that one rewrites the file."""
 
-    assert cli.plan(_parse(["wrap-file", "m.py"])).tool is server.tool_wrap_file
+    planned = cli.plan(_parse(["wrap-file", "m.py"]))
+    assert planned is not None
+    assert planned.tool is server.tool_wrap_file
     assert cli.plan(_parse(["wrap-file", "m.py", "--stdout"])) is None
 
 
@@ -294,7 +298,7 @@ def trace_file(tmp_path, monkeypatch):
 
     import importlib
 
-    import ouroboros.runtime as runtime
+    from ouroboros import runtime
 
     path = tmp_path / "debug.info"
     monkeypatch.setenv("OUROBOROS_DEBUG_INFO", str(path))

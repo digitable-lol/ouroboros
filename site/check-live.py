@@ -258,7 +258,7 @@ def skeleton(root: Path) -> None:
         path.write_text(f"<!doctype html><title>Page · Ouroboros</title>"
                         f"<main>{body}</main>", encoding="utf-8")
 
-    page("index.html", f"{LANDING_MARK}<img src=\"diagrams/{diagram_files()[0]}\">")
+    page("index.html", f'{LANDING_MARK}<img src="diagrams/{diagram_files()[0]}">')
     for name in landing_pages():
         if name != "index.html":
             page(name, "a landing page")
@@ -317,6 +317,9 @@ def self_test() -> int:
                 return 1
             print("a site with everything in place: passes")
 
+            # PLW0108 on the four one-call lambdas below: the table pairs a name
+            # with an action to run LATER. Inlining the call would break the site
+            # while the table is still being built.
             sabotage: list[tuple[str, object]] = [
                 ("the root serves the documentation index, not the landing",
                  lambda: (root / "index.html").write_text(
@@ -400,7 +403,7 @@ def main(argv: list[str]) -> int:
         print(f"  * {problem}", file=sys.stderr)
     if any("not the landing" in problem for problem in wrong):
         print("\nA root that is not the landing usually means one thing: the source "
-              "of Pages is still \"Deploy from a branch\", so the built-in Jekyll "
+              'of Pages is still "Deploy from a branch", so the built-in Jekyll '
               "build of docs/ is publishing over this one. Settings \u2192 Pages "
               "\u2192 Build and deployment \u2192 Source: GitHub Actions. The whole "
               "order, and what to check after it, is in site/README.md.",

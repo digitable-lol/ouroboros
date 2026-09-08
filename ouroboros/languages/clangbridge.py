@@ -190,7 +190,7 @@ def clang_resource_dir_args() -> list[str]:
     for name in ("clang", "clang-20", "clang-19", "clang-18", "clang-17", "clang-16"):
         try:
             found = subprocess.run([name, "-print-resource-dir"], capture_output=True,
-                                   text=True, timeout=10).stdout.strip()
+                                   text=True, timeout=10, check=False).stdout.strip()
         except (OSError, subprocess.SubprocessError):
             continue
         if found:
@@ -227,7 +227,7 @@ def build_emitter(destination: Path, *, system_header: str | None = None,
     else:
         argv += ["-I", str(_CLANG_DIR)]
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=300, check=False)
     except OSError as e:
         raise ClangEmitterError(f"cannot run the C compiler: {e}") from e
     if proc.returncode != 0 or not destination.exists():
@@ -265,7 +265,7 @@ def emitter_path() -> str:
     staging = built.with_name(f"{built.name}.{os.getpid()}.tmp")
     try:
         build_emitter(staging)
-        os.replace(staging, built)
+        staging.replace(built)
     finally:
         staging.unlink(missing_ok=True)
     return str(built)
@@ -316,7 +316,7 @@ def emit_ranges(source: bytes, *, language: str, filename: str,
     env = {**os.environ, "OUROBOROS_LIBCLANG": libclang_library()}
     try:
         proc = subprocess.run(argv, input=source, capture_output=True,
-                              timeout=EMIT_TIMEOUT, env=env)
+                              timeout=EMIT_TIMEOUT, env=env, check=False)
     except subprocess.TimeoutExpired as e:
         raise ClangEmitterError(
             f"the C/C++ range emitter did not finish within {EMIT_TIMEOUT}s "
@@ -412,11 +412,14 @@ class ClangTransformer(Transformer):
         """The edits that wrap one function."""
         raise NotImplementedError
 
-    def skip(self, fn: ClangFunction) -> bool:
+    # ARG002 on the next three hooks: the parameters are the hook's interface.
+    # The default implementation answers without looking at them; an override
+    # (C++ skips constexpr, C anchors the include after the last #include) does.
+    def skip(self, fn: ClangFunction) -> bool:  # noqa: ARG002
         """True for a function this language must leave alone."""
         return False
 
-    def include_anchor(self, raw: bytes, first: ClangFunction) -> int:
+    def include_anchor(self, raw: bytes, first: ClangFunction) -> int:  # noqa: ARG002
         """Byte offset the ``#include`` line is spliced at."""
         return 0
 

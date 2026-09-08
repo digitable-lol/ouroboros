@@ -160,7 +160,7 @@ def test_end_to_end_via_sandbox(tmp_path):
     src = (
         "#include <cstdio>\n"
         "int square(int n) {\n    return n * n;\n}\n"
-        "int main() {\n    std::printf(\"%d\\n\", square(6));\n    return 0;\n}\n"
+        'int main() {\n    std::printf("%d\\n", square(6));\n    return 0;\n}\n'
     )
     out = write_file(proj, "m.cpp", src)
     assert out.wrapped and out.language == "cpp"

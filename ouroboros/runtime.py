@@ -232,7 +232,7 @@ def _plain_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
         call = _Call(fn, args, kwargs)
         try:
             result = fn(*args, **kwargs)
-        except BaseException as e:  # noqa: BLE001 — we log then re-raise
+        except BaseException as e:  # logged, then re-raised untouched
             call.raised(e)
             raise
         call.returned(result)
@@ -246,7 +246,7 @@ def _coroutine_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
         call = _Call(fn, args, kwargs)
         try:
             result = await fn(*args, **kwargs)
-        except BaseException as e:  # noqa: BLE001 — we log then re-raise
+        except BaseException as e:  # logged, then re-raised untouched
             call.raised(e)
             raise
         call.returned(result)
@@ -263,7 +263,7 @@ def _generator_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
         call = _Call(fn, args, kwargs)
         try:
             result = yield from fn(*args, **kwargs)
-        except BaseException as e:  # noqa: BLE001 — we log then re-raise
+        except BaseException as e:  # logged, then re-raised untouched
             call.raised(e)
             raise
         call.returned(result)
@@ -278,7 +278,7 @@ def _async_gen_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
         try:
             async for item in fn(*args, **kwargs):
                 yield item
-        except BaseException as e:  # noqa: BLE001 — we log then re-raise
+        except BaseException as e:  # logged, then re-raised untouched
             call.raised(e)
             raise
         # An async generator cannot carry a return value, so there is none to log.

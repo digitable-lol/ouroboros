@@ -155,7 +155,7 @@ def test_const_char_pointer_prints_as_an_address_not_a_string(tx):
     """
 
     res = tx.wrap_source(
-        'int len(const char *s) {\n    return 0;\n}\n', filename="m.c")
+        "int len(const char *s) {\n    return 0;\n}\n", filename="m.c")
 
     assert '"%p"' in res.code
     assert "%s" not in res.code
@@ -489,7 +489,7 @@ def test_inplace_wrapped_file_compiles(tmp_path):
     src.write_text(
         "#include <stdio.h>\n"
         "int square(int n) {\n    return n * n;\n}\n"
-        "int main(void) {\n    printf(\"%d\\n\", square(6));\n    return 0; }\n",
+        'int main(void) {\n    printf("%d\\n", square(6));\n    return 0; }\n',
         encoding="utf-8")
     assert tool_wrap_file(str(src))["functions_wrapped"] == 2
     subprocess.run(["gcc", "-std=gnu11", "p.c", "-o", "p"],
@@ -505,7 +505,7 @@ def test_end_to_end_via_sandbox(tmp_path):
     src = (
         "#include <stdio.h>\n"
         "int square(int n) {\n    return n * n;\n}\n"
-        "int main(void) {\n    printf(\"%d\\n\", square(6));\n    return 0;\n}\n"
+        'int main(void) {\n    printf("%d\\n", square(6));\n    return 0;\n}\n'
     )
     out = write_file(proj, "m.c", src)
     assert out.wrapped and out.language == "c"

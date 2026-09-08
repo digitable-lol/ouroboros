@@ -18,9 +18,9 @@ from .treeflags import TreeConfigError
 
 __all__ = [
     "CorruptedSourceError",
-    "TreeConfigError",
     "Edit",
     "Transformer",
+    "TreeConfigError",
     "WrapResult",
     "apply_edits",
     "supported_extensions",

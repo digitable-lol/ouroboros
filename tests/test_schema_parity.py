@@ -31,6 +31,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import Any
 
 import pytest
 
@@ -156,6 +157,7 @@ def _instrument(lang: str, root, src: str, fname: str, tail: str) -> str | None:
     Returns the helper's filename, which the Go build needs on its command line.
     """
     tx = transformer_for_language(lang)
+    assert tx is not None
     code = tx.wrap_source(src, filename=fname).code
     # `runtime_asset_for`, not the bare `runtime_asset`: the Go helper joins the
     # wrapped file's package and only the wrapped source can say which one.
@@ -205,6 +207,7 @@ def _build(lang: str, root, fname: str, asset_name: str | None) -> list[str]:
         # The Go helper is a sibling file of the same package, not an import, so
         # it is named on the build command line rather than resolved from the
         # source. `go build` also wants its flags ahead of the file list.
+        assert asset_name is not None                # Go always emits a helper
         subprocess.run(["go", "build", "-o", "prog.bin", fname, asset_name], cwd=root,
                        check=True, capture_output=True, timeout=TIMEOUT)
         return ["./prog.bin"]
@@ -251,7 +254,7 @@ def _trace_lines(lang: str, root, src: str, fname: str, tail: str,
     return [ln for ln in sink.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
 
-def _records(lang: str, root) -> list[dict]:
+def _records(lang: str, root) -> list[dict[str, Any]]:
     src, fname, tail = _sources(lang)
     return [json.loads(ln) for ln in _trace_lines(lang, root, src, fname, tail)]
 
@@ -335,7 +338,7 @@ def _long_call_lines(lang: str, root) -> list[str]:
     params = ", ".join(f"a{i}" for i in range(30))
     args = ", ".join(f'"{big}"' for _ in range(30))
     if lang == "python":
-        src = f"def many({params}):\n    return \"{big}\"\n"
+        src = f'def many({params}):\n    return "{big}"\n'
         tail = f"\nmany({args})\n"
         fname = "prog.py"
     elif lang == "javascript":
@@ -558,7 +561,7 @@ def test_call_ids_differ_between_processes(lang: str, tmp_path) -> None:
     assert len(set(ids)) == len(ids), f"{lang}: repeated call ids across processes: {ids}"
 
 
-def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict]:
+def _repeated_call_records(lang: str, root, calls: int = 200) -> list[dict[str, Any]]:
     """Run ``tick`` `calls` times in one process and return its records."""
     fname, src, tail = _tick_program(lang, calls)
     return [json.loads(ln) for ln in _trace_lines(lang, root, src, fname, tail)]

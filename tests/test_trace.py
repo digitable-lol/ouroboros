@@ -164,7 +164,9 @@ def test_parse_timestamp_both_dialects():
     assert parse_timestamp("uptime+5.123") == 5.123
     iso = parse_timestamp("2026-06-15T10:00:00.500")
     iso2 = parse_timestamp("2026-06-15T10:00:01.500")
-    assert iso is not None and round(iso2 - iso, 3) == 1.0
+    assert iso is not None
+    assert iso2 is not None
+    assert round(iso2 - iso, 3) == 1.0
     assert parse_timestamp("garbage") is None
 
 

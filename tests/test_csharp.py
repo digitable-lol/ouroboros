@@ -221,7 +221,7 @@ def test_offsets_are_counted_in_code_points_not_utf16(tx):
     """Roslyn reports UTF-16 indices and Python slices by code point. One
     character outside the basic plane above a member is enough to push every later
     edit off by one, which produces a file that no longer parses."""
-    src = 'class A {\n    // \U0001F600\n    int F() { return 1; }\n}\n'
+    src = "class A {\n    // \U0001F600\n    int F() { return 1; }\n}\n"
     res = tx.wrap_source(src, filename="A.cs")
     assert "{ Ouroboros.OuroborosRuntime.Ctx __ouro_ctx" in res.code
     assert "Ret<int>(__ouro_ctx, 1)" in res.code

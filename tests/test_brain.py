@@ -77,7 +77,10 @@ def test_an_unknown_tag_is_refused():
     branch is reached the only way it can be, by making the value by hand."""
 
     with pytest.raises(TypeError, match="unknown flang tag"):
-        from_flang(rt.Value(99))
+        # The generated stub describes only the fields the bridge reads, not the
+        # runtime constructor; `Value(99)` is exactly the hand-made value this
+        # test is about.
+        from_flang(rt.Value(99))  # type: ignore[call-arg]
 
 
 # ── what the brain says about one line and one event ──────────────────────────
@@ -304,9 +307,9 @@ def test_the_printed_runtime_still_has_everything_the_stub_declares():
     from pathlib import Path
 
     text = (Path(__file__).resolve().parent.parent / STUB).read_text(encoding="utf-8")
-    declared = (set(re.findall(r"^def (\w+)\(", text, re.M))
-                | set(re.findall(r"^class (\w+)", text, re.M))
-                | set(re.findall(r"^(\w+): int$", text, re.M)))
+    declared = (set(re.findall(r"^def (\w+)\(", text, re.MULTILINE))
+                | set(re.findall(r"^class (\w+)", text, re.MULTILINE))
+                | set(re.findall(r"^(\w+): int$", text, re.MULTILINE)))
     assert declared, "the stub declares nothing — the pattern above stopped matching"
     missing = sorted(name for name in declared if not hasattr(rt, name))
     assert not missing, f"the printed runtime no longer has: {missing}"

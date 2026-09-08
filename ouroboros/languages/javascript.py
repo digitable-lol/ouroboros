@@ -112,7 +112,7 @@ class JavaScriptTransformer(Transformer):
                 cwd=str(_JS_DIR),
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=30, check=False,
             )
         except FileNotFoundError as e:  # node missing
             raise CorruptedSourceError(

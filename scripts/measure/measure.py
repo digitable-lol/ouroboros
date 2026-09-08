@@ -13,6 +13,7 @@ import statistics
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 
@@ -26,10 +27,10 @@ def run(cmd: list[str], cwd: str, env: dict[str, str],
 
     times: list[float] = []
     for _ in range(repeats):
-        if trace != "-" and os.path.exists(trace):
-            os.remove(trace)
+        if trace != "-":
+            Path(trace).unlink(missing_ok=True)
         t0 = time.perf_counter()
-        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
+        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, check=False)
         t1 = time.perf_counter()
         if p.returncode != 0:
             print("ОШИБКА", p.returncode, p.stdout[-2000:], p.stderr[-2000:], file=sys.stderr)
@@ -57,10 +58,10 @@ def main() -> int:
         "минимум_с": round(min(times), 6),
         "максимум_с": round(max(times), 6),
     }
-    if trace != "-" and os.path.exists(trace):
-        size = os.path.getsize(trace)
-        with open(trace, encoding="utf-8", errors="replace") as fh:
-            lines = fh.read().splitlines()
+    trace_path = Path(trace)
+    if trace != "-" and trace_path.exists():
+        size = trace_path.stat().st_size
+        lines = trace_path.read_text(encoding="utf-8", errors="replace").splitlines()
         n_in = sum(1 for line in lines if '"p":"in"' in line)
         n_out = sum(1 for line in lines if '"p":"out"' in line)
         out.update({

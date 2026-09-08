@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 
 def main() -> int:
@@ -42,26 +43,28 @@ def main() -> int:
     ap.add_argument("functions", nargs="+", help="functions to instrument")
     a = ap.parse_args()
 
-    src = os.path.join(a.ros, a.relpath)
-    if not os.path.isfile(src):
+    src = Path(a.ros) / a.relpath
+    if not src.is_file():
         print(f"FAIL: no such file {src}")
         return 2
-    abspath = os.path.abspath(src)
-    entry = next((e for e in json.load(open(a.compdb))
-                  if os.path.abspath(e["file"]) == abspath), None)
+    abspath = src.absolute()
+    compdb = json.loads(Path(a.compdb).read_text(encoding="utf-8"))
+    entry = next((e for e in compdb if Path(e["file"]).absolute() == abspath), None)
     if entry is None:
         print(f"FAIL: {a.relpath} has no compile_commands.json entry")
         return 2
 
-    backup = src + ".gate.bak"
+    backup = src.with_name(src.name + ".gate.bak")
     shutil.copy2(src, backup)
-    header = os.path.join(os.path.dirname(src), "ouroboros_runtime.h")
-    header_pre_existing = os.path.exists(header)
-    objfd, obj = tempfile.mkstemp(suffix=".o", prefix="gate-")
-    os.close(objfd); os.unlink(obj)
+    header = src.parent / "ouroboros_runtime.h"
+    header_pre_existing = header.exists()
+    objfd, obj_name = tempfile.mkstemp(suffix=".o", prefix="gate-")
+    obj = Path(obj_name)
+    os.close(objfd)
+    obj.unlink()
     try:
-        r = subprocess.run([a.ouroboros, "wrap-functions", src, *a.functions],
-                           capture_output=True, text=True)
+        r = subprocess.run([a.ouroboros, "wrap-functions", str(src), *a.functions],
+                           capture_output=True, text=True, check=False)
         print("instrument:", r.stdout.strip() or r.stderr.strip())
         if r.returncode != 0:
             print("FAIL: instrumentation step failed")
@@ -71,20 +74,19 @@ def main() -> int:
         args[0] = a.cc
         for i, tok in enumerate(args):
             if tok == "-o" and i + 1 < len(args):
-                args[i + 1] = obj
+                args[i + 1] = str(obj)
         c = subprocess.run(args, cwd=entry["directory"],
-                           capture_output=True, text=True)
-        if c.returncode == 0 and os.path.exists(obj):
+                           capture_output=True, text=True, check=False)
+        if c.returncode == 0 and obj.exists():
             print(f"PASS: instrumented {a.relpath} cross-compiled clean (rc=0)")
             return 0
-        print("FAIL: cross-compile rc=%d\n%s" % (c.returncode, c.stderr[-2000:]))
+        print(f"FAIL: cross-compile rc={c.returncode}\n{c.stderr[-2000:]}")
         return 1
     finally:
         shutil.move(backup, src)            # restore original exactly
-        if not header_pre_existing and os.path.exists(header):
-            os.unlink(header)
-        if os.path.exists(obj):
-            os.unlink(obj)
+        if not header_pre_existing:
+            header.unlink(missing_ok=True)
+        obj.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

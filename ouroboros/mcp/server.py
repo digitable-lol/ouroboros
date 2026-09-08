@@ -86,20 +86,21 @@ def _atomic_write(path: Path, text: str) -> None:
     path = Path(path)
     prev_mode: int | None = None
     with contextlib.suppress(FileNotFoundError):
-        prev_mode = os.stat(path).st_mode
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent),
-                               prefix=f".{path.name}.", suffix=".ouro-tmp")
+        prev_mode = path.stat().st_mode
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent),
+                                    prefix=f".{path.name}.", suffix=".ouro-tmp")
+    tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(text.encode("utf-8"))
             f.flush()
             os.fsync(f.fileno())
         if prev_mode is not None:
-            os.chmod(tmp, prev_mode)
-        os.replace(tmp, path)
+            tmp.chmod(prev_mode)
+        tmp.replace(path)
     except BaseException:
         with contextlib.suppress(OSError):
-            os.unlink(tmp)
+            tmp.unlink()
         raise
 
 
@@ -350,7 +351,9 @@ def _decode_cursor(cursor: str) -> int:
     raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
     obj = json.loads(raw)
     if not isinstance(obj, dict) or not isinstance(obj.get("i"), int):
-        raise ValueError("cursor payload malformed")
+
+        # a TypeError would sail past it and out of the tool.
+        raise ValueError("cursor payload malformed")  # noqa: TRY004
     index: int = obj["i"]
     return index
 
@@ -665,7 +668,11 @@ schema.
 _READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 
 
-def build_server() -> FastMCP:
+# C901: the body is seventeen `@mcp.tool()` declarations in a row. Its
+# "complexity" is the number of tools; each declaration is a name, a docstring
+# and one call into the engine. Grouping them into three registration functions
+# would hide the one list a reader of an MCP server comes here to see.
+def build_server() -> FastMCP:  # noqa: C901
     from mcp.server.fastmcp import FastMCP
 
     mcp = FastMCP("ouroboros-logger", instructions=_INSTRUCTIONS)
@@ -682,8 +689,8 @@ def build_server() -> FastMCP:
     # argument anywhere in the permitted range (mcp>=1.2,<2). Hence the guard on
     # the attribute existing: if the field is ever renamed, the server does not
     # fall over, it falls back to the previous behaviour.
-    if hasattr(mcp, "_mcp_server") and hasattr(mcp._mcp_server, "version"):
-        mcp._mcp_server.version = __version__
+    if hasattr(mcp, "_mcp_server") and hasattr(mcp._mcp_server, "version"):  # noqa: SLF001
+        mcp._mcp_server.version = __version__  # noqa: SLF001
 
     @mcp.tool(
         title="Wrap code snippet",

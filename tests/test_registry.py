@@ -25,7 +25,9 @@ def test_an_extension_is_taken_with_or_without_its_dot_and_in_any_case(given):
     """Callers hand this both halves of `os.path.splitext` and bare words from a
     config file; a leading dot and letter case are not the caller's problem."""
 
-    assert transformer_for_extension(given).language == "python"
+    found = transformer_for_extension(given)
+    assert found is not None
+    assert found.language == "python"
 
 
 def test_an_unknown_extension_is_not_an_error():
@@ -42,12 +44,16 @@ def test_every_supported_extension_belongs_to_a_supported_language():
     assert exts == sorted(set(exts))              # sorted, no duplicates
     assert all(e.startswith(".") for e in exts)
     for ext in exts:
-        assert transformer_for_extension(ext).language in supported_languages()
+        found = transformer_for_extension(ext)
+        assert found is not None
+        assert found.language in supported_languages()
 
 
 def test_every_supported_language_can_be_looked_up_by_name():
     for language in supported_languages():
-        assert transformer_for_language(language).language == language
+        found = transformer_for_language(language)
+        assert found is not None
+        assert found.language == language
         assert transformer_for_language(language.upper()) is not None
     assert transformer_for_language("cobol") is None
 
@@ -66,7 +72,9 @@ def test_a_c_file_the_build_compiled_as_cpp_goes_to_the_cpp_backend(tmp_path):
     (tmp_path / ".ouroboros.json").write_text(json.dumps(
         {"c": {"compdb": str(tmp_path / "compile_commands.json")}}), encoding="utf-8")
 
-    assert transformer_for_path(str(src)).language == "cpp"
+    found = transformer_for_path(str(src))
+    assert found is not None
+    assert found.language == "cpp"
 
 
 def test_a_c_file_the_build_compiled_as_c_stays_with_the_c_backend(tmp_path):
@@ -80,7 +88,9 @@ def test_a_c_file_the_build_compiled_as_c_stays_with_the_c_backend(tmp_path):
     (tmp_path / ".ouroboros.json").write_text(json.dumps(
         {"c": {"compdb": str(tmp_path / "compile_commands.json")}}), encoding="utf-8")
 
-    assert transformer_for_path(str(src)).language == "c"
+    found = transformer_for_path(str(src))
+    assert found is not None
+    assert found.language == "c"
 
 
 def test_a_cpp_extension_is_never_downgraded_to_c(tmp_path):
@@ -96,4 +106,6 @@ def test_a_cpp_extension_is_never_downgraded_to_c(tmp_path):
     (tmp_path / ".ouroboros.json").write_text(json.dumps(
         {"c": {"compdb": str(tmp_path / "compile_commands.json")}}), encoding="utf-8")
 
-    assert transformer_for_path(str(src)).language == "cpp"
+    found = transformer_for_path(str(src))
+    assert found is not None
+    assert found.language == "cpp"

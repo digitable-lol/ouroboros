@@ -123,7 +123,9 @@ async def main() -> None:
             "нужен рабочий каталог: "
             "uv run python scripts/probe/tool_reference.py <каталог>"
         )
-    root = Path(sys.argv[1]).resolve()
+    # ASYNC240 below: this is a one-shot script, not a server. There is no event
+    # loop to starve — the first await is the MCP handshake, after the tree is made.
+    root = Path(sys.argv[1]).resolve()  # noqa: ASYNC240
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
@@ -136,7 +138,7 @@ async def main() -> None:
         listed = await session.list_tools()
         declared = {t.name: t for t in listed.tools}
         missing = sorted(set(declared) - set(calls))
-        entries = []
+        entries: list[dict[str, Any]] = []
         for name in calls:
             if name not in declared:
                 entries.append({"name": name, "error": "сервер такого не объявил"})
@@ -157,7 +159,9 @@ async def main() -> None:
             })
 
     out = {
-        "taken_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        # DTZ005: the stamp is read by a person next to the page it is printed
+        # on; a UTC offset would say less than the local time it was taken at.
+        "taken_at": datetime.datetime.now().isoformat(timespec="seconds"),  # noqa: DTZ005
         "how": "живой разговор с `ouroboros-mcp` по стандартному вводу-выводу",
         "server_name": init.serverInfo.name,
         "server_version": init.serverInfo.version,

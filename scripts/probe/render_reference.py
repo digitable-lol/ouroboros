@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 #: Порядок групп и какие средства в какую попадают. Средство, не попавшее ни в
@@ -175,7 +176,7 @@ def fence(value: Any) -> str:
 def arguments_table(schema: dict[str, Any], w: dict[str, Any]) -> str:
     props = schema.get("properties") or {}
     if not props:
-        return w["no_args"]
+        return str(w["no_args"])
     required = set(schema.get("required") or [])
     rows = [w["args_head"], "|---|---|---|---|"]
     for name, spec in props.items():
@@ -198,7 +199,7 @@ def arguments_table(schema: dict[str, Any], w: dict[str, Any]) -> str:
 
 def hints_line(annotations: dict[str, Any] | None, w: dict[str, Any]) -> str:
     if not annotations:
-        return w["no_hints"]
+        return str(w["no_hints"])
     hints = w["hints"]
     on = [hints[k] for k, v in annotations.items() if v and k in hints]
     off = [hints[k] for k, v in annotations.items() if not v and k in hints]
@@ -309,8 +310,7 @@ def main() -> None:
             "нужен снятый JSON: "
             "uv run python scripts/probe/render_reference.py docs/mcp-tools.json"
         )
-    with open(args[0], encoding="utf-8") as fh:
-        doc = json.load(fh)
+    doc = json.loads(Path(args[0]).read_text(encoding="utf-8"))
     sys.stdout.write(render(doc, lang))
 
 

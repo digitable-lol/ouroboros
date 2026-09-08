@@ -37,6 +37,7 @@ import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from . import __version__
@@ -63,7 +64,11 @@ from .mcp.server import (
 from .sandbox import Project, execute as sandbox_execute, write_file as sandbox_write_file
 
 
-def _build_parser() -> argparse.ArgumentParser:
+# PLR0915: the body is one argparse declaration per subcommand, seventeen of
+# them, and its length is the size of the command line. Splitting it into a
+# function per subcommand would put seventeen names between a reader and the
+# shape of the interface, which is the one thing this function is for.
+def _build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     p = argparse.ArgumentParser(prog="ouroboros", description="Ouroboros-Logger Executor")
     # The tool gets installed three ways — uv, Homebrew, asdf — and they install
     # DIFFERENT things whenever one of the three has fallen behind. "What have I
@@ -318,77 +323,79 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-def _run(args: argparse.Namespace) -> int:
-    call = plan(args)
-    if call is not None:
-        text, status = report(call.tool(*call.args, **call.kwargs), call.indent)
-        print(text)
-        return status
+# --------------------------------------------------------------------------- #
+# the commands that are not a tool call
+#
+# Everything in TOOL_COMMANDS is described by `plan` and needs no code here. What
+# is left is the handful that reads standard input, starts a server or runs
+# somebody else's program — one function each, so that the error handling of one
+# is not read as the error handling of another.
+# --------------------------------------------------------------------------- #
 
-    if args.command == "mcp":
-        from .mcp.server import main as mcp_main
 
-        mcp_main()
-        return 0
+def _run_mcp(args: argparse.Namespace) -> int:  # noqa: ARG001 — dispatch signature
+    from .mcp.server import main as mcp_main
 
-    if args.command == "languages":
-        print(json.dumps({"languages": supported_languages()}))
-        return 0
+    mcp_main()
+    return 0
 
-    if args.command == "wrap-snippet":
-        tx = transformer_for_language(args.language)
-        if tx is None:
-            print(f"unsupported language: {args.language}", file=sys.stderr)
-            return 2
-        source = sys.stdin.read()
-        try:
-            result = tx.wrap_source(source)
-        except CorruptedSourceError as e:
-            print(str(e), file=sys.stderr)
-            return 1
-        sys.stdout.write(result.code)
-        return 0
 
-    if args.command == "wrap-file":  # --stdout: print, leave the file alone
-        from .languages import transformer_for_path
+def _run_languages(args: argparse.Namespace) -> int:  # noqa: ARG001 — dispatch signature
+    print(json.dumps({"languages": supported_languages()}))
+    return 0
 
-        t = transformer_for_path(args.path)
-        if t is None:
-            print(f"no transformer for {args.path}", file=sys.stderr)
-            return 2
-        try:
-            with open(args.path, encoding="utf-8") as fh:
-                out = t.wrap_source(fh.read(), filename=args.path, minimal=args.minimal)
-        except CorruptedSourceError as e:
-            print(str(e), file=sys.stderr)
-            return 1
-        sys.stdout.write(out.code)
-        return 0
 
-    if args.command == "write":
-        content = sys.stdin.read()
-        try:
-            proj = Project.open(args.base)
-            outcome = sandbox_write_file(proj, args.rel_path, content)
-        except CorruptedSourceError as e:
-            print(str(e), file=sys.stderr)
-            return 1
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "rel_path": outcome.rel_path,
-                    "functions_wrapped": outcome.functions_wrapped,
-                    "wrapped": outcome.wrapped,
-                },
-                ensure_ascii=False,
-            )
-        )
-        return 0
+def _run_wrap_snippet(args: argparse.Namespace) -> int:
+    tx = transformer_for_language(args.language)
+    if tx is None:
+        print(f"unsupported language: {args.language}", file=sys.stderr)
+        return 2
+    source = sys.stdin.read()
+    try:
+        result = tx.wrap_source(source)
+    except CorruptedSourceError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    sys.stdout.write(result.code)
+    return 0
 
-    # `execute` is the last one: the parser accepts nothing outside
-    # TOOL_COMMANDS | SPECIAL_COMMANDS, and test_cli.py holds it to that, so
-    # there is no unreachable tail here to hide behind a pragma.
+
+def _run_wrap_file(args: argparse.Namespace) -> int:
+    """`wrap-file --stdout`: print the instrumented text, leave the file alone."""
+
+    from .languages import transformer_for_path
+
+    t = transformer_for_path(args.path)
+    if t is None:
+        print(f"no transformer for {args.path}", file=sys.stderr)
+        return 2
+    try:
+        source = Path(args.path).read_text(encoding="utf-8")
+        out = t.wrap_source(source, filename=args.path, minimal=args.minimal)
+    except CorruptedSourceError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    sys.stdout.write(out.code)
+    return 0
+
+
+def _run_write(args: argparse.Namespace) -> int:
+    content = sys.stdin.read()
+    try:
+        proj = Project.open(args.base)
+        outcome = sandbox_write_file(proj, args.rel_path, content)
+    except CorruptedSourceError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print(json.dumps({"ok": True,
+                      "rel_path": outcome.rel_path,
+                      "functions_wrapped": outcome.functions_wrapped,
+                      "wrapped": outcome.wrapped},
+                     ensure_ascii=False))
+    return 0
+
+
+def _run_execute(args: argparse.Namespace) -> int:
     argv_cmd = command_after_dashdash(args.argv)
     if not argv_cmd:
         print("no command given after --", file=sys.stderr)
@@ -398,6 +405,27 @@ def _run(args: argparse.Namespace) -> int:
     sys.stdout.write(exec_result.stdout)
     sys.stderr.write(exec_result.stderr)
     return exec_result.returncode
+
+
+#: The parser accepts nothing outside TOOL_COMMANDS | SPECIAL_COMMANDS, and
+#: test_cli.py holds it to that, so a command that reaches here is in this table.
+SPECIAL_RUNNERS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "mcp": _run_mcp,
+    "languages": _run_languages,
+    "wrap-snippet": _run_wrap_snippet,
+    "wrap-file": _run_wrap_file,
+    "write": _run_write,
+    "execute": _run_execute,
+}
+
+
+def _run(args: argparse.Namespace) -> int:
+    call = plan(args)
+    if call is not None:
+        text, status = report(call.tool(*call.args, **call.kwargs), call.indent)
+        print(text)
+        return status
+    return SPECIAL_RUNNERS[args.command](args)
 
 
 if __name__ == "__main__":  # pragma: no cover

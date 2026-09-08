@@ -33,7 +33,7 @@ class FakeProbe:
                  clang_names=frozenset({"__STDC__"})):
         self._builtin, self._dirs = builtin, dirs
         self._predefs, self._clang_names = predefs, clang_names
-        self.calls: list[tuple] = []
+        self.calls: list[tuple[object, ...]] = []
 
     def clang_builtin_include(self):
         self.calls.append(("builtin",))
@@ -413,7 +413,11 @@ def test_snapshot_reads_each_file_once(tmp_path):
     snap = TreeSnapshot(probe)
     reads = []
     real = tf.read_json
-    tf.read_json = lambda p: (reads.append(p), real(p))[1]
+    def spy_read_json(path: str) -> object:
+        reads.append(path)
+        return real(path)
+
+    tf.read_json = spy_read_json
     try:
         for i in range(3):
             assert tf.tree_flags_for(str(tmp_path / "src" / f"m{i}.c"), "c",
@@ -467,7 +471,11 @@ def test_snapshot_does_not_reread_an_untouched_config(tmp_path):
     tf.tree_flags_for(src, "c", snapshot=snap)
     reads = []
     real = tf.read_json
-    tf.read_json = lambda p: (reads.append(p), real(p))[1]
+    def spy_read_json(path: str) -> object:
+        reads.append(path)
+        return real(path)
+
+    tf.read_json = spy_read_json
     try:
         for _ in range(5):
             tf.tree_flags_for(src, "c", snapshot=snap)
@@ -519,7 +527,11 @@ def test_snapshot_finds_the_config_once_per_directory(tmp_path):
     snap = TreeSnapshot(FakeProbe())
     walks = []
     real = tf.find_config
-    tf.find_config = lambda s: (walks.append(s), real(s))[1]
+    def spy_find_config(start: str) -> str | None:
+        walks.append(start)
+        return real(start)
+
+    tf.find_config = spy_find_config
     try:
         for i in range(4):
             snap.config_path_for(str(tmp_path / "src" / f"m{i}.c"))
@@ -793,6 +805,7 @@ def test_a_broken_config_stops_the_instrumentation_of_the_file(tmp_path):
 
     from ouroboros.languages.registry import transformer_for_language
     tx = transformer_for_language("c")
+    assert tx is not None
     previous = tf.set_snapshot(TreeSnapshot())
     try:
         with pytest.raises(TreeConfigError) as e:

@@ -59,7 +59,7 @@ def test_search_dirs_empty_when_the_output_has_no_list():
 def test_search_dirs_stop_at_the_end_marker():
     """Everything after 'End of search list.' is preprocessed output, not paths."""
     text = ("#include <...> search starts here:\n /a\nEnd of search list.\n"
-            "# 1 \"/not/a/search/dir\"\n")
+            '# 1 "/not/a/search/dir"\n')
     assert tc.parse_search_dirs(text) == ("/a",)
 
 
@@ -126,7 +126,7 @@ def test_predef_macros_skip_function_like_macros():
 
 def test_predef_macros_ignore_non_define_lines():
     """gcc puts a banner and blank lines in the same stream."""
-    assert tc.parse_predef_macros("\n# 1 \"<stdin>\"\n#undef X\n") == ()
+    assert tc.parse_predef_macros('\n# 1 "<stdin>"\n#undef X\n') == ()
 
 
 def test_predef_macros_keep_values_containing_spaces():

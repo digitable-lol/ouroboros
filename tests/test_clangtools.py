@@ -27,6 +27,7 @@ from ouroboros.clangtools import (
     symbol_search,
 )
 from ouroboros.clangtools.lint import _CLANG_TIDY_NAMES, _is_instrumentation_noise
+from ouroboros.languages import c_lang, cpp_lang
 from ouroboros.languages.c_lang import CTransformer
 
 # Probe with the SAME binary-name lists the code itself probes. Hardcoding a
@@ -296,7 +297,8 @@ def test_shutdown_records_why_the_polite_exit_failed(tmp_path):
     underneath the client makes the request fail for real — no substitute process,
     just a genuinely dead one.
     """
-    binary = clangd_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    binary = flags_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    assert binary is not None                      # guarded by @needs_clangd
     client = clangd_mod._Clangd(binary, [])
     client._proc.kill()
     client._proc.wait()          # dead and reaped before we even ask it to exit
@@ -311,7 +313,8 @@ def test_shutdown_records_why_the_polite_exit_failed(tmp_path):
 def test_shutdown_is_silent_when_the_exit_is_clean(tmp_path):
     """The mirror of the test above: a clangd that exits properly records nothing,
     so `shutdown_error` means something when it is set."""
-    binary = clangd_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    binary = flags_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    assert binary is not None                      # guarded by @needs_clangd
     client = clangd_mod._Clangd(binary, [])
     client.request("initialize", {"processId": os.getpid(), "rootUri": None,
                                   "capabilities": {}}, timeout=30.0)
@@ -327,7 +330,8 @@ def test_shutdown_is_silent_when_the_exit_is_clean(tmp_path):
 def test_shutdown_twice_is_harmless(tmp_path):
     """`_prepare`'s cleanup can run on a client a caller also shuts down. The
     second call must not raise on the pipes the first one closed."""
-    binary = clangd_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    binary = flags_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    assert binary is not None                      # guarded by @needs_clangd
     client = clangd_mod._Clangd(binary, [])
     client.shutdown()
     client.shutdown()            # must not raise
@@ -338,7 +342,8 @@ def test_shutdown_twice_is_harmless(tmp_path):
 def test_shutdown_reaps_the_child(tmp_path):
     """Killing without waiting leaves a zombie. Whichever way clangd goes down,
     the child must be reaped, not merely dead."""
-    binary = clangd_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    binary = flags_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    assert binary is not None                      # guarded by @needs_clangd
     client = clangd_mod._Clangd(binary, [])
     pid = client._proc.pid
     client.shutdown()
@@ -728,7 +733,9 @@ def test_summarise_counts_by_severity():
 
 
 def test_find_tool_takes_the_first_name_present():
-    assert flags_mod.find_tool("definitely-no-such-tool-xyz", "sh").endswith("sh")
+    found = flags_mod.find_tool("definitely-no-such-tool-xyz", "sh")
+    assert found is not None
+    assert found.endswith("sh")
 
 
 def test_find_tool_returns_none_when_nothing_is_installed():
@@ -765,7 +772,7 @@ def test_compile_flags_include_the_runtime_header_dirs(tmp_path):
     src.write_text("int a;\n", encoding="utf-8")
     got = flags_mod.compile_flags_for(str(src), "c")
     assert str(tmp_path) in got                    # the file's own directory
-    assert str(flags_mod._C_DIR) in got            # the bundled C runtime dir
+    assert str(c_lang._C_DIR) in got            # the bundled C runtime dir
     assert got.count("-I") >= 2
 
 
@@ -773,8 +780,8 @@ def test_compile_flags_for_cpp_ask_for_the_cxx_dir(tmp_path):
     src = tmp_path / "a.cpp"
     src.write_text("int a;\n", encoding="utf-8")
     got = flags_mod.compile_flags_for(str(src), "cpp")
-    assert str(flags_mod._CPP_DIR) in got
-    assert str(flags_mod._C_DIR) not in got        # the C dir would be the wrong one
+    assert str(cpp_lang._CPP_DIR) in got
+    assert str(c_lang._C_DIR) not in got        # the C dir would be the wrong one
 
 
 def test_compile_flags_for_cpp_use_the_trees_own_flags(tmp_path):
@@ -864,7 +871,8 @@ def test_lint_honours_a_caller_supplied_check_list(tmp_path):
 
 
 def _fresh_client():
-    binary = clangd_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    binary = flags_mod.find_tool(*clangd_mod._CLANGD_NAMES)
+    assert binary is not None                      # guarded by @needs_clangd
     return clangd_mod._Clangd(binary, [])
 
 

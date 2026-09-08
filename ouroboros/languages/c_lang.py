@@ -130,7 +130,7 @@ class CTransformer(ClangTransformer):
             for ret in fn.returns:
                 if ret.arg_start is None or ret.arg_end is None:
                     continue  # bare `return;` — cleanup handles it
-                post = (f"), _ouro_set_result(&__ouro, \"{fn.result.spec}\", "
+                post = (f'), _ouro_set_result(&__ouro, "{fn.result.spec}", '
                         f"{res_arg}), __ouro_result)").encode()
                 edits.append(Edit(ret.arg_start, ret.arg_start, b" (__ouro_result = ("))
                 edits.append(Edit(ret.arg_end, ret.arg_end, post))

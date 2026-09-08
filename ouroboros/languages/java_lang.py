@@ -99,7 +99,8 @@ def build_emitter(destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     argv = [_javac(), "-nowarn", "-d", str(destination), str(_EMITTER_SRC)]
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=EMIT_TIMEOUT)
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=EMIT_TIMEOUT, check=False)
     except OSError as e:
         raise JavaEmitterError(f"cannot run javac: {e}") from e
     if proc.returncode != 0 or not (destination / "Emitter.class").is_file():
@@ -133,7 +134,7 @@ def emitter_classpath() -> str:
     shutil.rmtree(staging, ignore_errors=True)
     try:
         build_emitter(staging)
-        os.replace(staging, built)
+        staging.replace(built)
     except OSError as e:
         raise JavaEmitterError(f"cannot place the built emitter: {e}") from e
     finally:
@@ -167,7 +168,8 @@ class JavaTransformer(Transformer):
         argv = [_java(), "-cp", emitter_classpath(), "Emitter"]
         try:
             proc = subprocess.run(
-                argv, input=source, capture_output=True, text=True, timeout=EMIT_TIMEOUT,
+                argv, input=source, capture_output=True, text=True,
+                timeout=EMIT_TIMEOUT, check=False,
             )
         except OSError as e:
             raise JavaEmitterError(f"cannot run the Java range emitter: {e}") from e

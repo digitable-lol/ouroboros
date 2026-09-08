@@ -522,7 +522,10 @@ _snapshot: TreeSnapshot | None = None
 
 def current_snapshot() -> TreeSnapshot:
     """The snapshot the module-level helpers use, made on first need."""
-    global _snapshot
+    # PLW0603: one snapshot per process is the point — the cache of parsed
+    # `.ouroboros.json` files and compile databases is what makes wrapping a tree
+    # of a thousand files cost one read each. `set_snapshot` is how a test swaps it.
+    global _snapshot  # noqa: PLW0603
     if _snapshot is None:
         _snapshot = TreeSnapshot()
     return _snapshot
@@ -531,7 +534,7 @@ def current_snapshot() -> TreeSnapshot:
 def set_snapshot(snapshot: TreeSnapshot | None) -> TreeSnapshot | None:
     """Install ``snapshot`` (``None`` to drop the current one) and return the
     one it replaced, so a caller can put it back."""
-    global _snapshot
+    global _snapshot  # noqa: PLW0603 — see current_snapshot()
     previous = _snapshot
     _snapshot = snapshot
     return previous

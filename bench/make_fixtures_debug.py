@@ -31,9 +31,7 @@ def correct_score(text: str) -> str:
         if v < 0:
             continue
         clean.append((sensor, v))
-    latest = {}
-    for sensor, v in clean:
-        latest[sensor] = v
+    latest = dict(clean)  # a later reading of the same sensor replaces the earlier
     total = sum(latest.values())  # the CORRECT denominator
     norm = {s: v / total for s, v in latest.items()}
     score = sum(frac * WEIGHTS.get(s, 1.0) for s, frac in norm.items())

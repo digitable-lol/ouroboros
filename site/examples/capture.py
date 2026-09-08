@@ -43,6 +43,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "captured"
@@ -105,7 +106,7 @@ def shop_example() -> dict[str, object]:
         # The same program, an order with a typo in it: the call raises.
         (work / "debug.info").unlink()
         crash = subprocess.run([sys.executable, "shop.py", *TYPO], cwd=work,
-                               capture_output=True, text=True, timeout=600)
+                               capture_output=True, text=True, timeout=600, check=False)
         write("shop-crash-stderr.txt", crash.stderr.strip(), work)
         raised = ouroboros("trace", "debug.info", "--outcome", "raised", cwd=work)
         write("shop-crash-trace.json", raised.stdout.strip(), work)
@@ -125,7 +126,7 @@ def cross_language() -> dict[str, object]:
 
     print("== add(2, 3) on eight languages")
     sys.path.insert(0, str(ROOT / "tests"))
-    from test_schema_parity import (  # noqa: E402  (path is set above)
+    from test_schema_parity import (
         _ADD,
         _LANGS,
         _TOOL,
@@ -179,7 +180,7 @@ def measurements(source: Path | None) -> None:
         raw = [json.loads(ln) for ln in
                Path(source).read_text(encoding="utf-8").splitlines() if ln.strip()]
 
-    rows: dict[str, dict[str, object]] = {}
+    rows: dict[str, dict[str, Any]] = {}
     for rec in raw:
         name = str(rec["имя"])
         base, _, half = name.rpartition("-")
@@ -201,10 +202,10 @@ def measurements(source: Path | None) -> None:
         if plain is None:
             plain = rows["C" if label.startswith("C,") else "Go"]["plain_median_s"]
             row["plain_median_s"] = plain
-        added = float(row["instrumented_median_s"]) - float(plain)  # type: ignore[arg-type]
+        added = float(row["instrumented_median_s"]) - float(plain)
         row["added_s"] = round(added, 6)
-        row["added_us_per_call"] = round(added / int(row["calls"]) * 1e6, 1)  # type: ignore[arg-type]
-        row["bytes_per_call"] = round(int(row["trace_bytes"]) / int(row["calls"]), 1)  # type: ignore[arg-type]
+        row["added_us_per_call"] = round(added / int(row["calls"]) * 1e6, 1)
+        row["bytes_per_call"] = round(int(row["trace_bytes"]) / int(row["calls"]), 1)
         print(f"  {label}: +{row['added_us_per_call']} us/call, "
               f"{row['bytes_per_call']} bytes/call")
 
@@ -218,7 +219,7 @@ def machine() -> dict[str, str]:
 
     def first(cmd: list[str]) -> str:
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
         except (OSError, subprocess.SubprocessError):
             return "not on this machine"
         return (out.stdout or out.stderr).strip().splitlines()[0] if (out.stdout or out.stderr) \

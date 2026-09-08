@@ -158,7 +158,7 @@ class Transformer(ABC):
 
         return None
 
-    def runtime_asset_for(self, source: str) -> tuple[str, str] | None:
+    def runtime_asset_for(self, source: str) -> tuple[str, str] | None:  # noqa: ARG002
         """The runtime helper as it must look when placed beside ``source``.
 
         Identical to :meth:`runtime_asset` for every language whose helper is

@@ -116,7 +116,7 @@ def flang_binary() -> str | None:
 def flang_version(binary: str) -> str:
     """What ``flang --version`` says, as a bare version number."""
 
-    proc = subprocess.run([binary, "--version"], capture_output=True, text=True)
+    proc = subprocess.run([binary, "--version"], capture_output=True, text=True, check=False)
     return proc.stdout.strip().removeprefix("flang").strip()
 
 
@@ -129,7 +129,7 @@ def print_brain(out_dir: Path) -> None:
     proc = subprocess.run(
         [flang, "emit", str(SOURCE), "--target", "python", "--out", str(out_dir),
          "--no-cli"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT, capture_output=True, text=True, check=False,
     )
     if proc.returncode != 0:
         sys.stdout.write(proc.stdout)
@@ -155,7 +155,7 @@ def stub_for(module: Path) -> str:
 
     lines = [STUB_HEAD]
     for name, params in re.findall(r"^def (\w+)\(([^)]*)\):", module.read_text(
-            encoding="utf-8"), re.M):
+            encoding="utf-8"), re.MULTILINE):
         if name.startswith("_"):
             continue
         if name == "new_context":

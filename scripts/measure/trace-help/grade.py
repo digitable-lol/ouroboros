@@ -49,8 +49,8 @@ def judge(accepted: list[str], raw: str) -> str:
     said = tidy(said)
     if any(word in said for word in ABSTAIN):
         return "не знаю"
-    for want in accepted:
-        want = tidy(want)
+    for raw_want in accepted:
+        want = tidy(raw_want)
         if said == want:
             return "верно"
         if want in ("да", "нет") and said.startswith(want):
@@ -97,8 +97,8 @@ def pct(x: float) -> str:
 
 def main() -> int:
     cases = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    answers = [json.loads(l) for l in Path(sys.argv[2]).read_text(
-        encoding="utf-8").splitlines() if l.strip()]
+    raw = Path(sys.argv[2]).read_text(encoding="utf-8").splitlines()
+    answers = [json.loads(line) for line in raw if line.strip()]
 
     accepted = {}
     kinds = {}
