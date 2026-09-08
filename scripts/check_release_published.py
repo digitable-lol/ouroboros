@@ -629,7 +629,7 @@ def main() -> int:
         return 1
 
     if missed:
-        print(f"Проверка НЕ состоялась — до выложенного не достучались:", file=sys.stderr)
+        print("Проверка НЕ состоялась — до выложенного не достучались:", file=sys.stderr)
         for m in missed:
             print(f"  - {m}", file=sys.stderr)
         print("Это не то же самое, что «снаружи всё в порядке».", file=sys.stderr)
