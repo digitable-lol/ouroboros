@@ -18,9 +18,14 @@
 * `state.json`, который Jekyll кладёт на сайт как есть, совпадает с
   `docs/state.json` в дереве. Точный признак свежести: разошлись — значит сайт
   собран из другого коммита;
-* числа в пометках `<!--state:...-->` на живой `index.html` равны числам из
-  `docs/state.json`. То есть страница, которую читает человек, показывает
-  нынешние числа, а не только файл рядом с ней.
+* числа в пометках `<!--state:...-->` на живой странице документации равны
+  числам из `docs/state.json`. То есть страница, которую читает человек,
+  показывает нынешние числа, а не только файл рядом с ней. Где эта страница
+  лежит, проверка не загадывает: пока сайт собирал Jekyll из `docs/`, она была
+  корневой `index.html`; теперь корень занимает лендинг, а документация лежит
+  под `docs/`. Спрашиваются оба адреса, и годится тот, на котором пометки есть.
+  Страницы без пометок нет вовсе — иначе проверка молча свелась бы к «ничего не
+  сравнили, значит всё сошлось».
 
 Чего проверка НЕ делает: не судит по состоянию сборки. Сборка бывает зелёной, а
 страница всё равно старой; здесь спрашивается только сам сайт.
@@ -56,6 +61,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "docs" / "_config.yml"
 
 STATE_FILE = ROOT / "docs" / "state.json"
+
+#: Подкаталог, в который `site/build.py` кладёт документацию на сайте.
+DOCS_HOME = "docs"
 
 #: `ключ: значение` верхнего уровня в настройке сборки.
 CONFIG_FIELD = re.compile(r"^([a-z_]+):\s*(.*?)\s*$")
@@ -102,6 +110,23 @@ def live_pages() -> list[str]:
     return out
 
 
+def documentation_index(root: str) -> tuple[str | None, str]:
+    """Живая страница документации — по тому адресу, где она сейчас лежит.
+
+    Пока сайт собирал Jekyll из `docs/`, страницей документации была корневая
+    `index.html`. После перевода Pages на GitHub Actions корень занимает лендинг,
+    а документация лежит под `docs/`; в день перевода верно то одно, то другое.
+    Годится тот адрес, на котором есть пометки состояния: страница без них — не
+    та страница, и зачесть её молча нельзя.
+    """
+
+    for candidate in (f"{DOCS_HOME}/index.html", "index.html"):
+        code, body = fetch(f"{root}/{candidate}")
+        if code == 200 and MARK.search(body):
+            return candidate, body
+    return None, ""
+
+
 def check() -> int:
     root = site_root()
     bad: list[str] = []
@@ -146,17 +171,20 @@ def check() -> int:
                         f"в дереве {mine!r} — сайт собран не из нынешнего дерева"
                     )
 
-    # 3. Числа в пометках на живой index.html равны числам из дерева.
-    code, body = fetch(f"{root}/index.html")
-    checked += 1
-    if code != 200:
-        bad.append(f"  - index.html: сайт отвечает {code}")
+    # 3. Числа в пометках на живой странице документации равны числам из дерева.
+    where, body = documentation_index(root)
+    checked += 2
+    if where is None:
+        bad.append(
+            f"  - страницы документации с пометками состояния нет ни по "
+            f"{DOCS_HOME}/index.html, ни по index.html — сверять числа не с чем"
+        )
     else:
         for key, value in MARK.findall(body):
             expected = tree_state.get(key)
             if expected is not None and str(expected) != value.strip():
                 bad.append(
-                    f"  - index.html, пометка {key!r}: сайт показывает {value.strip()!r}, "
+                    f"  - {where}, пометка {key!r}: сайт показывает {value.strip()!r}, "
                     f"в дереве {str(expected)!r}"
                 )
 
