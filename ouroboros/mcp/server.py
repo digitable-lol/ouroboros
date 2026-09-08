@@ -351,8 +351,8 @@ def _decode_cursor(cursor: str) -> int:
     raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
     obj = json.loads(raw)
     if not isinstance(obj, dict) or not isinstance(obj.get("i"), int):
-
-        # a TypeError would sail past it and out of the tool.
+        # TRY004 asks for a TypeError. The caller catches ValueError and answers
+        # "bad cursor"; a TypeError would sail past it and out of the tool.
         raise ValueError("cursor payload malformed")  # noqa: TRY004
     index: int = obj["i"]
     return index

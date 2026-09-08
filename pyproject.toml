@@ -29,7 +29,11 @@ dev = [
     "pyinstaller>=6.21.0",
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.9",
+    # The upper bound is what `select = ["ALL"]` costs: a new ruff release adds
+    # rules, and without the bound the gate would go red on a day nobody touched
+    # this tree. Raising it is a deliberate step — read the new rules, fix or
+    # switch each off with a reason — not something that happens by itself.
+    "ruff>=0.15,<0.16",
     "mypy>=1.14",
 ]
 
@@ -269,7 +273,9 @@ ignore = [
 # installed. S311: shuffling the question order needs to be repeatable, so it
 # uses a seeded Mersenne generator on purpose — a cryptographic one could not be
 # seeded to reproduce the published run.
-"scripts/measure/*" = ["C901", "PLR0912", "PLR0915", "S311"]
+# PLW0108: the measurement pairs a label with the work to time, so the lambda is
+# what defers the work until the clock is running.
+"scripts/measure/*" = ["C901", "PLR0912", "PLR0915", "S311", "PLW0108"]
 "scripts/probe/*" = ["C901", "PLR0912", "PLR0915"]
 # The site builder is a Markdown dialect implemented as one dispatch over line
 # shapes (heading, table, quote, list, fence, directive). Every branch is one

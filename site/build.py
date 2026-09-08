@@ -61,7 +61,7 @@ DOCS = ROOT / "docs"
 # pages against it, and it is imported rather than repeated: a page built by one
 # rule and checked by another is a page whose links are checked by nobody.
 sys.path.insert(0, str(ROOT / "scripts"))
-from check_doc_anchors import anchor_for  # noqa: E402
+from check_doc_anchors import anchor_for  # noqa: E402 — imported after sys.path, see above
 
 GITHUB = "https://github.com/digitable-lol/ouroboros"
 

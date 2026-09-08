@@ -158,6 +158,9 @@ class Transformer(ABC):
 
         return None
 
+    # ARG002: `source` is the hook's interface. This default answers without
+    # reading it; Go's override cannot, because its helper joins the wrapped
+    # file's package and only the source says which one.
     def runtime_asset_for(self, source: str) -> tuple[str, str] | None:  # noqa: ARG002
         """The runtime helper as it must look when placed beside ``source``.
 
