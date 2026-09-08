@@ -135,8 +135,7 @@ What you can see straight away, without reading the source:
 
 ## One schema, different dialects
 
-This is the first thing worth understanding, and it is **a decision, not an
-unfinished job**.
+The dialects are **a decision, not an unfinished job**.
 
 All eight write the same schema into one `debug.info` file: the same keys, the
 same two lines per call, the same meaning for every field. Your trace parsing is

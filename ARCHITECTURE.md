@@ -1,6 +1,6 @@
 # Architecture (Python prototype)
 
-Three layers, one cross-language contract ([SPEC.md](SPEC.md)). Designed so the
+Four layers, one cross-language contract ([SPEC.md](SPEC.md)). Designed so the
 later Elixir port is a re-implementation of the same shapes, not a redesign.
 
 ```

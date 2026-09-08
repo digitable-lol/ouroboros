@@ -1,34 +1,37 @@
-# Сторож живого сайта.
+# The guard on the live site.
 #
-# Зачем. Сборку страниц GitHub делает сам, и когда она падает, об этом не узнаёт
-# никто: сайт продолжает отдавать предыдущий успешный слепок. 29 августа так и
-# вышло — `docs/_config.yml` перестал разбираться как YAML, сборка падала сутки,
-# а сайт всё это время обещал пять языков при шести в дереве, выпуск 0.3.0 при
-# 0.4.0 и отвечал 404 на `measurements.html`, страницу из собственного оглавления.
-# Заметили случайно.
+# Why. GitHub builds the pages itself, and when that build fails nobody finds
+# out: the site goes on serving the previous successful snapshot. That is exactly
+# what happened on 29 August — `docs/_config.yml` stopped parsing as YAML, the
+# build failed for a full day, and all that time the site promised five languages
+# while the tree had six, release 0.3.0 while there was 0.4.0, and answered 404 on
+# `measurements.html`, a page from its own table of contents. It was noticed by
+# accident.
 #
-# Здесь проверяется не сборка, а сам сайт по HTTP, и двумя разными вопросами:
+# What is checked here is not the build but the site itself over HTTP, and by two
+# different questions:
 #
-# * `scripts/check_pages_live.py` — совпадает ли то, что отдаётся, с деревом:
-#   каждая страница документации по своему адресу, `state.json` и числа в
-#   пометках на живой странице документации;
-# * `site/check-live.py` — тот ли это сайт вообще: лендинг ли в корне (по
-#   строке, которой нет ни на одной странице документации), лежит ли
-#   документация под `docs/`, отвечают ли прежние её адреса и на месте ли каждая
-#   схема. Этот вопрос появился потому, что первый на него не отвечает: пока на
-#   один корень публикуют двое, все адреса могут быть на месте, а сайт при этом
-#   быть не нашим.
+# * `scripts/check_pages_live.py` — does what is served match the tree: every
+#   documentation page at its own address, `state.json`, and the numbers in the
+#   marks on the live documentation page;
+# * `site/check-live.py` — is this our site at all: is the landing page at the
+#   root (by a sentence that appears on no documentation page), is the
+#   documentation under `docs/`, do its former addresses answer, is every diagram
+#   in place. That question exists because the first one does not answer it:
+#   while two publishers share one root, every address can be in place and the
+#   site still not be ours.
 #
-# Отказ означает ровно одно — снаружи видно не то, что лежит в ветке. Пока
-# источник Pages не переведён на GitHub Actions (Settings → Pages, порядок в
-# `site/README.md`), второй сторож будет красным: корень отдаёт документацию,
-# собранную Jekyll, а лендинга на сайте нет. Это верное показание, а не поломка.
+# A refusal means exactly one thing — what is visible from outside is not what is
+# in the branch. Until the Pages source is switched to GitHub Actions (Settings ->
+# Pages, the order is in `site/README.md`), the second guard will be red: the root
+# serves the documentation built by Jekyll, and there is no landing page on the
+# site. That is a correct reading, not a breakage.
 
-name: живой сайт совпадает с деревом
+name: the live site matches the tree
 
 on:
-  # После отправки в ветку — с ожиданием: сборка идёт несколько минут, и до её
-  # конца сайт по праву отдаёт прежнее.
+  # After a push to the branch — with a wait: the build takes several minutes,
+  # and until it ends the site rightly serves the previous snapshot.
   push:
     branches: [main]
     paths:
@@ -36,10 +39,11 @@ on:
       - "site/**"
       - ".github/workflows/pages-live.yml"
       - "scripts/check_pages_live.py"
-  # Раз в сутки — чтобы отставание нашлось и без новых отправок: сломаться могла
-  # и сама выкладка, при нетронутом дереве. И чтобы вопрос «а что на сайте
-  # сейчас» задавался не только в минуту после нашей же выкладки: пока корень
-  # делят двое, ответ через минуту и ответ через час — разные ответы.
+  # Once a day — so that falling behind is found without a new push as well: the
+  # deployment itself could have broken with the tree untouched. And so that the
+  # question "what is on the site now" is asked at other times than the minute
+  # after our own deployment: while two publishers share the root, the answer a
+  # minute later and the answer an hour later are different answers.
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
@@ -57,24 +61,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Сторож, который никогда не краснел, ничего не значит: он ломает сайт у
-      # себя в песочнице восемью способами и требует, чтобы каждый был замечен.
-      - name: "сторож живого сайта: самопроверка"
+      # A guard that has never gone red means nothing: this one breaks the site
+      # in its own sandbox eight ways and demands that each one be noticed.
+      - name: "the live-site guard: self-test"
         run: python3 site/check-live.py --self-test
 
-      # Проверка обходится стандартной библиотекой: ни uv, ни зависимостей.
-      - name: спросить живой сайт про дерево
+      # The check gets by on the standard library: no uv, no dependencies.
+      - name: ask the live site about the tree
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            # Ждём до 10 минут: столько может занять сборка на стороне GitHub.
+            # Wait up to 10 minutes: that is how long the build on GitHub's side can take.
             python scripts/check_pages_live.py --retries 20 --wait 30
           else
             python scripts/check_pages_live.py
           fi
 
-      # Всегда, даже если предыдущий шаг отказал: два вопроса разные, и знать
-      # хочется ответы на оба, а не на первый.
-      - name: спросить живой сайт про лендинг, документацию и схемы
+      # Always, even if the previous step refused: the two questions are
+      # different, and both answers are worth knowing, not just the first.
+      - name: ask the live site about the landing, the documentation and the diagrams
         if: always()
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then

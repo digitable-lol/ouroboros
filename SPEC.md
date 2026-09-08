@@ -1,9 +1,9 @@
 # Ouroboros-Logger — Cross-language contract
 
-This is the **load-bearing contract** of the project. "Universal cross-language
-logging" only means something if all backends emit a *byte-identical* record
-format into the same sink. Every backend (Python, JS/TS, C, C++, Elixir) targets
-the JSONL schema below exactly. example.md shows the *wrapping mechanism* per
+"Universal cross-language logging" only means something if all backends emit a
+*byte-identical* record format into the same sink. Every backend (Python, JS/TS,
+C, C++, Elixir, Go, Java, C#) targets the JSONL schema below exactly.
+[design/example.md](design/example.md) shows the *wrapping mechanism* per
 language; this file defines the *log sink and record schema* they all share.
 
 ## 1. The sink: `debug.info`
@@ -14,7 +14,7 @@ language; this file defines the *log sink and record schema* they all share.
 - The `execute` sandbox operation sets `OUROBOROS_DEBUG_INFO` to
   `<draft>/debug.info` before spawning the child, so instrumented code in any
   language writes to the same file.
-- **Logging does NOT go through stdout.** example.md uses `console.log` /
+- **Logging does NOT go through stdout.** `design/example.md` uses `console.log` /
   `Console.WriteLine` / `std::cout` only to illustrate the wrap; the real
   backends ship a tiny runtime helper (the analogue of `ouroboros_runtime.py`)
   that appends records directly to `OUROBOROS_DEBUG_INFO`.
@@ -102,7 +102,7 @@ are counted as `malformed`.
 - **Arguments are snapshotted at entry**, so a function that mutates its inputs
   still logs the values it was actually called with.
 - **Return value captured before it leaves the wrapper** — the Python analogue
-  of example.md's `return (__result = expr)` invariant. The decorator captures
+  of `design/example.md`'s `return (__result = expr)` invariant. The decorator captures
   `result` and logs it before returning to the caller.
 - **C++ gives up `r` for class types returned by value.** Routing such a return
   through a capture helper costs the copy elision C++17 guarantees: a program
