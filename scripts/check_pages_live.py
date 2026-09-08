@@ -252,5 +252,5 @@ def main() -> int:
     return status
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — the entry point, not a rule
     raise SystemExit(main())

@@ -321,7 +321,9 @@ def selftest() -> int:
     # A live negative control: take a real English page of the tree and break it
     # in memory. The guard has to notice.
     live = ROOT / "README.md"
+    live_cases = 0
     if live.exists():
+        live_cases = 2
         text = live.read_text(encoding="utf-8")
         spoiled = text + "\n\nЭтот абзац подсунут самопроверкой.\n"
         if not page_problems("README.md", spoiled, {"README.md", "README.ru.md"}):
@@ -338,7 +340,9 @@ def selftest() -> int:
     if bad:
         print(f"\nSelf-test: {bad} cases disagreed with what was expected.")
         return 1
-    print(f"\nSelf-test: {len(cases) + 2} cases, all agreed.")
+    # `live_cases`, not a literal 2: with no README.md the two live controls do
+    # not run, and a count that says they did is the check lying about itself.
+    print(f"\nSelf-test: {len(cases) + live_cases} cases, all agreed.")
     return 0
 
 
@@ -378,5 +382,5 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — the entry point, not a rule
     sys.exit(main())

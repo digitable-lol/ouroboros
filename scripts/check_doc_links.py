@@ -171,8 +171,10 @@ def pages(root: Path) -> list[Path]:
             if ".venv" not in d.parts and "node_modules" not in d.parts]
 
 
-def main() -> int:
-    root = Path(__file__).resolve().parent.parent
+def main(root: Path | None = None) -> int:
+    """`root` is a parameter so a test can point the check at a tree of its own."""
+
+    root = root or Path(__file__).resolve().parent.parent
     anchors, problems = anchor_lines(root)
 
     checked = 0
@@ -202,5 +204,5 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — the entry point, not a rule
     sys.exit(main())

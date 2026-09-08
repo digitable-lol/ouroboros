@@ -10,12 +10,13 @@ dependencies = [
     # clangbridge.py); the dependency stays because it is what guarantees a
     # libclang is on the machine without asking the user to install one.
     "libclang>=18.1.1",
-    # Верхняя граница обязательна. В mcp 2.x FastMCP переименован в MCPServer, и
-    # `from mcp.server.fastmcp import FastMCP` в ouroboros/mcp/server.py падает с
-    # ModuleNotFoundError. Без границы любая свежая установка (pip, uv tool
-    # install, Homebrew, asdf) тянет 2.x и получает нерабочий сервер MCP, хотя
-    # командная строка при этом работает — то есть ломается молча и не сразу.
-    # uv.lock этого не спасает: он действует только для `uv sync`.
+    # The upper bound is required. In mcp 2.x FastMCP was renamed to MCPServer,
+    # and `from mcp.server.fastmcp import FastMCP` in ouroboros/mcp/server.py
+    # fails with ModuleNotFoundError. Without the bound, every fresh install
+    # (pip, uv tool install, Homebrew, asdf) pulls 2.x and gets a broken MCP
+    # server while the command line goes on working — that is, it breaks
+    # silently and not at once. uv.lock does not save this: it applies only to
+    # `uv sync`.
     "mcp>=1.2.0,<2",
 ]
 
@@ -340,6 +341,9 @@ module = ["equivalence_cases",
           "test_elixir",
           "test_equivalence",
           "test_go",
+          "test_guards_docs",
+          "test_guards_numbers",
+          "test_guards_release",
           "test_java",
           "test_javascript",
           "test_mcp",
