@@ -69,8 +69,6 @@ the nesting from which calls landed between an entry and its exit.
 The keys are short on purpose: there are a lot of lines, and spare bytes in each
 one get expensive on a big trace.
 
-Three decisions in that table are worth naming on their own.
-
 **`fn` on both lines is deliberate.** If the trace broke off and the entry line
 was lost, the orphaned exit line still says **what** came back.
 

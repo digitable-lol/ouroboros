@@ -126,7 +126,7 @@ ouroboros languages
 ```
 
 ```json
-{"languages": ["python", "javascript", "c", "cpp", "elixir"]}
+{"languages": ["python", "javascript", "c", "cpp", "elixir", "go", "java", "csharp"]}
 ```
 
 Обновить и удалить:
@@ -312,8 +312,8 @@ Success: no issues found in 24 source files
 ```
 
 Восемь из этих проверок требуют `clang-tidy` и `clangd`. Если их нет на машине,
-проверки пропускаются, и в конце будет `159 passed, 8 skipped` — это тоже
-зелёный результат.
+проверки пропускаются, и в последней строке рядом с `passed` будет `skipped` —
+это тоже зелёный результат.
 
 ## Один файл-программа и образ
 
@@ -401,7 +401,7 @@ printf '%s\n' \
 
 Больше переменных у инструмента нет
 ([`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62),
-[`ouroboros/mcp/server.py:935`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L935)).
+[`ouroboros/mcp/server.py:942`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L942)).
 
 ## Дальше
 

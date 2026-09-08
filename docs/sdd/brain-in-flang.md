@@ -274,8 +274,6 @@ earn.
 
 ## Limits found
 
-Recorded here because they are the useful part for whoever picks this up next.
-
 * **Speed, and where it actually went.** Reading a trace is four times slower
   than it was, and it used to be seven and a half. On the fixed sample —
   39,640 lines, 19,600 completed calls, built by `scripts/measure/trace_reading.py`

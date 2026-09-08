@@ -341,9 +341,11 @@ scripts/qa.sh    # ruff, mypy, pytest
 | [Working with AI](docs/with-ai.md) | the MCP server and its 17 tools |
 | [Everyday development](docs/in-development.md) | a silent program, a regression, what not to do |
 | [Languages](docs/languages.md) | eight languages and how their records differ |
+| [Measurements](docs/measurements.md) | what each language records, what it costs, how to repeat it |
 | [Limits](docs/limits.md) | what the tool does not do, and why that is deliberate |
 | [Why it exists](docs/why.md) | what it is for and which work it takes off you |
 | [What it looks like](docs/examples/index.md) | records, summary, configuration — in full |
+| [MCP tool reference](docs/mcp-tools.md) | all 17 tools, recorded from a live conversation with the server |
 
 The same pages are published at <https://digitable-lol.github.io/ouroboros/>.
 

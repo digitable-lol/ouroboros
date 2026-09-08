@@ -1,44 +1,45 @@
-# Публикация сайта на GitHub Pages: лендинг (site/) и документация (docs/).
+# Publishing the site on GitHub Pages: the landing (site/) and the documentation (docs/).
 #
-# ЧТО СОБИРАЕТСЯ. `site/build.py` делает весь сайт разом: лендинг — в корень,
-# документацию — в подкаталог `docs/`, и по каждому прежнему адресу документации
-# кладёт перенаправление на новое место. Адресов у документации 30. Два из них,
-# `index.html` и `limits.html`, — имена страниц и у лендинга; корень для того и
-# нужен, чтобы отдавать лендинг, поэтому эти два адреса достаются ему, а
-# документация с них в одном щелчке — по «Documentation» в шапке. Остальные 28
-# отвечают перенаправлением на `docs/…`. Не теряется ни один.
+# WHAT IS BUILT. `site/build.py` makes the whole site in one go: the landing into
+# the root, the documentation into the `docs/` subdirectory, and a redirect at
+# every former documentation address pointing at its new place. The documentation
+# has 30 addresses. Two of them, `index.html` and `limits.html`, are page names
+# the landing uses as well; the root exists in order to serve the landing, so
+# those two go to it, and the documentation is one click away — "Documentation"
+# in the header. The other 28 answer with a redirect to `docs/…`. Not one is lost.
 #
-# ⚠ ЧТОБЫ ЭТО ПОЯВИЛОСЬ СНАРУЖИ, НУЖНО ОДНО ДЕЙСТВИЕ РУКАМИ, и делает его
-# владелец: Settings → Pages → Build and deployment → Source: **GitHub Actions**.
-# Порядок целиком, с проверкой «ничего не пропало», — в `site/README.md`.
+# ⚠ FOR THIS TO APPEAR OUTSIDE, ONE ACTION BY HAND IS NEEDED, and the owner is the
+# one who does it: Settings -> Pages -> Build and deployment -> Source: **GitHub
+# Actions**. The whole order, with the "nothing was lost" check, is in
+# `site/README.md`.
 #
-# ПОЧЕМУ БЕЗ ЭТОГО НЕ РАБОТАЕТ. Пока источник — «Deploy from a branch» (ветка
-# `main`, каталог `/docs`), на один и тот же корень публикуют двое: встроенный
-# Jekyll из `docs/` и эта работа из `site/out`. Обе показывают «успех», а корень
-# достаётся тому, кто выложился позже. Сейчас это Jekyll: по адресу
-# https://digitable-lol.github.io/ouroboros/ отдаётся `docs/index.md`, а лендинга
-# на сайте нет вовсе.
+# WHY IT DOES NOT WORK WITHOUT THAT. While the source is "Deploy from a branch"
+# (branch `main`, directory `/docs`), two publishers write to the same root: the
+# built-in Jekyll from `docs/` and this job from `site/out`. Both report success,
+# and the root goes to whoever deployed last. Right now that is Jekyll: at
+# https://digitable-lol.github.io/ouroboros/ what is served is `docs/index.md`,
+# and the landing page is not on the site at all.
 #
-# ПОКА НЕ ПЕРЕКЛЮЧЕНО, работа `live` внизу КРАСНАЯ — и это показание, а не
-# поломка: она говорит, что корень отдаёт не лендинг, и это правда. Прежняя
-# проверка в этом же месте была зелёной, потому что спрашивала сайт сразу после
-# своей выкладки, до того как Jekyll её перезапишет; зелёная проверка при
-# отсутствующем на сайте лендинге — худшее из возможных показаний, и её больше
-# нет. В минуту переключения работа зеленеет сама, без правок в дереве.
+# UNTIL IT IS SWITCHED, the `live` job below is RED — and that is a reading, not a
+# breakage: it says the root serves something other than the landing, which is
+# true. The previous check in this same place was green because it asked the site
+# right after its own deployment, before Jekyll overwrote it; a green check with
+# no landing page on the site is the worst possible reading, and it is gone.
+# At the minute of the switch the job goes green on its own, with no edit to the tree.
 #
-# Сборке не нужно ничего, кроме python3: у site/build.py зависимостей нет ни
-# одной, а схемы нарисованы заранее и лежат в дереве как SVG. Ни npm, ни Ruby,
-# ни сети. Заодно из сборки сайта уходит Jekyll со своим `_config.yml`, разбор
-# которого 29 августа остановил весь сайт на сутки.
+# The build needs nothing but python3: site/build.py has no dependencies at all,
+# and the diagrams are drawn in advance and kept in the tree as SVG. No npm, no
+# Ruby, no network. It also takes Jekyll out of the site build, together with the
+# `_config.yml` whose parsing stopped the whole site for a day on 29 August.
 
-name: Сайт на Pages
+name: The site on Pages
 
 on:
   push:
     branches: [main]
-    # Всё, из чего сайт собирается. Документация теперь часть сайта, поэтому её
-    # правка тоже требует пересборки; числа в подвале и на страницах берутся из
-    # pyproject.toml, LICENSE и docs/state.json.
+    # Everything the site is built from. The documentation is now part of the
+    # site, so editing it calls for a rebuild too; the numbers in the footer and
+    # on the pages come from pyproject.toml, LICENSE and docs/state.json.
     paths:
       - "site/**"
       - "docs/**"
@@ -48,8 +49,8 @@ on:
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
-# Публикуем по одной за раз и не обрываем идущую: недособранный сайт хуже, чем
-# сайт минутой старее.
+# Publish one at a time and do not cancel a run in flight: a half-built site is
+# worse than a site a minute older.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -69,13 +70,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Отдельным шагом до сборки: если ссылка ведёт в никуда, снимок вывода не
-      # снят или схему правили после отрисовки — видно по имени шага, а не среди
-      # вывода сборки. Отказывает, а не предупреждает.
-      - name: Проверить ссылки, снимки и свежесть схем
+      # A separate step before the build: if a link leads nowhere, a snapshot of
+      # output was never taken, or a diagram was edited after it was rendered,
+      # that shows in the step's name rather than somewhere inside the build
+      # output. It refuses; it does not warn.
+      - name: Check links, captures and the freshness of the diagrams
         run: python3 site/build.py --check
 
-      - name: Собрать
+      - name: Build
         run: python3 site/build.py
 
       - uses: actions/configure-pages@v5
@@ -94,13 +96,13 @@ jobs:
       - id: pages
         uses: actions/deploy-pages@v4
 
-  # Сделано — это когда видно снаружи. Выкладка на стороне GitHub может пройти,
-  # а сайт при этом отдавать не то: чужой корень, потерянную схему (схемы —
-  # отдельные файлы, и пропавшая не ломает страницу, а оставляет пустое место),
-  # документацию без половины страниц. Поэтому здесь спрашивается сам сайт по
-  # HTTP: корень — по строке, которой нет ни на одной странице документации,
-  # документация — по каждой своей странице и по каждому прежнему адресу, схемы —
-  # по каждому файлу.
+  # Done is when it is visible from outside. The deployment on GitHub's side can
+  # succeed while the site serves something else: somebody else's root, a lost
+  # diagram (diagrams are separate files, and a missing one does not break the
+  # page, it leaves a blank space), documentation with half its pages gone. So
+  # here the site itself is asked over HTTP: the root by a sentence that appears
+  # on no documentation page, the documentation by every one of its pages and
+  # every former address, the diagrams by every file.
   live:
     needs: deploy
     runs-on: ubuntu-latest
@@ -109,10 +111,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Сначала самопроверка: сторож, который никогда не краснел, ничего не
-      # значит. Он ломает сайт у себя в песочнице восемью способами и требует,
-      # чтобы каждый был замечен.
-      - name: "Сторож живого сайта: самопроверка"
+      # The self-test first: a guard that has never gone red means nothing. It
+      # breaks the site in its own sandbox eight ways and demands that each one
+      # be noticed.
+      - name: "The live-site guard: self-test"
         run: python3 site/check-live.py --self-test
-      - name: Спросить живой сайт
+      - name: Ask the live site
         run: python3 site/check-live.py --retries 10 --wait 30

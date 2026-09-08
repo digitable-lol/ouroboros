@@ -13,8 +13,7 @@ wrote has a page of its own:
 ## The program runs for hours and says nothing
 
 The most common and the most galling case: the process is working, the processor
-is busy, and there is nothing to tell whether it is computing or spinning. From
-the outside a live run and a hung one look the same.
+is busy, and from the outside a live run and a hung one look the same.
 
 **The records answer this directly, and the answer takes no arithmetic.** Every
 call gives two lines tied together by a shared `id`: entry (`"p":"in"`) and

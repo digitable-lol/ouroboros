@@ -56,10 +56,10 @@ printf '%s\n' \
 ```
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.27.2"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.29.1"}}}
 ```
 
-> `1.27.2` is the version of the MCP library, not of Ouroboros. The library
+> `1.29.1` is the version of the MCP library, not of Ouroboros. The library
 > stamps it there itself; the tool's version lives in `pyproject.toml`.
 
 The list of tools the server announces in answer to `tools/list` — seventeen
@@ -87,7 +87,7 @@ There are two, both read in the source, and there are no others.
 Where they are read:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 and
-[`ouroboros/mcp/server.py:935`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L935).
+[`ouroboros/mcp/server.py:942`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L942).
 
 An example: put the records into a file of their own instead of next to the
 program.
@@ -101,7 +101,7 @@ OUROBOROS_DEBUG_INFO=/path/probe.jsonl python3 stats.py
 | needed | when |
 |---|---|
 | Python 3.12 or newer | always |
-| `gcc` or `clang` | to build instrumented C |
+| `gcc` or `clang` | to instrument and build C |
 | `g++` or `clang++` | to instrument and build C++ |
 | Node | to instrument and run JavaScript and TypeScript |
 | `elixir` | to build and run Elixir |
