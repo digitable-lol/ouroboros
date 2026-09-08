@@ -1,19 +1,14 @@
 flowchart TD
-    A[A file you point at] --> B{Is the extension one of the eight languages?}
-    B -- no --> R1[Refused: no backend for this file]
-    B -- yes --> C{Does that language's own parser accept the file?}
-    C -- no --> R2[Refused: CorruptedSourceError. Nothing is written]
-    C -- yes --> D[Walk every declaration the parser found]
-    D --> E{Is it a declared function or method?}
-    E -- "no: lambda, arrow with a short body, Go func value" --> S1[Skipped, silently. Its calls never appear]
-    E -- yes --> F{Does it have a body to splice into?}
-    F -- "no: abstract, native, interface declaration" --> S2[Skipped: there is nothing to instrument]
-    F -- yes --> G{Would the instrumented form still compile?}
-    G -- "no: C# yield, ref return, pointers, ref struct" --> S3[Skipped, and the answer says why]
-    G -- yes --> H[Recording spliced in, line numbers preserved]
-    H --> I[Every call now writes two lines]
-    I --> J["{p:in} on entry: time, call id, thread, arguments"]
-    I --> K["{p:out} on exit: result or exception, duration"]
-    K --> L{Did the call finish?}
-    L -- "no: hang, crash, hard exit" --> M[The in line stands alone. trace lists it under in_flight]
-    L -- yes --> N[The pair joins on id]
+    A([A file you point at]) --> B{Is the extension one<br/>of the eight languages?}
+    B -- no --> X1[/Refused: no backend for this file/]
+    B -- yes --> C{Does that language's own<br/>parser accept the file?}
+    C -- no --> X2[/Refused: CorruptedSourceError.<br/>Nothing is written/]
+    C -- yes --> D{For each declaration the parser found:<br/>a named function or method, with a body?}
+    D -- "no — a lambda, a short arrow function,<br/>a Go func value, an abstract declaration" --> S1[Skipped, and silent.<br/>Its calls never appear anywhere]
+    D -- yes --> E{Would the instrumented<br/>form still compile?}
+    E -- "no — C# yield, ref return,<br/>pointer, ref struct" --> S2[Skipped, and the answer<br/>says which and why]
+    E -- yes --> F[Recording spliced in.<br/>Line numbers unchanged]
+    F --> G[[Every call now writes two lines:<br/>one on entry, one on exit]]
+    G --> H{Did the call come back?}
+    H -- "no — hang, crash, hard exit" --> I[The entry line stands alone.<br/>trace lists it under in_flight]
+    H -- yes --> J[The two lines join on the call id]

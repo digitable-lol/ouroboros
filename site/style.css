@@ -1,0 +1,277 @@
+/* Ouroboros landing site.
+ *
+ * Two themes. The whole light palette is defined on bare :root; the dark one
+ * only redefines the same names, twice — once for the reader whose system is
+ * dark and has not chosen, once for the reader who pressed the button. A colour
+ * that exists only inside a media query disappears for one of those two, which
+ * is the usual way a page ends up unreadable for half its readers.
+ */
+
+:root {
+  --paper: #fbfaf8;
+  --card: #ffffff;
+  --ink: #14181f;
+  --ink-soft: #4a5261;
+  --ink-faint: #767f8f;
+  --rule: #e2e0dc;
+  --rule-soft: #eeecE8;
+  --accent: #b3400a;
+  --accent-soft: #fdf1ea;
+  --code-bg: #f5f3ef;
+  --code-ink: #24303f;
+  --shadow: 0 1px 2px rgba(20, 24, 31, .06), 0 8px 24px rgba(20, 24, 31, .05);
+  --measure: 40rem;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #14171c;
+    --card: #1b1f26;
+    --ink: #e7eaf0;
+    --ink-soft: #a8b1c0;
+    --ink-faint: #7d8798;
+    --rule: #2b313b;
+    --rule-soft: #232932;
+    --accent: #ff8b52;
+    --accent-soft: #2a1d16;
+    --code-bg: #191d24;
+    --code-ink: #d6dde8;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #14171c;
+  --card: #1b1f26;
+  --ink: #e7eaf0;
+  --ink-soft: #a8b1c0;
+  --ink-faint: #7d8798;
+  --rule: #2b313b;
+  --rule-soft: #232932;
+  --accent: #ff8b52;
+  --accent-soft: #2a1d16;
+  --code-bg: #191d24;
+  --code-ink: #d6dde8;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+
+.skip {
+  position: absolute; left: -9999px; top: 0; background: var(--card);
+  padding: .6rem 1rem; z-index: 10;
+}
+.skip:focus { left: 0; }
+
+/* ---------------------------------------------------------------- header -- */
+
+.top {
+  display: flex; align-items: center; gap: .85rem; flex-wrap: wrap;
+  padding: .7rem clamp(1rem, 4vw, 2.5rem);
+  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: .5rem;
+  font-weight: 700; letter-spacing: -.01em; color: var(--ink); text-decoration: none;
+}
+.brand .mark { color: var(--accent); }
+.tagline {
+  color: var(--ink-faint); font-size: .84rem; border-left: 1px solid var(--rule);
+  padding-left: .85rem;
+}
+.tabs { display: flex; gap: .25rem; margin-left: auto; flex-wrap: wrap; }
+.tabs a {
+  color: var(--ink-soft); text-decoration: none; font-size: .9rem;
+  padding: .3rem .7rem; border-radius: 999px;
+}
+.tabs a:hover { background: var(--rule-soft); color: var(--ink); }
+.tabs a.here { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.version, .gh {
+  font-size: .8rem; color: var(--ink-soft); text-decoration: none;
+  border: 1px solid var(--rule); border-radius: 999px; padding: .18rem .6rem;
+}
+.version:hover, .gh:hover { border-color: var(--accent); color: var(--accent); }
+.theme {
+  border: 1px solid var(--rule); background: transparent; color: var(--ink-soft);
+  border-radius: 999px; width: 2rem; height: 2rem; cursor: pointer; font-size: .95rem;
+}
+.theme:hover { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 780px) {
+  .tagline { display: none; }
+  .tabs { margin-left: 0; order: 3; width: 100%; }
+}
+
+/* ----------------------------------------------------------------- shell -- */
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 15rem;
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem) 4rem;
+}
+.content { min-width: 0; max-width: var(--measure); }
+@media (max-width: 1000px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .toc { display: none; }
+}
+
+.toc { position: sticky; top: 4.5rem; align-self: start; font-size: .86rem; }
+.toc-title {
+  text-transform: uppercase; letter-spacing: .08em; font-size: .7rem;
+  color: var(--ink-faint); margin-bottom: .5rem;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+.toc li a {
+  display: block; padding: .22rem 0 .22rem .8rem; color: var(--ink-soft);
+  text-decoration: none; border-left: 2px solid transparent; margin-left: -1px;
+}
+.toc li a:hover { color: var(--accent); border-left-color: var(--accent); }
+
+/* ------------------------------------------------------------ typography -- */
+
+h1, h2, h3, h4 { line-height: 1.22; letter-spacing: -.015em; }
+h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); margin: 0 0 1rem; }
+h2 {
+  font-size: 1.5rem; margin: 3rem 0 .9rem; padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+}
+h3 { font-size: 1.13rem; margin: 2rem 0 .6rem; }
+h4 { font-size: 1rem; margin: 1.5rem 0 .5rem; color: var(--ink-soft); }
+p { margin: 0 0 1rem; }
+ul, ol { margin: 0 0 1.1rem; padding-left: 1.3rem; }
+li { margin: .3rem 0; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+strong { font-weight: 660; }
+
+blockquote {
+  margin: 1.4rem 0; padding: .9rem 1.1rem;
+  background: var(--accent-soft); border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+blockquote p:last-child { margin: 0; }
+
+/* ------------------------------------------------------------------ hero -- */
+
+.hero { margin: 0 0 2.5rem; }
+.hero h1 { max-width: 22ch; }
+.hero .lede { font-size: 1.16rem; color: var(--ink-soft); max-width: 46ch; }
+.hero .lede strong { color: var(--ink); }
+
+.cards { display: grid; gap: .9rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); margin: 1.6rem 0 2rem; }
+.cards > p {
+  margin: 0; background: var(--card); border: 1px solid var(--rule);
+  border-radius: 10px; padding: .9rem 1rem; font-size: .92rem; color: var(--ink-soft);
+  box-shadow: var(--shadow);
+}
+.cards > p strong { display: block; color: var(--ink); margin-bottom: .15rem; }
+
+.note {
+  margin: 1.6rem 0; padding: 1rem 1.15rem; border: 1px solid var(--rule);
+  border-radius: 10px; background: var(--card); box-shadow: var(--shadow);
+}
+.note > :last-child { margin-bottom: 0; }
+.note h3 { margin-top: 0; }
+
+/* ------------------------------------------------------------------ code -- */
+
+.code { margin: 1.2rem 0; }
+.code-title {
+  font: 600 .74rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint);
+  padding: 0 0 .4rem;
+}
+pre {
+  margin: 0; padding: .9rem 1rem; overflow-x: auto;
+  background: var(--code-bg); color: var(--code-ink);
+  border: 1px solid var(--rule); border-radius: 10px;
+}
+pre code {
+  font: .82rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  white-space: pre;
+}
+code {
+  font: .88em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  background: var(--code-bg); border: 1px solid var(--rule-soft);
+  border-radius: 4px; padding: .05em .32em;
+}
+pre code { background: none; border: 0; padding: 0; }
+a code { color: inherit; }
+
+/* --------------------------------------------------------------- tables --- */
+
+.tw { overflow-x: auto; margin: 1.3rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td {
+  text-align: left; vertical-align: top; padding: .55rem .7rem;
+  border-bottom: 1px solid var(--rule);
+}
+thead th {
+  font-size: .74rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-faint); border-bottom: 1px solid var(--rule);
+}
+tbody tr:hover { background: var(--rule-soft); }
+
+/* -------------------------------------------------------------- diagrams -- */
+
+.diagram {
+  margin: 1.6rem 0; padding: 1.1rem; border: 1px solid var(--rule);
+  border-radius: 12px; background: var(--card); box-shadow: var(--shadow);
+}
+.diagram img { display: block; width: 100%; height: auto; max-width: 100%; }
+.diagram img.dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .diagram img.light { display: none; }
+  :root:not([data-theme="light"]) .diagram img.dark { display: block; }
+}
+:root[data-theme="dark"] .diagram img.light { display: none; }
+:root[data-theme="dark"] .diagram img.dark { display: block; }
+
+.diagram figcaption {
+  margin-top: .8rem; font-size: .88rem; color: var(--ink-soft);
+}
+.diagram details { margin-top: .7rem; }
+.diagram summary {
+  cursor: pointer; font-size: .8rem; color: var(--ink-faint);
+}
+.diagram summary:hover { color: var(--accent); }
+.diagram details .code { margin-bottom: 0; }
+
+/* ---------------------------------------------------------------- footer -- */
+
+.bottom {
+  border-top: 1px solid var(--rule); background: var(--card);
+  padding: 1.5rem clamp(1rem, 4vw, 2.5rem);
+  font-size: .82rem; color: var(--ink-soft);
+}
+.bottom p { max-width: 62rem; margin: 0 auto .5rem; }
+.bottom .origin { color: var(--ink-faint); }
+
+/* ------------------------------------------------------------- breakout -- */
+/* Diagrams, wide tables and code want more room than a comfortable line of
+ * prose does, so on a wide screen they step out of the text column by a fixed
+ * amount. The step is small enough that the column below still fits the grid
+ * track — a breakout that overflows its track lands on top of the contents
+ * list, which is worse than a narrow diagram. */
+@media (min-width: 1100px) {
+  .diagram, .content > .tw, .content > .code { margin-inline: -2.5rem; }
+}
