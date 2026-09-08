@@ -298,16 +298,16 @@ scripts/qa.sh
 ```
 
 ```
-== ruff (lint, ouroboros + tests) ==
+== ruff (lint, the whole tree) ==
 All checks passed!
-== mypy (strict, ouroboros) ==
-Success: no issues found in 24 source files
-== pytest ==
-........................................................................ [ 12%]
-........................................................................ [ 24%]
+== mypy (strict: ouroboros, scripts, site; bodies: tests) ==
+Success: no issues found in 77 source files
+== pytest (with coverage, threshold 100 %) ==
+........................................................................ [  5%]
+........................................................................ [ 11%]
    …
-....                                                                     [100%]
-580 passed in 237.23s (0:03:57)
+........................                                                 [100%]
+Required test coverage of 100.0% reached. Total coverage: 100.00%
 == all gates passed ==
 ```
 
