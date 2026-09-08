@@ -251,7 +251,7 @@ Expose everything in a row and `asdf` makes a shim for every name, and those
 shims will shadow the real programs with the same names on the machine.
 
 Verified by a run on 30 August 2026 on asdf 0.20.0, release
-<!--state:version-->0.5.0<!--/state-->, from an empty slate: `plugin add` with
+<!--state:version-->0.6.0<!--/state-->, from an empty slate: `plugin add` with
 the address above, `list all ouroboros` (prints six versions, from `0.2.0` to
 `0.5.0`), `install ouroboros 0.5.0` (installs from source in twelve seconds),
 `set ouroboros 0.5.0`. After that `asdf` had made exactly two shims —
@@ -399,7 +399,7 @@ printf '%s\n' \
 > of Ouroboros. The library fills it in itself, so you will have whichever one
 > arrived at install time; in the run above it is `1.29.1`. The version of the
 > tool itself lies in `pyproject.toml` and right now equals
-> `<!--state:version-->0.5.0<!--/state-->`.
+> `<!--state:version-->0.6.0<!--/state-->`.
 
 ## Environment variables
 
