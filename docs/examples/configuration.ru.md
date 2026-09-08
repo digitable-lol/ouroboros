@@ -54,10 +54,10 @@ printf '%s\n' \
 ```
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.27.2"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05", … ,"serverInfo":{"name":"ouroboros-logger","version":"1.29.1"}}}
 ```
 
-> `1.27.2` — версия библиотеки MCP, а не уробороса. Так её проставляет сама
+> `1.29.1` — версия библиотеки MCP, а не уробороса. Так её проставляет сама
 > библиотека; версия инструмента лежит в `pyproject.toml`.
 
 Список средств, который сервер объявляет в ответ на `tools/list`, — семнадцать
@@ -85,7 +85,7 @@ references          call_hierarchy   describe_symbol
 Где они читаются:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 и
-[`ouroboros/mcp/server.py:935`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L935).
+[`ouroboros/mcp/server.py:942`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L942).
 
 Пример: положить записи не рядом с программой, а в отдельный файл.
 
@@ -98,7 +98,7 @@ OUROBOROS_DEBUG_INFO=/путь/разбор.jsonl python3 stats.py
 | нужно | когда |
 |---|---|
 | Python 3.12 или новее | всегда |
-| `gcc` или `clang` | собрать обмазанный код на C |
+| `gcc` или `clang` | обмазать и собрать C |
 | `g++` или `clang++` | обмазать и собрать C++ |
 | Node | обмазать и запустить JavaScript и TypeScript |
 | `elixir` | собрать и запустить Elixir |

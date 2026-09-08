@@ -121,10 +121,8 @@ by the number of calls.
 | C, minimal form (`--minimal`) | 0.0017 s | 0.1547 s | 0.1530 s | 7.7 µs |
 | Go, without the goroutine id | 0.0228 s | 0.5501 s | 0.5272 s | 26.4 µs |
 
-All eight rows come from **a single run** of `scripts/measure/run.sh`, not
-collected across different days. That matters: the numbers wander noticeably
-from run to run (Python gave 63.5 microseconds last time, 58.2 now), and only
-rows of the same table can be compared with each other.
+All eight rows come from one run of `scripts/measure/run.sh` — see above for why
+a table must never be assembled from several.
 
 What you can see here:
 
@@ -975,14 +973,12 @@ At the price of the value not being recorded:
 ## Does call logging help you understand code you did not write
 
 Everything above is about the price of the records. This section is about what
-that price buys: **if you hand a language model a program written by someone
-else and ask what it actually did, how much do the records add over the source
-alone.**
+that price buys: **hand a language model a program written by someone else, ask
+what it actually did, and see how much the records add over the source alone.**
 
 The experiment lives in `scripts/measure/trace-help/`, is re-taken with one
 command and is described there in `README.md` — with the full output of every
-run, the setup and the measure declared before the first run. Here is the short
-retelling.
+run, the setup and the measure declared before the first run.
 
 ### How it is set up
 

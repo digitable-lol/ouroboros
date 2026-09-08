@@ -6,8 +6,8 @@ title: Limits
 
 # Limits
 
-This page matters more than the others. A tool whose limits are not named is
-more dangerous than no tool at all: people start using it where it lies.
+A tool whose limits are not named is more dangerous than no tool at all:
+people start using it where it lies.
 
 ## The main limitation
 
@@ -87,8 +87,7 @@ Not "cannot yet" — cannot: there is no such command.
 | thin the recording out | two lines per instrumented call, and that is all |
 
 Thinning is worth a separate word, because people often expect it: a sampled
-recording — "one line with the call depth once a minute" — is not here. Two
-lines per instrumented call, and that is all.
+recording — "one line with the call depth once a minute" — is not here.
 
 ## What travels to the clean copy
 
@@ -128,8 +127,7 @@ instrumentation getting out.** Look with your own eyes at what travels.
 
 ## Where instrumentation changes behaviour
 
-**This is the tool's main open weakness, and it cannot be passed over in
-silence.**
+**This is the tool's main open weakness.**
 
 Instrumentation is not observation from the outside, it is **an edit to the
 source**. Usually the edit is harmless: on the examples in this documentation

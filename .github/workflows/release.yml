@@ -1,42 +1,43 @@
-# Выпуск не закончен, пока его нельзя поставить.
+# A release is not finished until it can be installed.
 #
-# Зачем. Тег — это ещё не выпуск. После тега остаются два шага, которые делает
-# человек и о которых никто не напоминает:
+# Why. A tag is not yet a release. Two steps remain after the tag, both done by a
+# person, and nothing reminds anybody of them:
 #
-#   1. вписать в `packaging/homebrew/ouroboros.rb` адрес нового архива и его
-#      `sha256` — раньше тега это число не существует, его неоткуда взять;
-#   2. выложить эту формулу копией в `digitable-lol/homebrew-tap` — `brew` смотрит
-#      туда, а не в дерево.
+#   1. write the new archive's address and its `sha256` into
+#      `packaging/homebrew/ouroboros.rb` — before the tag that number does not
+#      exist, there is nowhere to take it from;
+#   2. publish that formula as a copy in `digitable-lol/homebrew-tap` — `brew`
+#      looks there, not in this tree.
 #
-# Ни один из двух шагов не сообщает о себе. У соседнего flang так пропустили шесть
-# выпусков подряд: `brew install` молча ставил 0.7.3, пока выходили 0.7.4—0.7.9. А в
-# самом flang однажды подняли версию и адрес, а `sha256` оставили от прошлого выпуска
-# — и это тоже никого не остановило, потому что слова `sha256` не было ни в одной
-# проверке.
+# Neither step announces itself. In the neighbouring flang six releases in a row
+# were missed this way: `brew install` silently installed 0.7.3 while 0.7.4-0.7.9
+# were being released. And in flang itself the version and the address were once
+# raised while the `sha256` stayed behind from the previous release — that stopped
+# nobody either, because the word `sha256` appeared in no check at all.
 #
-# ЭТОТ ПРОГОН КРАСНЕЕТ СРАЗУ ПОСЛЕ ТЕГА — так и задумано. В теге формула по
-# необходимости показывает на ПРЕДЫДУЩИЙ выпуск: отпечаток нового архива до тега не
-# существует. Красный прогон здесь означает «выпуск ещё не доведён до человека» и
-# даёт число, которого не хватает. Порядок такой:
+# THIS RUN GOES RED IMMEDIATELY AFTER THE TAG, by design. At the tag the formula
+# necessarily points at the PREVIOUS release: the new archive's checksum does not
+# exist before the tag. A red run here means "the release has not reached a person
+# yet" and hands over the number that is missing. The order is:
 #
-#     тег  →  красный прогон, в его отчёте готовые строки
-#          →  вписать их в packaging/homebrew/ouroboros.rb, отправить в main
-#          →  скопировать файл в digitable-lol/homebrew-tap, отправить
-#          →  запустить этот прогон снова (Run workflow) → зелёный
+#     tag  ->  a red run, with the ready-made lines in its report
+#          ->  write them into packaging/homebrew/ouroboros.rb, push to main
+#          ->  copy the file into digitable-lol/homebrew-tap, push
+#          ->  run this again (Run workflow) -> green
 #
-# Пока он красный, ежедневный `packaging-live.yml` красный тоже: это одна и та же
-# проверка, `scripts/check_release_published.py`.
+# While it is red, the daily `packaging-live.yml` is red too: it is the same
+# check, `scripts/check_release_published.py`.
 
-name: выпуск доведён до человека
+name: the release has reached a person
 
 on:
   push:
     tags: ["v*"]
-  # Чтобы перезапустить после того, как формула вписана и кран выложен.
+  # To re-run once the formula is written in and the tap is published.
   workflow_dispatch:
     inputs:
       tag:
-        description: "тег выпуска, например v0.5.0 (по умолчанию — последний)"
+        description: "release tag, e.g. v0.5.0 (default: the latest one)"
         required: false
         type: string
 
@@ -47,8 +48,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      # Вся история: правило «отпечаток не чужой» ищет улику в прошлых версиях
-      # формулы. При fetch-depth: 1 улики нет, и правило замолчало бы молча.
+      # The whole history: the rule "the checksum is not somebody else's" looks
+      # for its evidence in past versions of the formula. With fetch-depth: 1
+      # there is no evidence, and the rule would fall silent without saying so.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -57,7 +59,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: какой выпуск проверяем
+      - name: which release is being checked
         id: which
         run: |
           set -euo pipefail
@@ -69,64 +71,66 @@ jobs:
             tag="$(git describe --tags --abbrev=0)"
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Выпуск: $tag"
+          echo "Release: $tag"
 
-      # Тег обязан говорить правду о том, что в нём лежит. Расходятся они молча:
-      # поставится содержимое тега, а называться оно будет по pyproject.
-      - name: тег и версия пакета — одно число
+      # The tag has to tell the truth about what is inside it. They part ways in
+      # silence: what installs is the tag's content, what it is called comes from
+      # pyproject.
+      - name: the tag and the package version are one number
         run: |
           set -euo pipefail
           tag="${{ steps.which.outputs.tag }}"
           version="$(python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
           if [ "$tag" != "v$version" ]; then
-            echo "::error::тег $tag, а pyproject.toml объявляет версию $version — выпуск назван не тем числом"
+            echo "::error::tag $tag, while pyproject.toml declares version $version — the release is named by the wrong number"
             exit 1
           fi
-          echo "Тег $tag и версия $version — одно число."
+          echo "Tag $tag and version $version are one number."
 
-      # Правило, которое ничего не ловит, выглядит ровно как правило, которое всё
-      # прошло. Порча подсовывается нарочно, до того как проверке верят.
-      - name: правила сверки работают
+      # A rule that catches nothing looks exactly like a rule that everything
+      # passed. Breakage is fed in on purpose, before the check is trusted.
+      - name: the release rules do work
         run: python scripts/check_release_published.py --self-test
 
-      # Отпечаток нового архива существует только после тега, и взять его больше
-      # неоткуда. Считается здесь и печатается готовыми строками — чтобы человек
-      # копировал, а не переписывал руками.
-      - name: отпечаток архива выпуска
+      # The new archive's checksum exists only after the tag, and there is
+      # nowhere else to take it from. It is computed here and printed as
+      # ready-made lines, so a person copies rather than retypes.
+      - name: checksum of the release archive
         id: archive
         run: |
           set -euo pipefail
           tag="${{ steps.which.outputs.tag }}"
           url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${tag}.tar.gz"
-          # Архив тега GitHub собирает не мгновенно; повторяем, а не гадаем.
+          # GitHub does not assemble a tag archive instantly; retry rather than guess.
           curl --fail --silent --show-error --location \
                --retry 10 --retry-delay 6 --retry-all-errors \
                --output archive.tar.gz "$url"
           sha="$(sha256sum archive.tar.gz | cut -d' ' -f1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           {
-            echo "## Выпуск \`${tag}\`"
+            echo "## Release \`${tag}\`"
             echo
-            echo "Впишите в \`packaging/homebrew/ouroboros.rb\`:"
+            echo "Write into \`packaging/homebrew/ouroboros.rb\`:"
             echo
             echo '```ruby'
             echo "  url \"${url}\""
             echo "  sha256 \"${sha}\""
             echo '```'
             echo
-            echo "Затем скопируйте файл в \`digitable-lol/homebrew-tap\`, \`Formula/ouroboros.rb\`, и отправьте — \`brew\` берёт формулу оттуда, а не из этого дерева."
+            echo "Then copy the file into \`digitable-lol/homebrew-tap\`, \`Formula/ouroboros.rb\`, and push — \`brew\` takes the formula from there, not from this tree."
             echo
-            echo "Плагину \`asdf\` ничего делать не надо: он читает теги и качает архив по тому же адресу, поэтому начинает раздавать выпуск сам, как только появился тег."
+            echo "The \`asdf\` plugin needs nothing: it reads the tags and downloads the archive from the same address, so it starts handing out the release on its own as soon as the tag exists."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "sha256 архива ${tag}: $sha"
+          echo "sha256 of the ${tag} archive: $sha"
 
-      # Тот же сторож, что и ежедневный. Он и решает, доведён ли выпуск: формула
-      # вписана, отпечаток сверен с настоящим архивом, копия в кране выложена.
-      - name: выложенное совпадает с выпуском
+      # The same guard as the daily one. It is what decides whether the release
+      # has reached a person: the formula written in, the checksum compared with
+      # the real archive, the copy published in the tap.
+      - name: the published thing matches the release
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           if ! python scripts/check_release_published.py; then
-            echo "::error::выпуск ещё не доведён до человека — см. отчёт прогона: там готовые строки для формулы"
+            echo "::error::the release has not reached a person yet — see the run report: it holds the ready-made lines for the formula"
             exit 1
           fi

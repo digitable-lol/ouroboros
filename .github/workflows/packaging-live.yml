@@ -1,21 +1,24 @@
-# Сторож выложенного: то ли ставит человек, что лежит в дереве.
+# The guard on what is published: does a person install what is in the tree.
 #
-# Зачем. Человек ставит инструмент не из дерева. `brew` берёт формулу из ЧУЖОГО
-# хранилища `digitable-lol/homebrew-tap`, `asdf` — архив с тега. Правка в
-# `packaging/` до человека НЕ ДОХОДИТ, пока копию не выложили, и никто об этом не
-# сообщает: формула, на которую смотрит `brew`, исправна — она просто старая.
+# Why. A person does not install the tool from this tree. `brew` takes the
+# formula from SOMEBODY ELSE'S repository, `digitable-lol/homebrew-tap`; `asdf`
+# takes the archive off a tag. An edit under `packaging/` DOES NOT REACH a person
+# until the copy is published, and nobody reports that: the formula `brew` looks
+# at is sound — it is simply old.
 #
-# У соседнего flang так и вышло: кран отстал от выпусков 0.7.4—0.7.9, и всё это
-# время `brew install` молча ставил 0.7.3. Заметили не проверкой, а человеком.
+# In the neighbouring flang that is what happened: the tap fell behind releases
+# 0.7.4-0.7.9, and all that time `brew install` silently installed 0.7.3. It was
+# noticed by a person, not by a check.
 #
-# Здесь спрашивается выложенное — архив по адресу из формулы, сама формула из крана
-# и теги хранилища. Отказ означает ровно одно: снаружи ставится не то, что в ветке.
+# What is asked here is the published thing — the archive at the address in the
+# formula, the formula itself from the tap, and the repository's tags. A refusal
+# means exactly one thing: what installs from outside is not what is in the branch.
 
-name: выложенное совпадает с выпуском
+name: the published thing matches the release
 
 on:
-  # После отправки в ветку: правку в упаковке надо ДОНЕСТИ до крана, и напомнить
-  # об этом должна машина, а не память.
+  # After a push to the branch: an edit to the packaging has to be CARRIED to the
+  # tap, and the reminder should come from a machine, not from memory.
   push:
     branches: [main]
     paths:
@@ -24,8 +27,9 @@ on:
       - "ouroboros/__init__.py"
       - ".github/workflows/packaging-live.yml"
       - "scripts/check_release_published.py"
-  # Раз в сутки — чтобы отставание нашлось и без новых отправок: тег могли удалить,
-  # архив перевыложить, а кран поправить чужой рукой, при нетронутом дереве.
+  # Once a day — so that falling behind is found without a new push as well: a tag
+  # could have been deleted, an archive re-uploaded, the tap fixed by somebody
+  # else's hand, all with the tree untouched.
   schedule:
     - cron: "41 6 * * *"
   workflow_dispatch:
@@ -37,9 +41,10 @@ jobs:
   published:
     runs-on: ubuntu-latest
     steps:
-      # Нужна вся история: правило «отпечаток не чужой» смотрит, каким sha256
-      # объявлялась формула в прошлых выпусках. При fetch-depth: 1 улики нет, и
-      # правило замолчало бы, не сказав об этом.
+      # The whole history is needed: the rule "the checksum is not somebody
+      # else's" looks at which sha256 the formula declared in past releases. With
+      # fetch-depth: 1 there is no evidence, and the rule would fall silent
+      # without saying so.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -48,16 +53,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Проверка обходится стандартной библиотекой: ни uv, ни зависимостей.
-      # Сначала — проверка самой проверки: правило, которое ничего не ловит,
-      # выглядит точно так же, как правило, которое всё прошло.
-      - name: правила работают
+      # The check gets by on the standard library: no uv, no dependencies.
+      # First the check of the check: a rule that catches nothing looks exactly
+      # like a rule that everything passed.
+      - name: the rules do work
         run: python scripts/check_release_published.py --self-test
 
-      - name: спросить выложенное
+      - name: ask the published thing
         env:
-          # Формула берётся через API GitHub, а не с raw.githubusercontent: тот
-          # отдаёт кэш до пяти минут и сразу после отправки врал бы в обе стороны.
-          # У API есть предел частоты, поэтому здесь ходим с ключом прогона.
+          # The formula is fetched through the GitHub API rather than from
+          # raw.githubusercontent: that one serves a cache for up to five minutes
+          # and, right after a push, would lie in both directions. The API has a
+          # rate limit, so the run's own token is used here.
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/check_release_published.py

@@ -15,7 +15,7 @@ called, with which arguments, what they returned, which raised, and which never
 came back at all. Time and again it turns out there are three live paths and the
 rest never ran once — and three quarters of the reading was unnecessary.
 
-Here is what to do, step by step. Everything shown is output from real runs.
+Everything shown below is output from real runs.
 
 ## Step 0. Do not wreck someone else's tree
 
@@ -199,16 +199,10 @@ def mutate(items):
 was `3`, the length of the already-changed list.
 
 **Not one of the eight languages puts argument names in the record.** The `a`
-field holds values and nothing else:
-
-| language | field `a` (by position) | field `k` (keyword) |
-|---|---|---|
-| Python | values only: `'world'`, `[1, 2]` | `greeting='hello', loud=True` |
-| JavaScript | values only: `2, 3` | empty |
-| C | values only: `2, 3` | empty |
-| C++ | values only: `2, 3` | empty |
-| Elixir | values only: `2, 3` | empty |
-| Go | values only: `2, 3` | empty |
+field holds values and nothing else; only Python fills `k`, from its keyword
+arguments. The field-by-field table is printed by a run of all eight in
+[Languages](languages.md#where-argument-names-come-from) — a hand-written copy
+of it here went stale at six rows while there were eight.
 
 The name of a positional argument cannot be recovered from the record anywhere —
 look at the function signature in the source: the `fn` field names the function,

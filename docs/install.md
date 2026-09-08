@@ -130,7 +130,7 @@ ouroboros languages
 ```
 
 ```json
-{"languages": ["python", "javascript", "c", "cpp", "elixir"]}
+{"languages": ["python", "javascript", "c", "cpp", "elixir", "go", "java", "csharp"]}
 ```
 
 Upgrade and uninstall:
@@ -319,9 +319,9 @@ Success: no issues found in 24 source files
 == all gates passed ==
 ```
 
-Eight of these checks need `clang-tidy` and `clangd`. If they are not on the
-machine, the checks are skipped, and at the end you get `159 passed, 8 skipped`
-— that is a green result too.
+Eight of these checks need `clang-tidy` and `clangd`. Without them on the
+machine those eight are skipped and the last line says `skipped` alongside
+`passed` — that is a green result too.
 
 ## A single-file program and an image
 
@@ -410,7 +410,7 @@ printf '%s\n' \
 
 The tool has no other variables
 ([`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62),
-[`ouroboros/mcp/server.py:935`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L935)).
+[`ouroboros/mcp/server.py:942`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L942)).
 
 ## Next
 
