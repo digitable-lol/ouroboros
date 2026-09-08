@@ -11,8 +11,8 @@
   "records": [
     {
       "index": 0,
-      "started": "2026-09-08T15:43:20.114",
-      "call_id": "2d166c79-46f0-4b29-a8c1-e9a1c33d80fc",
+      "started": "2026-09-08T15:50:10.553",
+      "call_id": "229b19a9-8e37-4565-9447-6770c55e74b6",
       "name": "subtotal",
       "args": "['tea', 'mugg']",
       "kwargs": "",
@@ -20,20 +20,20 @@
       "outcome": "KeyError: 'mugg'",
       "duration": 4e-06,
       "cpu": null,
-      "thread": "4065320.127078518916992"
+      "thread": "4102464.130760939022208"
     },
     {
       "index": 1,
-      "started": "2026-09-08T15:43:20.114",
-      "call_id": "693de96c-d54b-435f-bf15-450c1634a579",
+      "started": "2026-09-08T15:50:10.552",
+      "call_id": "eae93c75-b5ae-4e9a-9e1e-5643958b50a2",
       "name": "total",
       "args": "['tea', 'mugg']",
       "kwargs": "",
       "outcome_kind": "raised",
       "outcome": "KeyError: 'mugg'",
-      "duration": 0.000112,
+      "duration": 0.000115,
       "cpu": null,
-      "thread": "4065320.127078518916992"
+      "thread": "4102464.130760939022208"
     }
   ]
 }

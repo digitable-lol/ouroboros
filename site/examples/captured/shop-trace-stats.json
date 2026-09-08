@@ -27,10 +27,10 @@
       "raised": 0,
       "unknown": 0,
       "duration_seconds": {
-        "min": 2e-06,
-        "max": 2e-06,
-        "mean": 2e-06,
-        "total": 2e-06,
+        "min": 3e-06,
+        "max": 3e-06,
+        "mean": 3e-06,
+        "total": 3e-06,
         "count": 1
       }
     },
@@ -55,17 +55,17 @@
       "raised": 0,
       "unknown": 0,
       "duration_seconds": {
-        "min": 0.000231,
-        "max": 0.000231,
-        "mean": 0.000231,
-        "total": 0.000231,
+        "min": 0.000252,
+        "max": 0.000252,
+        "mean": 0.000252,
+        "total": 0.000252,
         "count": 1
       }
     }
   ],
   "by_thread": [
     {
-      "thread": "4065309.140405652486016",
+      "thread": "4102424.138269349349248",
       "count": 4,
       "functions": 4,
       "cpus": []
@@ -73,14 +73,14 @@
   ],
   "duration_seconds": {
     "min": 1e-06,
-    "max": 0.000231,
-    "mean": 5.9e-05,
-    "total": 0.000237,
+    "max": 0.000252,
+    "mean": 6.5e-05,
+    "total": 0.000259,
     "count": 4
   },
   "timespan": {
-    "first": "2026-09-08T15:43:19.135",
-    "last": "2026-09-08T15:43:19.135",
+    "first": "2026-09-08T15:50:09.581",
+    "last": "2026-09-08T15:50:09.581",
     "seconds": 0.0,
     "timestamps_parsed": 4,
     "timestamps_unparsed": 0

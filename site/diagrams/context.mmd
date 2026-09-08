@@ -13,9 +13,15 @@ C4Context
 
     Rel(dev, ouro, "wrap-file, trace", "shell")
     Rel(agent, ouro, "17 tools", "MCP over stdio")
-    Rel(ouro, src, "reads, and writes back in place")
+    Rel(ouro, src, "reads it, and writes it back in place")
     Rel(ouro, chain, "asks it to parse, then to build and run")
     Rel(chain, sink, "the running program appends to it")
     Rel(ouro, sink, "reads and filters")
 
+    UpdateRelStyle(dev, ouro, $offsetX="-25", $offsetY="-30")
+    UpdateRelStyle(agent, ouro, $offsetX="20", $offsetY="-40")
+    UpdateRelStyle(ouro, src, $offsetX="-70", $offsetY="-22")
+    UpdateRelStyle(ouro, chain, $offsetX="-95", $offsetY="-10")
+    UpdateRelStyle(chain, sink, $offsetX="-80", $offsetY="22")
+    UpdateRelStyle(ouro, sink, $offsetX="30", $offsetY="40")
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
