@@ -45,7 +45,7 @@ later Elixir port is a re-implementation of the same shapes, not a redesign.
    flang and printed into Python. `trace_brain.flang` says which lines are worth
    decoding, what a call event is, what a completed call is made of, which
    entries are still in flight and how an oversized value is cut down; the
-   compiler checks the types, proves all 42 functions terminate and runs the 96
+   compiler checks the types, proves all 39 functions terminate and runs the 91
    examples written inside them. `ouroboros/trace.py` keeps what a pure function
    may not do — reading, JSON decoding, the id index — and asks the brain for
    every answer. `brain/__init__.py` is the only place a flang value becomes a
@@ -187,7 +187,7 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->1072<!--/state--> tests,
+Suite: <!--state:tests-->1074<!--/state--> tests,
 <!--state:coverage_percent-->100<!--/state-->% coverage (statements **and**
 branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
 (all by compile+run where applicable). MCP tools declared by the server:
@@ -216,7 +216,7 @@ and branches: `clangtools/`, `sandbox/`, `mcp/server.py`, `cli.py`, `trace.py`,
 support modules.
 
 What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
-statement-and-branch units out of <!--state:total_units-->3848<!--/state-->.
+statement-and-branch units out of <!--state:total_units-->3845<!--/state-->.
 
 The last 15 closed in three different ways, and the ways are worth separating,
 because only one of them is "write a test".

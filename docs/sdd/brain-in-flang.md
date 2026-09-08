@@ -47,7 +47,11 @@ examples:
   an opening brace. Anything else that carries text is counted as malformed —
   kernel boot spam, a line torn by two CPUs printing at once. A blank line is
   neither: it is not evidence of damage. Whitespace is the ASCII set Python's
-  `str.strip` removes, spelled out in `«Is space»` rather than borrowed.
+  `str.strip` removes, spelled out in `«Is space»` rather than borrowed. The
+  rule is read from the front and stops at the first thing that settles it: a
+  brace at the front answers on its own, a space passes the question to the rest
+  of the line. That order is the whole of the reader's speed — see "Speed"
+  below.
 * **What a call event is.** The phase field says `in` or `out`; well-formed JSON
   that says anything else is ignored silently, which is not the same as
   malformed.
@@ -162,7 +166,7 @@ verified by `scripts/emit_brain.py`.
 | what a user needs to install the tool | pip | pip **and** a flang compiler |
 | what a contributor needs | flang, only to change a rule | flang, always |
 | cost per build | none | 4.2 s of compiler on every install and every CI job |
-| what lands in the tree | 136,888 bytes of printed Python in two files, plus a 4,930-byte derived stub | nothing |
+| what lands in the tree | 129,118 bytes of printed Python in two files, plus a 4,644-byte derived stub and a 119-byte source stamp | nothing |
 | what rots | the committed print, if the source moves without it | nothing |
 | what a compiler upgrade does | changes the print; the diff is visible in review | changes what ships, invisibly |
 
@@ -187,7 +191,7 @@ as input rather than source:
 
 * `ruff` skips `ouroboros/brain/_flang`, as it already skips the measurement
   samples and the captured runs.
-* coverage skips it: its correctness is established by 96 examples the compiler
+* coverage skips it: its correctness is established by 91 examples the compiler
   runs, not by which of its branches a Python test happened to reach.
 * `mypy --strict` reads a stub beside each printed module instead of the module.
   The stub for the brain is derived from the print itself by
@@ -202,10 +206,9 @@ as input rather than source:
 Four gates, and each one can fail on its own:
 
 1. **The compiler.** `flang check ouroboros/brain/trace_brain.flang` — parsing,
-   types, termination and the proof kernel. 42 functions, 10 types, all 42 with
-   termination proved: 39 by composition, 2 by structure, 1 by a declared
-   measure.
-2. **The examples.** `flang test` — 96 examples, written inside the functions
+   types, termination and the proof kernel. 39 functions, 10 types, all 39 with
+   termination proved: 37 by composition and 2 by structure.
+2. **The examples.** `flang test` — 91 examples, written inside the functions
    they are about, so a rule and its cases cannot be separated.
 3. **The proof ledger.** `flang check --proof` — 5 propositions, 5 proved, 0 on
    a grid, 0 taken on faith. The five are the value limits and the record
@@ -233,12 +236,34 @@ and the failure recorded:
   postcondition goes with them, so the compiler names it too.
 * **a stale print.** Changing a rule and not printing again fails
   `emit_brain.py --check` by file name, with the command to run.
+* **a source change the print never sees.** Rewording a `note`, and separately
+  tightening a proved postcondition, each leave the print **byte-identical** —
+  measured, not assumed — and each fails `--check` on the source digest, by file
+  name and with the command to run. Before the digest existed both passed
+  silently; that hole is what the digest was added to close.
 
-What that last check does **not** catch, said plainly: it compares prints, not
-sources. A source change that does not reach the print — tightening a
-postcondition the kernel proves, so it is stripped before printing, or editing a
-`note` — leaves the print identical and passes. The compiler is what judges the
-source; `--check` only judges that the print belongs to it.
+## What `--check` asks
+
+Two questions, and they fail apart.
+
+**Does the print belong to this source?** The sha256 of `trace_brain.flang` is
+committed beside the print, in `_flang/printed-from.txt`, and compared against
+the source as it stands. This needs no compiler, so it is the half that runs
+everywhere — including CI, which has flang 0.7.0 and not 0.7.14.
+
+**Is the print what this compiler makes of that source?** `--check` prints into
+a temporary directory and compares byte for byte. This needs the pinned
+compiler, and says out loud when it is not there (return code 2).
+
+The second question alone was what the gate used to ask, and it left a whole
+class of edit unnoticed: a `note`, or a postcondition the proof kernel closes
+and strips before printing, changes the source and not one byte of the print.
+The compiler still judges such an edit — but only where a compiler is run, and
+`qa.sh` on a machine without 0.7.14 ran none. The digest is what notices.
+
+`--self-test` hands the digest check a source it did not print from and requires
+a refusal, because a guard that has never gone red is indistinguishable from one
+that cannot. `qa.sh` runs it before the check itself.
 
 **Continuous integration does not run the compiler on the brain yet.** The
 workflow that checks the Russian description installs flang from npm, which
@@ -251,11 +276,66 @@ earn.
 
 Recorded here because they are the useful part for whoever picks this up next.
 
-* **Speed.** Reading a trace is about six times slower than it was: a
-  39,640-line file with 19,600 completed calls takes 1.22 s where the Python-only
-  reader took 0.19 s. The cost is per line — five or so flang calls to sort one
-  line — and it is paid whether or not the line turns out to be a record. Every
-  answer is identical, checked against the previous implementation.
+* **Speed, and where it actually went.** Reading a trace is four times slower
+  than it was, and it used to be seven and a half. On the fixed sample —
+  39,640 lines, 19,600 completed calls, built by `scripts/measure/trace_reading.py`
+  — the Python-only reader takes 0.149 s, the brain as first merged took 1.133 s,
+  and the brain as it stands takes 0.605 s. Every answer is identical, held
+  against the previous implementation on that sample and on twenty-one smaller
+  ones.
+
+  The first guess was the boundary: five or so crossings per line, each of them
+  a cost paid whether or not the line turns out to be a record. **The guess was
+  wrong, and measuring it is what said so.** One crossing — a flang function that
+  gives back what it was handed — costs 0.23 µs. The reader makes 138,240 of
+  them over that sample: **32 ms of the 1.133 s, under 3 %**. Handing the brain
+  a whole trace in one call could not have won more than that, and would have
+  cost a list of 39,640 flang strings to build and 39,640 variants to read back.
+  Sifting the lines in Python before the boundary was rejected for the same
+  reason and one more: the prize is those same 32 ms, and the price is the rule
+  "which lines are worth decoding" living in two languages again — which is the
+  one thing this whole split was made to stop.
+
+  All the rest was one rule doing far more work than it says. `«Line kind»` was
+  written trim-then-look: trim the leading space, trim the trailing space, then
+  ask what the first character is. Trimming the trailing end cannot change what
+  the first character is, and it cost a `length`, a `char` and an `«Is space»` on
+  every line of the file; `«Is space»` itself is ten runtime operations, and it
+  was asked about a brace before a brace was ever compared with a brace. Stated
+  the way it reads instead — a brace at the front answers, a space passes the
+  question on, anything else is damage — the same rule with the same answers
+  costs **1.12 µs a line where it cost 11.7 µs**. Five measurements, in the order
+  they were made:
+
+  | | the sample reads in |
+  | --- | --- |
+  | before the brain | 0.149 s |
+  | the brain as first merged | 1.133 s |
+  | `«Line kind»` walked from the front instead of trimmed | 0.688 s |
+  | the bridge: `from_flang` settles a scalar in one comparison, `_text` drops a `str` of a string | 0.658 s |
+  | `«Line kind»` asks about the brace before anything else | 0.605 s |
+
+  The absolute seconds belong to one machine and one moment — a busier one gave
+  0.153 s, 1.188 s and 0.634 s for the same three, measured back to back. The
+  ratio is what survives: about four times the Python-only reader, where it was
+  about seven and a half.
+
+  What is left is not one bad rule but the price of the target. The brain now
+  costs 411 ms of those 605 ms, spread evenly over rules that each sit near the
+  floor of printed Python: about 0.3 µs per runtime operation, because every
+  intermediate value is a `Value` object. `«Completed call»` is 5.5 µs for a
+  thirteen-field answer, `«Entry from»` 4.3 µs for eight; neither has anything
+  obvious left in it.
+
+  **The `c` target was considered and cannot be reached here.** flang prints to
+  nine targets and `c` is one of them, and at roughly 10 ns an operation it would
+  turn those 411 ms into something like 16 ms. Two things stop it. The pinned
+  compiler's distribution carries only the Python runtime — `flang emit --target
+  c` refuses for want of runtime sources it does not ship — so the print cannot
+  be made by the compiler this print is pinned to. And a C print needs a
+  toolchain at install time, which is exactly what the "committed print" decision
+  above was taken to avoid: `ouroboros-logger` is installed with pip, Homebrew
+  and asdf by people who have never heard of flang.
 * **A proof and a count are not the same word.** `«Record bytes limit» is at
   most 4096` is proved: the goal is closed, so the kernel computes it. `the cut
   is never longer than the limit asked for` is not — it comes back as a grid of
