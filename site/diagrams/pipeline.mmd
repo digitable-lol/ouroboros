@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor You
+    participant CLI as ouroboros wrap-file
+    participant Parser as The language's own parser
+    participant File as Your source file
+    participant Run as Your program, run as usual
+    participant Helper as The helper file
+    participant Sink as debug.info
+
+    You->>CLI: wrap-file shop.py
+    CLI->>Parser: where does each function begin and end?
+    Parser-->>CLI: byte offsets of bodies and of every exit
+    CLI->>File: splice the recording in, change nothing else
+    CLI->>Helper: drop the helper next to the file
+    CLI-->>You: {"ok": true, "functions_wrapped": 4}
+
+    You->>Run: python3 shop.py tea mug kettle
+    loop once per wrapped call
+        Run->>Helper: entered f, arguments snapshotted
+        Helper->>Sink: {"p":"in", "fn":"f", "a":"52.0", ...}
+        Run->>Helper: returned 5.0 after 0.000001 s
+        Helper->>Sink: {"p":"out", "fn":"f", "r":"5.0", "d":1e-06}
+    end
+    Run-->>You: Total: 51.80
+
+    You->>Sink: ouroboros trace debug.info
+    Sink-->>You: 4 calls: what each was given, what each returned

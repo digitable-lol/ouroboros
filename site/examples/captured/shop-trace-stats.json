@@ -1,0 +1,89 @@
+{
+  "ok": true,
+  "path": "debug.info",
+  "calls_parsed": 4,
+  "malformed": 0,
+  "total_calls": 4,
+  "in_flight": [],
+  "by_function": [
+    {
+      "name": "delivery",
+      "count": 1,
+      "result": 1,
+      "raised": 0,
+      "unknown": 0,
+      "duration_seconds": {
+        "min": 1e-06,
+        "max": 1e-06,
+        "mean": 1e-06,
+        "total": 1e-06,
+        "count": 1
+      }
+    },
+    {
+      "name": "discount",
+      "count": 1,
+      "result": 1,
+      "raised": 0,
+      "unknown": 0,
+      "duration_seconds": {
+        "min": 2e-06,
+        "max": 2e-06,
+        "mean": 2e-06,
+        "total": 2e-06,
+        "count": 1
+      }
+    },
+    {
+      "name": "subtotal",
+      "count": 1,
+      "result": 1,
+      "raised": 0,
+      "unknown": 0,
+      "duration_seconds": {
+        "min": 3e-06,
+        "max": 3e-06,
+        "mean": 3e-06,
+        "total": 3e-06,
+        "count": 1
+      }
+    },
+    {
+      "name": "total",
+      "count": 1,
+      "result": 1,
+      "raised": 0,
+      "unknown": 0,
+      "duration_seconds": {
+        "min": 0.000231,
+        "max": 0.000231,
+        "mean": 0.000231,
+        "total": 0.000231,
+        "count": 1
+      }
+    }
+  ],
+  "by_thread": [
+    {
+      "thread": "4065309.140405652486016",
+      "count": 4,
+      "functions": 4,
+      "cpus": []
+    }
+  ],
+  "duration_seconds": {
+    "min": 1e-06,
+    "max": 0.000231,
+    "mean": 5.9e-05,
+    "total": 0.000237,
+    "count": 4
+  },
+  "timespan": {
+    "first": "2026-09-08T15:43:19.135",
+    "last": "2026-09-08T15:43:19.135",
+    "seconds": 0.0,
+    "timestamps_parsed": 4,
+    "timestamps_unparsed": 0
+  },
+  "note": "counts/durations are over completed calls; `duration_seconds` are REAL per-call durations (exit−entry) from each call's `d`. `by_thread` groups calls by the `th` token (CPUs each thread ran on); empty for traces with no thread field. `in_flight` = entered (`p:in`) but never completed. `timespan` is first→last entry time."
+}
