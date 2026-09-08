@@ -45,6 +45,29 @@ uv run python scripts/state_numbers.py
 echo "== слова со смешанными алфавитами =="
 uv run python scripts/check_no_mixed_script.py
 
+# Язык страницы читается по её имени: без суффикса — английский, `.ru.md` —
+# русский. Разъезжается это молча и по одному абзацу за раз, поэтому сверяет
+# машина. Сначала самопроверка: сторож, который никогда не краснел, ничего не
+# значит — она подсовывает ему заведомо испорченные страницы и требует отказа.
+echo "== сторож языка документации: самопроверка =="
+uv run python scripts/check_doc_language.py --self-test
+
+echo "== английский по умолчанию, русский парой .ru =="
+uv run python scripts/check_doc_language.py
+
+# Русское описание инструмента написано на flang и проверяется компилятором:
+# типы, доказанное завершение всех функций и примеры внутри самих функций.
+# Компилятор ставится одной строкой: npm i -g @digitable-lol/flang
+echo "== русское описание на flang =="
+if command -v flang >/dev/null 2>&1; then
+    flang check docs/ouroboros.flang
+    flang test docs/ouroboros.flang
+else
+    echo "   ВНИМАНИЕ: flang не найден, описание НЕ проверено."
+    echo "   Это не «всё хорошо»: то же самое проверяет"
+    echo "   .github/workflows/docs-language.yml, где компилятор ставится всегда."
+fi
+
 # Имена команд в рецепте Homebrew и в плагине asdf выглядят правдоподобно и
 # глазами не проверяются: в рецепте однажды стояла строка
 # assert_path_exists bin/"ouroboros-mcp-router" — имени, которого не было никогда.
