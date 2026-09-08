@@ -103,7 +103,14 @@ def apply(facts: dict[str, Any]) -> bool:
         if not MARK.search(text):
             raise SystemExit(f"в {page.name} нет пометок <!--schema-facts-->")
         table = render(facts, words)
-        new = MARK.sub(lambda m: m.group(1) + table + m.group(3), text)
+
+        # `table=table` связывает таблицу СЕЙЧАС, а не при вызове: без этого
+        # замыкание смотрело бы на переменную цикла и во вторую страницу попала
+        # бы таблица последней редакции.
+        def swap(m: re.Match[str], table: str = table) -> str:
+            return m.group(1) + table + m.group(3)
+
+        new = MARK.sub(swap, text)
         if new != text:
             page.write_text(new, encoding="utf-8")
             changed = True
