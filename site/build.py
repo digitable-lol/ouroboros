@@ -117,7 +117,9 @@ def format_number(value: object) -> str:
     if isinstance(value, float):
         return f"{value:g}"
     if isinstance(value, int):
-        return f"{value:,}".replace(",", " ")  # thin space: 20 002, not 20002
+        # A narrow NO-BREAK space, not an ordinary one: a number the browser
+        # split across two lines reads as two numbers.
+        return f"{value:,}".replace(",", " ")
     return str(value)
 
 
