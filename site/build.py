@@ -39,12 +39,13 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -52,6 +53,14 @@ OUT = HERE / "out"
 PAGES = HERE / "pages"
 DIAGRAMS = HERE / "diagrams"
 CAPTURED = HERE / "examples" / "captured"
+DOCS = ROOT / "docs"
+
+# The rule that turns a heading into the address of that heading. It lives in
+# `scripts/check_doc_anchors.py`, which checks every link between documentation
+# pages against it, and it is imported rather than repeated: a page built by one
+# rule and checked by another is a page whose links are checked by nobody.
+sys.path.insert(0, str(ROOT / "scripts"))
+from check_doc_anchors import anchor_for  # noqa: E402
 
 GITHUB = "https://github.com/digitable-lol/ouroboros"
 
@@ -220,6 +229,19 @@ def slug(text: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", plain)).strip("-")
 
 
+def table_html(head: list[str], rows: list[list[str]]) -> str:
+    """A table, from cells that are already HTML. The wrapper is what lets a
+    wide table scroll on its own instead of widening the page."""
+
+    out = ['<div class="tw"><table><thead><tr>']
+    out += [f"<th>{h}</th>" for h in head]
+    out.append("</tr></thead><tbody>")
+    for row in rows:
+        out.append("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>")
+    out.append("</tbody></table></div>")
+    return "".join(out)
+
+
 def code_block(text: str, language: str, caption: str = "") -> str:
     body = html.escape(text.rstrip("\n"), quote=False)
     cls = f' class="lang-{language}"' if language else ""
@@ -236,11 +258,15 @@ class Page:
     toc: list[tuple[str, str]]
     links: list[str]
     anchors: set[str]
+    #: Where the page goes, under the documentation root. Empty for the landing,
+    #: whose pages are `name.html` beside the index.
+    out_rel: str = ""
 
 
-def front_matter(text: str, name: str) -> tuple[dict[str, str], str]:
+def front_matter(text: str, where: str,
+                 wants: str = "title, tagline") -> tuple[dict[str, str], str]:
     if not text.startswith("---\n"):
-        bad(f"{name}.md has no front matter (title, tagline)")
+        bad(f"{where} has no front matter ({wants})")
         return {}, text
     head, _, rest = text[4:].partition("\n---\n")
     meta = {}
@@ -335,13 +361,9 @@ class Renderer:
         else:
             bad(f"{self.name}.md asks for an unknown table: {kind!r}")
             return
-        cells = "".join(f"<th>{html.escape(h)}</th>" for h in head)
-        lines = [f"<div class=\"tw\"><table><thead><tr>{cells}</tr></thead><tbody>"]
-        for row in body:
-            lines.append("<tr>" + "".join(
-                f"<td>{inline(str(c), self.links)}</td>" for c in row) + "</tr>")
-        lines.append("</tbody></table></div>")
-        self.out.append("".join(lines))
+        self.out.append(table_html(
+            [html.escape(h) for h in head],
+            [[inline(str(c), self.links) for c in row] for row in body]))
 
     DIRECTIVES = {"capture": capture, "source": source, "diagram": diagram, "table": table}
 
@@ -479,16 +501,9 @@ class Renderer:
         def cells(row: str) -> list[str]:
             return [c.strip() for c in row.strip().strip("|").split("|")]
 
-        head = cells(block[0])
-        rows = [cells(r) for r in block[2:]]
-        out = ['<div class="tw"><table><thead><tr>']
-        out += [f"<th>{inline(h, self.links)}</th>" for h in head]
-        out.append("</tr></thead><tbody>")
-        for row in rows:
-            out.append("<tr>" + "".join(
-                f"<td>{inline(c, self.links)}</td>" for c in row) + "</tr>")
-        out.append("</tbody></table></div>")
-        return "".join(out)
+        return table_html([inline(h, self.links) for h in cells(block[0])],
+                          [[inline(c, self.links) for c in cells(r)]
+                           for r in block[2:]])
 
 
 # --------------------------------------------------------------------------- #
@@ -527,11 +542,26 @@ THEME_SCRIPT = """
 """
 
 
-def layout(page: Page, project: dict[str, str], origin: str) -> str:
+def layout(page: Page, project: dict[str, str], origin: str,
+           prefix: str = "") -> str:
+    """The page, in the shell every page on the site wears.
+
+    `prefix` is how far up the site root is from the page being written: empty
+    for the landing, `../` for a documentation page, `../../` for one in
+    `docs/examples`. Every address in the shell is written through it, because
+    the same shell is now used from more than one depth.
+    """
+
     tabs = []
     for name, label in SITEMAP:
         here = ' class="here"' if name == page.name else ""
-        tabs.append(f'<a{here} href="{name}.html">{label}</a>')
+        tabs.append(f'<a{here} href="{prefix}{name}.html">{label}</a>')
+    here = ' class="here"' if page.name == "docs" else ""
+    tabs.append(f'<a{here} href="{prefix}{DOCS_HOME}/index.html">Documentation</a>')
+
+    # A documentation page in Russian says so, so that a reader machine — a
+    # screen reader, a translator — is not told it is reading English.
+    lang = "ru" if page.out_rel.endswith(".ru.html") else "en"
 
     toc = ""
     if len(page.toc) > 1:
@@ -540,19 +570,20 @@ def layout(page: Page, project: dict[str, str], origin: str) -> str:
                f'<div class="toc-title">On this page</div><ul>{items}</ul></nav>')
 
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(page.title)} · Ouroboros</title>
-<meta name="description" content="{html.escape(page.tagline, quote=True)}">
+<meta name="description" content="{html.escape(page.tagline or project['summary'], quote=True)}">
 <link rel="icon" href="{FAVICON}">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="{prefix}style.css">
 </head>
 <body>
 <a class="skip" href="#content">Skip to the content</a>
 <header class="top">
-  <a class="brand" href="index.html" aria-label="Ouroboros, home">{MARK}<span>Ouroboros</span></a>
+  <a class="brand" href="{prefix}index.html"
+     aria-label="Ouroboros, home">{MARK}<span>Ouroboros</span></a>
   <span class="tagline">what your code actually did, one line in and one line out</span>
   <nav class="tabs" aria-label="Sections">{"".join(tabs)}</nav>
   <a class="version" href="{GITHUB}/releases" rel="noopener">{project['version']}</a>
@@ -579,6 +610,370 @@ def layout(page: Page, project: dict[str, str], origin: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# the documentation: docs/*.md, rendered here rather than by Jekyll
+# --------------------------------------------------------------------------- #
+
+#: Where the documentation lands on the published site. It cannot stay at the
+#: root: `index.html` and `limits.html` are pages of the landing too, and a site
+#: root has room for one of each. Every address the documentation used to answer
+#: on keeps answering — as a redirect written by `write_docs` below.
+DOCS_HOME = "docs"
+
+#: Files the documentation links to, or that a check reads off the site, copied
+#: as they are. `state.json` is fetched from the ROOT by
+#: `scripts/check_pages_live.py`, so these are written in both places.
+DOCS_ASSETS = ("*.json", "*.flang")
+
+#: A line that opens with a tag or a comment and closes with one: `<details>`,
+#: `</details>`, `<details><summary>…</summary>`, `<!--schema-facts-->` — the
+#: hand-written HTML these pages actually contain. It goes onto the page as
+#: written. A line that merely begins with `<` is prose — `<work> is the
+#: directory the capture ran in` — and is escaped like any other.
+RAW_HTML_LINE = re.compile(r"(?:<!--|</?[A-Za-z])[^>]*>(?:.*>)?$", re.DOTALL)
+
+#: A pipe that ends a table cell, as opposed to one written `\|` inside it.
+CELL_BORDER = re.compile(r"(?<!\\)\|")
+
+#: Inline code fenced with two backticks, which is how the tool's own Python
+#: docstrings write it — `docs/mcp-tools.md` is printed from them.
+DOUBLE_CODE = re.compile(r"``([^`]+)``")
+
+HEADING_LINE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+LIST_ITEM = re.compile(r"^([-*]|\d+\.)\s+")
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+class DocsRenderer:
+    """One documentation page.
+
+    Not an implementation of Markdown — an implementation of the dialect
+    `docs/` is actually written in, which a walk over every page says is:
+    headings, paragraphs, lists (an item may hold more than one block), pipe
+    tables, fenced code, block quotes, hand-written `<details>` blocks, HTML
+    comments, and the four inline forms.
+
+    Two things here that the landing never needs:
+
+    * an HTML comment survives onto the page as written. `<!--state:version-->`
+      is not decoration — `scripts/check_pages_live.py` reads those numbers off
+      the live page and compares them with `docs/state.json`;
+    * a link to `install.md` is published as a link to `install.html`. That is
+      what the jekyll-relative-links plugin did while Jekyll built these pages,
+      and it is why every address on the site ends in `.html`.
+
+    And one thing it does better than what it replaces: what is written between
+    `<details>` and `</details>` is Markdown here. kramdown passed it through
+    raw, which is why the collapsed sections of the published `mcp-tools.html`
+    showed their own ``` fences as text.
+    """
+
+    def __init__(self, where: str) -> None:
+        self.where = where
+        self.out: list[str] = []
+        self.toc: list[tuple[str, str]] = []
+        self.links: list[str] = []
+        self.anchors: set[str] = set()
+
+    # -- inline ------------------------------------------------------------- #
+
+    def link(self, label: str, href: str) -> str:
+        self.links.append(href)
+        target = href
+        if not href.startswith(("http://", "https://", "mailto:", "#")):
+            path, sep, fragment = href.partition("#")
+            if path.endswith(".md"):
+                path = path[: -len(".md")] + ".html"
+            target = path + sep + fragment
+        extra = ' rel="noopener"' if target.startswith("http") else ""
+        return f'<a href="{html.escape(target, quote=True)}"{extra}>{label}</a>'
+
+    def inline(self, text: str) -> str:
+        holes: list[str] = []
+
+        def stash(markup: str) -> str:
+            holes.append(markup)
+            return f"\x00{len(holes) - 1}\x00"
+
+        # Comments before escaping: their angle brackets are their own.
+        text = HTML_COMMENT.sub(lambda m: stash(m.group(0)), text)
+        out = html.escape(text, quote=False)
+        out = DOUBLE_CODE.sub(lambda m: stash(f"<code>{m.group(1)}</code>"), out)
+        out = INLINE_CODE.sub(lambda m: stash(f"<code>{m.group(1)}</code>"), out)
+        out = LINK.sub(lambda m: stash(self.link(m.group(1), m.group(2))), out)
+        out = BOLD.sub(r"<strong>\1</strong>", out)
+        out = EM.sub(r"<em>\1</em>", out)
+        # Backwards, for the reason given at the top of `inline`: an outer hole
+        # can hold an inner hole's mark, and the outer one has to open first.
+        for i in reversed(range(len(holes))):
+            out = out.replace(f"\x00{i}\x00", holes[i])
+        if "\x00" in out:
+            bad(f"{self.where}: a placeholder survived into the page: {out[:80]!r}")
+        return out
+
+    # -- blocks ------------------------------------------------------------- #
+
+    def blocks(self, lines: list[str]) -> str:
+        """Render a run of lines and hand back the HTML, leaving `out` alone.
+
+        Block quotes and list items are rendered by calling this again on what
+        is inside them, which is how a fenced block inside a numbered item —
+        `docs/with-ai.md` has one — stays a fenced block instead of ending the
+        list and starting the numbering over.
+        """
+
+        keep, self.out = self.out, []
+        self.walk(lines)
+        body, self.out = "".join(self.out), keep
+        return body
+
+    def walk(self, lines: list[str]) -> None:
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            if not line.strip():
+                i += 1
+                continue
+
+            if line.startswith("```"):
+                language = line[3:].strip()
+                block, i = [], i + 1
+                while i < len(lines) and not lines[i].startswith("```"):
+                    block.append(lines[i])
+                    i += 1
+                if i >= len(lines):
+                    bad(f"{self.where}: a fenced block is opened and never closed")
+                self.out.append(code_block("\n".join(block), language))
+                i += 1
+                continue
+
+            head = HEADING_LINE.match(line)
+            if head:
+                level, raw = len(head.group(1)), head.group(2)
+                anchor = anchor_for(raw, self.anchors)
+                self.anchors.add(anchor)
+                shown = self.inline(raw)
+                if level == 2:
+                    self.toc.append((anchor, shown))
+                self.out.append(f'<h{level} id="{anchor}">{shown}</h{level}>')
+                i += 1
+                continue
+
+            if line.startswith("<") and RAW_HTML_LINE.fullmatch(line.strip()):
+                self.out.append(line.strip())
+                i += 1
+                continue
+
+            if line.startswith("|"):
+                block, i = [], i
+                while i < len(lines) and lines[i].startswith("|"):
+                    block.append(lines[i])
+                    i += 1
+                self.out.append(self.table(block))
+                continue
+
+            if line.startswith(">"):
+                block, i = [], i
+                while i < len(lines) and lines[i].startswith(">"):
+                    block.append(re.sub(r"^>[ \t]?", "", lines[i]))
+                    i += 1
+                self.out.append(f"<blockquote>{self.blocks(block)}</blockquote>")
+                continue
+
+            if LIST_ITEM.match(line):
+                i = self.list_block(lines, i)
+                continue
+
+            block, i = [], i
+            while (i < len(lines) and lines[i].strip()
+                   and not lines[i].startswith(("#", "|", ">", "```"))
+                   and not (lines[i].startswith("<")
+                            and RAW_HTML_LINE.fullmatch(lines[i].strip()))
+                   and not LIST_ITEM.match(lines[i])):
+                block.append(lines[i].strip())
+                i += 1
+            self.out.append(f"<p>{self.inline(' '.join(block))}</p>")
+
+    def list_block(self, lines: list[str], start: int) -> int:
+        """One list, from its first marker to the first line that is neither an
+        item nor indented under one. Returns where to carry on from."""
+
+        ordered = bool(re.match(r"^\d+\.\s", lines[start]))
+        rendered: list[str] = []
+        i = start
+        while i < len(lines) and LIST_ITEM.match(lines[i]):
+            item = [LIST_ITEM.sub("", lines[i], count=1)]
+            i += 1
+            while i < len(lines):
+                if lines[i].strip():
+                    if not lines[i].startswith((" ", "\t")):
+                        break
+                    item.append(lines[i])
+                    i += 1
+                    continue
+                # A blank line ends the item unless the item goes on below it,
+                # indented: that is how a code block sits inside an item.
+                ahead = i
+                while ahead < len(lines) and not lines[ahead].strip():
+                    ahead += 1
+                if ahead >= len(lines) or not lines[ahead].startswith((" ", "\t")):
+                    break
+                item.extend([""] * (ahead - i))
+                i = ahead
+            rendered.append(self.item(item))
+        self.out.append(("<ol>" if ordered else "<ul>")
+                        + "".join(f"<li>{it}</li>" for it in rendered)
+                        + ("</ol>" if ordered else "</ul>"))
+        return i
+
+    def item(self, lines: list[str]) -> str:
+        """One list item: a run of prose stays a run of prose, and an item with
+        a second block in it goes through the block walk.
+
+        The item is dedented by however far its own continuation lines are
+        indented, so that a fenced block written under a numbered item opens at
+        the left margin of the item and is seen as a fence.
+        """
+
+        indents = [len(ln) - len(ln.lstrip()) for ln in lines[1:] if ln.strip()]
+        body = list(lines)
+        if indents:
+            body = [lines[0]] + [ln[min(indents):] if ln.strip() else ln
+                                 for ln in lines[1:]]
+        blocky = any(not ln.strip() for ln in body) or any(
+            ln.startswith(("```", "|", ">", "#")) or LIST_ITEM.match(ln)
+            for ln in body[1:])
+        if blocky:
+            return self.blocks(body)
+        return self.inline(" ".join(ln.strip() for ln in body))
+
+    def table(self, block: list[str]) -> str:
+        def cells(row: str) -> list[str]:
+            row = row.strip().removeprefix("|").removesuffix("|")
+            # A cell may hold a pipe of its own, written `\|` — `--outcome
+            # result\|raised` in getting-started.md. Split on the others only,
+            # then let the escaped one be an ordinary character again.
+            return [c.strip().replace("\\|", "|") for c in CELL_BORDER.split(row)]
+
+        head = [self.inline(h) for h in cells(block[0])]
+        rows = [[self.inline(c) for c in cells(r)] for r in block[2:]]
+        return table_html(head, rows)
+
+
+def build_docs() -> list[Page]:
+    """Every `docs/**/*.md`, rendered. The page order is the file order."""
+
+    pages: list[Page] = []
+    for path in sorted(DOCS.glob("**/*.md")):
+        rel = path.relative_to(DOCS)
+        where = f"docs/{rel.as_posix()}"
+        meta, text = front_matter(path.read_text(encoding="utf-8"), where, "title")
+        renderer = DocsRenderer(where)
+        body = renderer.blocks(text.split("\n"))
+        pages.append(Page(name="docs",
+                          title=meta.get("title", rel.stem),
+                          tagline="",
+                          body=body,
+                          toc=renderer.toc,
+                          links=renderer.links,
+                          anchors=renderer.anchors,
+                          out_rel=rel.with_suffix(".html").as_posix()))
+    if not any(page.out_rel == "index.html" for page in pages):
+        bad("docs/index.md is not in the tree, and every page on the site has a "
+            "Documentation tab pointing at docs/index.html")
+    check_docs_links(pages)
+    return pages
+
+
+def check_docs_links(pages: list[Page]) -> None:
+    """A link between documentation pages has to land somewhere on the site.
+
+    `scripts/check_doc_anchors.py` asks the same question of the tree; this one
+    asks it of the site that is about to be published, where the answer can be
+    different — a page can be in the tree and not on the site, which is exactly
+    what happened to `measurements.html` for a whole day.
+    """
+
+    known = {page.out_rel: page.anchors for page in pages}
+    assets = {path.name for pattern in DOCS_ASSETS for path in DOCS.glob(pattern)}
+    for page in pages:
+        here = PurePosixPath(page.out_rel).parent
+        for href in page.links:
+            if href.startswith(("http://", "https://", "mailto:")):
+                continue
+            target, _, anchor = href.partition("#")
+            if not target:
+                if anchor not in page.anchors:
+                    bad(f"docs/{page.out_rel}: links to #{anchor}, "
+                        f"and the page has no such heading")
+                continue
+            if target.endswith(".md"):
+                target = target[: -len(".md")] + ".html"
+            resolved = str(PurePosixPath(os.path.normpath(here / target)))
+            if resolved in assets or PurePosixPath(resolved).name in assets:
+                continue
+            if resolved not in known:
+                bad(f"docs/{page.out_rel}: links to {href}, and the site will "
+                    f"have no {resolved}")
+                continue
+            if anchor and anchor not in known[resolved]:
+                bad(f"docs/{page.out_rel}: links to {href}, and {resolved} "
+                    f"has no such heading")
+
+
+REDIRECT = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{title} · Ouroboros</title>
+<link rel="canonical" href="{target}">
+<meta http-equiv="refresh" content="0; url={target}">
+<link rel="icon" href="{favicon}">
+</head>
+<body>
+<p>This page now lives at <a href="{target}">{target}</a>.</p>
+</body>
+</html>
+"""
+
+
+def write_docs(docs: list[Page], project: dict[str, str], origin: str) -> int:
+    """Write the documentation into `docs/` of the site, its data files beside
+    it, and a redirect at every address the documentation answered on before.
+
+    Returns how many redirects were written. The two addresses that get none
+    are `index.html` and `limits.html`: the landing has pages of those names,
+    the root has room for one of each, and the landing is what the root is for.
+    """
+
+    for page in docs:
+        target = OUT / DOCS_HOME / page.out_rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        depth = 1 + page.out_rel.count("/")
+        target.write_text(layout(page, project, origin, "../" * depth),
+                          encoding="utf-8")
+
+    for pattern in DOCS_ASSETS:
+        for path in sorted(DOCS.glob(pattern)):
+            shutil.copy(path, OUT / DOCS_HOME / path.name)
+            shutil.copy(path, OUT / path.name)
+
+    landing = {f"{name}.html" for name, _ in SITEMAP}
+    written = 0
+    for page in docs:
+        if page.out_rel in landing:
+            continue
+        stub = OUT / page.out_rel
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        up = "../" * page.out_rel.count("/")
+        stub.write_text(REDIRECT.format(title=html.escape(page.title),
+                                        target=f"{up}{DOCS_HOME}/{page.out_rel}",
+                                        favicon=FAVICON), encoding="utf-8")
+        written += 1
+    return written
+
+
+# --------------------------------------------------------------------------- #
 # build
 # --------------------------------------------------------------------------- #
 
@@ -590,7 +985,7 @@ def build() -> list[Page]:
         if not path.exists():
             bad(f"no page source {path.relative_to(ROOT)}")
             continue
-        meta, text = front_matter(path.read_text(encoding="utf-8"), name)
+        meta, text = front_matter(path.read_text(encoding="utf-8"), f"{name}.md")
         renderer = Renderer(facts, name)
         renderer.render(text)
         pages.append(Page(name=name,
@@ -626,7 +1021,7 @@ def check_links(pages: list[Page]) -> None:
                 bad(f"{page.name}.md links to {href}, and {name}.html has no such heading")
 
 
-def write(pages: list[Page]) -> None:
+def write(pages: list[Page], docs: list[Page]) -> int:
     project = project_facts()
     origin = tree_origin()
     if OUT.exists():
@@ -641,21 +1036,26 @@ def write(pages: list[Page]) -> None:
     # underscore-free names here would survive it, but the marker costs nothing
     # and removes a whole class of surprise.
     (OUT / ".nojekyll").write_text("", encoding="utf-8")
+    return write_docs(docs, project, origin)
 
 
 def main(argv: list[str]) -> int:
     pages = build()
+    docs = build_docs()
     if problems:
         print("The site was NOT built. What is wrong:\n", file=sys.stderr)
         for problem in problems:
             print(f"  * {problem}", file=sys.stderr)
         return 1
     if "--check" in argv:
-        print(f"checked: {len(pages)} pages, every link and every number resolves")
+        print(f"checked: {len(pages)} landing pages and {len(docs)} documentation "
+              f"pages, every link, every heading and every number resolves")
         return 0
-    write(pages)
-    total = sum((OUT / f"{p.name}.html").stat().st_size for p in pages)
-    print(f"built {len(pages)} pages into {OUT.relative_to(ROOT)} ({total // 1024} KiB of HTML)")
+    redirects = write(pages, docs)
+    total = sum(path.stat().st_size for path in OUT.glob("**/*.html"))
+    print(f"built {len(pages)} landing pages and {len(docs)} documentation pages "
+          f"into {OUT.relative_to(ROOT)}/, plus {redirects} redirects from the "
+          f"addresses the documentation had ({total // 1024} KiB of HTML)")
     return 0
 
 
