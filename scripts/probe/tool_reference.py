@@ -97,15 +97,21 @@ def stabilise(value: Any, root: str, python: str) -> Any:
 
 
 def trim(value: Any) -> Any:
-    """Обрезает длинные строки и списки, чтобы пример ответа читался."""
+    """Обрезает длинные строки и списки, чтобы пример ответа читался.
+
+    Пометка обрезки — по-английски, и это не мелочь: снятый JSON один, а страниц
+    из него печатается две, английская и русская. Русское слово внутри снятого
+    значения попало бы в английскую страницу и осталось бы там навсегда — снять
+    заново можно только живым разговором с сервером.
+    """
 
     if isinstance(value, str):
         if len(value) <= _MAX_STR:
             return value
-        return value[:_MAX_STR] + f"... (+{len(value) - _MAX_STR} символов)"
+        return value[:_MAX_STR] + f"... (+{len(value) - _MAX_STR} chars)"
     if isinstance(value, list):
         head = [trim(v) for v in value[:2]]
-        return head + ([f"... ещё {len(value) - 2}"] if len(value) > 2 else [])
+        return head + ([f"... {len(value) - 2} more"] if len(value) > 2 else [])
     if isinstance(value, dict):
         return {k: trim(v) for k, v in value.items()}
     return value

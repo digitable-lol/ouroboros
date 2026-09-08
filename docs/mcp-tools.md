@@ -1,14 +1,14 @@
 ---
-title: Справочник средств MCP
+title: MCP tool reference
 ---
 
-[English](mcp-tools.md) · **Русский**
+**English** · [Русский](mcp-tools.ru.md)
 
-# Справочник средств MCP
+# MCP tool reference
 
-**Эта страница собрана прогоном, а не написана.** Её печатает `scripts/probe/render_reference.py` из файла [`docs/mcp-tools.json`](mcp-tools.json), который снят живым разговором с сервером: каждое средство здесь сервер объявил сам, и на каждое сделан настоящий вызов, ответ на который приведён ниже дословно.
+**This page is recorded, not written.** `scripts/probe/render_reference.py` prints it from [`docs/mcp-tools.json`](mcp-tools.json), which is captured in a live conversation with the server: every tool here was declared by the server itself, every one of them was actually called, and the answer is quoted below word for word.
 
-Пересобрать:
+Rebuild:
 
 ```sh
 scripts/probe/build-reference.sh
@@ -16,17 +16,17 @@ scripts/probe/build-reference.sh
 
 | | |
 |---|---|
-| сервер | `ouroboros-logger` версия `1.27.2` |
-| правила разговора | `2025-11-25` |
-| чем запускается | `ouroboros-mcp (pyproject [project.scripts])` |
-| средств объявлено | **17** |
-| снято | 2026-08-29T08:29:50 |
+| server | `ouroboros-logger` version `1.27.2` |
+| protocol | `2025-11-25` |
+| started by | `ouroboros-mcp (pyproject [project.scripts])` |
+| tools declared | **17** |
+| captured | 2026-08-29T08:29:50 |
 
-Средств, объявленных но не вызванных при съёмке, нет: настоящий ответ есть на каждое.
+No tool was declared and left uncalled: every one of them has a real answer.
 
-В путях примеров `<work>` — каталог, в котором шла съёмка, `<python>` — исполняемый файл Python, которым звали. Длинные строки и списки обрезаны, обрезка помечена в самом значении.
+In the example paths `<work>` is the directory the capture ran in and `<python>` is the Python executable it was called with. Long strings and lists are trimmed, and the trimming is marked inside the value itself.
 
-## Что сервер говорит о себе при подключении
+## What the server says about itself on connect
 
 ```
 Ouroboros-Logger: guaranteed function-level logging instrumentation for code.
@@ -57,24 +57,24 @@ read_* / list_files / trace / clangd tools never write. See SPEC.md for the trac
 schema.
 ```
 
-## Дописать запись о вызовах
+## Add call logging
 
 ### `wrap_code_snippet` — Wrap code snippet
 
 Wrap a raw code string with function-level logging instrumentation.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `code` | string | да | — |
-| `language` | string | да | — |
+| `code` | string | yes | — |
+| `language` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -83,7 +83,7 @@ Wrap a raw code string with function-level logging instrumentation.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -103,18 +103,18 @@ Instrument a source file in place; returns success/failure metrics.
 Set ``minimal=True`` (C only) for the stackless depth-only probe on every
 function — wrap a whole mechanism file to capture its full runtime call tree.
 
-**да:** перезаписывает то, что было, повторный вызов даёт тот же итог; **нет:** только читает, трогает что-то за пределами своих доводов
+**yes:** overwrites what was there, calling again gives the same result; **no:** reads only, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `minimal` | boolean | нет | `false` |
+| `path` | string | yes | — |
+| `minimal` | boolean | no | `false` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -122,7 +122,7 @@ function — wrap a whole mechanism file to capture its full runtime call tree.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -145,19 +145,19 @@ Set ``minimal=True`` (C only) for the stackless, depth-only probe — for
 HOT/RECURSIVE/deeply-locked kernel functions where the full per-frame
 struct blows the kernel stack or widens the fault surface.
 
-**да:** перезаписывает то, что было, повторный вызов даёт тот же итог; **нет:** только читает, трогает что-то за пределами своих доводов
+**yes:** overwrites what was there, calling again gives the same result; **no:** reads only, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `functions` | array | да | — |
-| `minimal` | boolean | нет | `false` |
+| `path` | string | yes | — |
+| `functions` | array | yes | — |
+| `minimal` | boolean | no | `false` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -168,7 +168,7 @@ struct blows the kernel stack or widens the fault surface.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -185,7 +185,7 @@ struct blows the kernel stack or widens the fault surface.
 
 </details>
 
-## Прочитать записи
+## Read the records
 
 ### `read_trace` — Query trace records
 
@@ -199,26 +199,26 @@ to the last N first (tail must be >= 0; tail=0 returns nothing). Slow calls
 (min_duration) + hung calls (in_flight) cover "what went wrong". The read
 side of instrument -> run -> observe.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `function` | string или null | нет | `null` |
-| `contains` | string или null | нет | `null` |
-| `outcome` | string или null | нет | `null` |
-| `min_duration` | number или null | нет | `null` |
-| `thread` | string или null | нет | `null` |
-| `regex` | boolean | нет | `false` |
-| `tail` | integer или null | нет | `null` |
-| `cursor` | string или null | нет | `null` |
-| `limit` | integer | нет | `200` |
+| `path` | string | yes | — |
+| `function` | string or null | no | `null` |
+| `contains` | string or null | no | `null` |
+| `outcome` | string or null | no | `null` |
+| `min_duration` | number or null | no | `null` |
+| `thread` | string or null | no | `null` |
+| `regex` | boolean | no | `false` |
+| `tail` | integer or null | no | `null` |
+| `cursor` | string or null | no | `null` |
+| `limit` | integer | no | `200` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -226,7 +226,7 @@ side of instrument -> run -> observe.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -267,23 +267,23 @@ by_thread (per-thread counts + CPUs each thread ran on), in_flight and the
 entry timespan. Same filters as read_trace, incl. min_duration (seconds),
 thread, and regex.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `function` | string или null | нет | `null` |
-| `contains` | string или null | нет | `null` |
-| `outcome` | string или null | нет | `null` |
-| `min_duration` | number или null | нет | `null` |
-| `thread` | string или null | нет | `null` |
-| `regex` | boolean | нет | `false` |
+| `path` | string | yes | — |
+| `function` | string or null | no | `null` |
+| `contains` | string or null | no | `null` |
+| `outcome` | string or null | no | `null` |
+| `min_duration` | number or null | no | `null` |
+| `thread` | string or null | no | `null` |
+| `regex` | boolean | no | `false` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -291,7 +291,7 @@ thread, and regex.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -338,23 +338,23 @@ thread, and regex.
 
 </details>
 
-## Черновик
+## Draft workspace
 
 ### `create_project` — Create draft project
 
 Create a draft (черновик) git project under the given base path.
 
-**да:** повторный вызов даёт тот же итог; **нет:** только читает, перезаписывает то, что было, трогает что-то за пределами своих доводов
+**yes:** calling again gives the same result; **no:** reads only, overwrites what was there, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `base` | string | да | — |
+| `base` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -362,7 +362,7 @@ Create a draft (черновик) git project under the given base path.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -379,19 +379,19 @@ Create a draft (черновик) git project under the given base path.
 
 Wrap-on-save a file into the draft and commit it (rejects unparseable code).
 
-**нет:** только читает, перезаписывает то, что было, повторный вызов даёт тот же итог, трогает что-то за пределами своих доводов
+**no:** reads only, overwrites what was there, calling again gives the same result, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `base` | string | да | — |
-| `rel_path` | string | да | — |
-| `content` | string | да | — |
+| `base` | string | yes | — |
+| `rel_path` | string | yes | — |
+| `content` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -401,7 +401,7 @@ Wrap-on-save a file into the draft and commit it (rejects unparseable code).
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -420,18 +420,18 @@ Wrap-on-save a file into the draft and commit it (rejects unparseable code).
 
 Read a file from the draft.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `base` | string | да | — |
-| `rel_path` | string | да | — |
+| `base` | string | yes | — |
+| `rel_path` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -440,7 +440,7 @@ Read a file from the draft.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -455,17 +455,17 @@ Read a file from the draft.
 
 List tracked files in the draft.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `base` | string | да | — |
+| `base` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -473,7 +473,7 @@ List tracked files in the draft.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -492,19 +492,19 @@ List tracked files in the draft.
 
 Run a command in the draft; runtime info is funneled to debug.info.
 
-**да:** перезаписывает то, что было, трогает что-то за пределами своих доводов; **нет:** только читает, повторный вызов даёт тот же итог
+**yes:** overwrites what was there, touches something beyond its own arguments; **no:** reads only, calling again gives the same result
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `base` | string | да | — |
-| `command` | array | да | — |
-| `timeout` | number или null | нет | `null` |
+| `base` | string | yes | — |
+| `command` | array | yes | — |
+| `timeout` | number or null | no | `null` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -516,7 +516,7 @@ Run a command in the draft; runtime info is funneled to debug.info.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -540,17 +540,17 @@ un-instrumented copy of the source exists anywhere to restore. Left
 behind: .git, debug.info, and build output (__pycache__, *.pyc, *.beam,
 tool caches). Wipes the output tree first, then rebuilds it.
 
-**да:** перезаписывает то, что было, повторный вызов даёт тот же итог; **нет:** только читает, трогает что-то за пределами своих доводов
+**yes:** overwrites what was there, calling again gives the same result; **no:** reads only, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `base` | string | да | — |
+| `base` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -558,7 +558,7 @@ tool caches). Wipes the output tree first, then rebuilds it.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -577,7 +577,7 @@ tool caches). Wipes the output tree first, then rebuilds it.
 
 </details>
 
-## C и C++ через clangd
+## C and C++ through clangd
 
 ### `lint_file` — Lint C/C++ file (clang-tidy)
 
@@ -587,18 +587,18 @@ same compile_commands.json as the instrumenter; filters the `__ouro`
 reserved-identifier noise our own instrumentation injects. `checks` overrides
 the default clang-tidy check set.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `checks` | string или null | нет | `null` |
+| `path` | string | yes | — |
+| `checks` | string or null | no | `null` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -606,7 +606,7 @@ the default clang-tidy check set.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -637,21 +637,21 @@ First call on a fresh tree pays background-index cost (cached to disk after);
 raise `index_timeout` (seconds) for a very large tree. The result's
 `index_complete` is False if indexing didn't finish (results may be partial).
 
-**да:** повторный вызов даёт тот же итог; **нет:** только читает, перезаписывает то, что было, трогает что-то за пределами своих доводов
+**yes:** calling again gives the same result; **no:** reads only, overwrites what was there, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `query` | string | да | — |
-| `root` | string | да | — |
-| `compile_commands_dir` | string или null | нет | `null` |
-| `limit` | integer | нет | `100` |
-| `index_timeout` | number | нет | `60.0` |
+| `query` | string | yes | — |
+| `root` | string | yes | — |
+| `compile_commands_dir` | string or null | no | `null` |
+| `limit` | integer | no | `100` |
+| `index_timeout` | number | no | `60.0` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -661,7 +661,7 @@ raise `index_timeout` (seconds) for a very large tree. The result's
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -691,17 +691,17 @@ List every symbol defined in ONE C/C++ file (functions, types, vars) — the
 per-file menu of wrap_functions candidates. Needs no project index, so it is
 fast. Returns name/kind/line for each.
 
-**да:** только читает; **нет:** трогает что-то за пределами своих доводов
+**yes:** reads only; **no:** touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
+| `path` | string | yes | — |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -709,7 +709,7 @@ fast. Returns name/kind/line for each.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -736,21 +736,21 @@ waits for clangd's background index. `compile_commands_dir` points at the build'
 compile_commands.json; raise `index_timeout` for a large tree. `index_complete`
 in the result is False if indexing didn't finish (results may be partial).
 
-**да:** повторный вызов даёт тот же итог; **нет:** только читает, перезаписывает то, что было, трогает что-то за пределами своих доводов
+**yes:** calling again gives the same result; **no:** reads only, overwrites what was there, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `symbol` | string | да | — |
-| `compile_commands_dir` | string или null | нет | `null` |
-| `limit` | integer | нет | `200` |
-| `index_timeout` | number | нет | `60.0` |
+| `path` | string | yes | — |
+| `symbol` | string | yes | — |
+| `compile_commands_dir` | string or null | no | `null` |
+| `limit` | integer | no | `200` |
+| `index_timeout` | number | no | `60.0` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -760,7 +760,7 @@ in the result is False if indexing didn't finish (results may be partial).
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -783,21 +783,21 @@ is defined in `path`; cross-file, waits for the background index (raise
 `index_timeout` for a large tree). NOTE: 'outgoing' needs clangd ≥ ~19; older
 builds report a clean unsupported error.
 
-**да:** повторный вызов даёт тот же итог; **нет:** только читает, перезаписывает то, что было, трогает что-то за пределами своих доводов
+**yes:** calling again gives the same result; **no:** reads only, overwrites what was there, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `symbol` | string | да | — |
-| `direction` | string | нет | `"incoming"` |
-| `compile_commands_dir` | string или null | нет | `null` |
-| `index_timeout` | number | нет | `60.0` |
+| `path` | string | yes | — |
+| `symbol` | string | yes | — |
+| `direction` | string | no | `"incoming"` |
+| `compile_commands_dir` | string or null | no | `null` |
+| `index_timeout` | number | no | `60.0` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -808,7 +808,7 @@ builds report a clean unsupported error.
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {
@@ -827,19 +827,19 @@ builds report a clean unsupported error.
 Definition location + hover (type/signature/doc) of a C/C++ `symbol` in
 `path` — navigate to where it's defined and see its signature.
 
-**да:** повторный вызов даёт тот же итог; **нет:** только читает, перезаписывает то, что было, трогает что-то за пределами своих доводов
+**yes:** calling again gives the same result; **no:** reads only, overwrites what was there, touches something beyond its own arguments
 
-**Доводы**
+**Arguments**
 
-| довод | тип | обязателен | по умолчанию |
+| argument | type | required | default |
 |---|---|---|---|
-| `path` | string | да | — |
-| `symbol` | string | да | — |
-| `compile_commands_dir` | string или null | нет | `null` |
+| `path` | string | yes | — |
+| `symbol` | string | yes | — |
+| `compile_commands_dir` | string or null | no | `null` |
 
-<details><summary>Настоящий вызов и настоящий ответ</summary>
+<details><summary>The real call and the real answer</summary>
 
-Вызвали:
+Called:
 
 ```json
 {
@@ -849,7 +849,7 @@ Definition location + hover (type/signature/doc) of a C/C++ `symbol` in
 }
 ```
 
-Получили (ответ):
+Got (answer):
 
 ```json
 {

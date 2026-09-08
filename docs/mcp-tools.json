@@ -176,7 +176,7 @@
         "files": [
           ".gitignore",
           "main.py",
-          "... ещё 1"
+          "... 1 more"
         ]
       },
       "example_is_error": false
@@ -282,11 +282,11 @@
         "synced": [
           ".gitignore",
           "main.py",
-          "... ещё 1"
+          "... 1 more"
         ],
         "skipped": [],
         "instrumentation_removed": false,
-        "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Left behind: .git, debug.info, tool caches, and anything that looks built (compiled binaries, object files, c... (+125 символов)"
+        "note": "The copy is instrumented, exactly like the draft: this step publishes the draft, it does not un-instrument it. Left behind: .git, debug.info, tool caches, and anything that looks built (compiled binaries, object files, c... (+125 chars)"
       },
       "example_is_error": false
     },
@@ -720,7 +720,7 @@
           "timestamps_parsed": 1,
           "timestamps_unparsed": 0
         },
-        "note": "counts/durations are over completed calls; `duration_seconds` are REAL per-call durations (exit−entry) from each call's `d`. `by_thread` groups calls by the `th` token (CPUs each thread ran on); empty for traces with no ... (+102 символов)"
+        "note": "counts/durations are over completed calls; `duration_seconds` are REAL per-call durations (exit−entry) from each call's `d`. `by_thread` groups calls by the `th` token (CPUs each thread ran on); empty for traces with no ... (+102 chars)"
       },
       "example_is_error": false
     },

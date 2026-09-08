@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Пересобирает справочник средств MCP: docs/mcp-tools.json и docs/mcp-tools.md.
+# Пересобирает справочник средств MCP: docs/mcp-tools.json и обе редакции
+# страницы — docs/mcp-tools.md (английская) и docs/mcp-tools.ru.md (русская).
 #
 # Справочник снимается ЖИВЫМ разговором с сервером — запускается настоящий
 # `ouroboros-mcp`, у него спрашивается список средств, и каждое зовётся
@@ -22,12 +23,16 @@ echo "== снимаю справочник живым разговором с ou
 echo "   рабочий каталог: $WORK"
 uv run python scripts/probe/tool_reference.py "$WORK" > docs/mcp-tools.json
 
-echo "== печатаю страницу из снятого файла =="
+# Обе редакции печатаются из ОДНОГО снятого файла и в одном прогоне: иначе они
+# разъедутся молча — сначала пересоберут английскую, а русскую забудут.
+echo "== печатаю обе редакции страницы из снятого файла =="
 uv run python scripts/probe/render_reference.py docs/mcp-tools.json > docs/mcp-tools.md
+uv run python scripts/probe/render_reference.py docs/mcp-tools.json --lang ru > docs/mcp-tools.ru.md
 
 rm -rf "$WORK"
 
 COUNT=$(python3 -c "import json;print(json.load(open('docs/mcp-tools.json'))['declared_tool_count'])")
 echo "== готово: средств объявлено $COUNT =="
-echo "   docs/mcp-tools.json  — снятое как есть"
-echo "   docs/mcp-tools.md    — страница, напечатанная из него"
+echo "   docs/mcp-tools.json    — снятое как есть"
+echo "   docs/mcp-tools.md      — страница, напечатанная из него (английская)"
+echo "   docs/mcp-tools.ru.md   — она же по-русски"
