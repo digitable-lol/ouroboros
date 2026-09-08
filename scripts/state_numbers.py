@@ -39,8 +39,12 @@ ROOT = Path(__file__).resolve().parent.parent
 #: без повторного прогона, а разница в `git diff` — показывать, что сдвинулось.
 STATE_FILE = ROOT / "docs" / "state.json"
 
-#: Страницы, в которых стоят пометки.
-PAGES = ["README.md", "ARCHITECTURE.md", "docs/index.md", "docs/install.md"]
+#: Страницы, в которых стоят пометки. Обе редакции: имя без суффикса —
+#: английская, с `.ru` — русская. Русскую тоже переписывает машина, иначе она
+#: разошлась бы с английской ровно так же тихо, как обе расходились с делом.
+PAGES = ["README.md", "README.ru.md", "ARCHITECTURE.md",
+         "docs/index.md", "docs/index.ru.md",
+         "docs/install.md", "docs/install.ru.md"]
 
 MARK = re.compile(r"<!--state:([a-z_]+)-->(.*?)<!--/state-->", re.DOTALL)
 
