@@ -110,7 +110,7 @@ tool will not tell you the code is wrong — it will tell you what the code does
 
 **The repository holds a working tool**, not just a description of one: the
 `ouroboros-logger` package <!--state:version-->0.5.0<!--/state-->, a command line of 17 commands, an MCP server of 17
-tools, <!--state:tests-->1074<!--/state--> tests. Everything shown on these
+tools, <!--state:tests-->1248<!--/state--> tests. Everything shown on these
 pages is output from real runs on an ordinary Linux machine; the output of all
 eight languages was taken separately, and it can be taken again with one
 command — [Measurements](measurements.md).
