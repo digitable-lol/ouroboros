@@ -410,7 +410,7 @@ printf '%s\n' \
 
 The tool has no other variables
 ([`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62),
-[`ouroboros/mcp/server.py:894`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L894)).
+[`ouroboros/mcp/server.py:909`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L909)).
 
 ## Next
 

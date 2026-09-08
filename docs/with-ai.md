@@ -77,7 +77,7 @@ between: the agent sees all seventeen names and calls them by name.
 Every tool is marked with what it does to files: the reading ones are marked
 safe, `wrap_file` and `finish` as rewriting, `execute` as running an arbitrary
 command. The client sees this before the first call
-([`ouroboros/mcp/server.py:644`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L644)).
+([`ouroboros/mcp/server.py:645`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L645)).
 
 **The tables above are a short retelling. The full reference is taken off the
 live server:** [MCP tool reference](mcp-tools.md) — for each of the seventeen
