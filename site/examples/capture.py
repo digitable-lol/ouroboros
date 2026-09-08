@@ -126,7 +126,11 @@ def cross_language() -> dict[str, object]:
     print("== add(2, 3) on eight languages")
     sys.path.insert(0, str(ROOT / "tests"))
     from test_schema_parity import (  # noqa: E402  (path is set above)
-        _ADD, _LANGS, _sources, _trace_lines, _TOOL,
+        _ADD,
+        _LANGS,
+        _TOOL,
+        _sources,
+        _trace_lines,
     )
 
     taken: dict[str, object] = {}

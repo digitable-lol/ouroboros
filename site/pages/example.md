@@ -80,20 +80,21 @@ how often it was called, how it ended, and the real durations:
 
 {{capture: shop-trace-stats.json | the first two functions of the four}}
 
-The filters are the point of having a reader at all. All of them work on both
-commands:
+The filters are the point of having a reader at all. The first five work on
+both commands:
 
-| you want | ask for |
-|---|---|
-| one function | `--function delivery` |
-| calls mentioning a value | `--contains 46.8` |
-| only the calls that threw | `--outcome raised` |
-| only the slow ones | `--min-duration 0.5` |
-| one thread | `--thread 4065334.128322166978432` |
-| the last twenty | `--tail 20` |
+| you want | ask for | on |
+|---|---|---|
+| one function | `--function delivery` | both |
+| calls mentioning a value | `--contains 46.8` | both |
+| only the calls that threw | `--outcome raised` | both |
+| only the slow ones | `--min-duration 0.5` | both |
+| one thread | `--thread 4065334.128322166978432` | both |
+| the last twenty | `--tail 20` | `trace` only |
 
-`--regex` turns `--function` and `--contains` into patterns, and `--cursor`
-pages through a trace too big to answer at once.
+`--regex` turns `--function` and `--contains` into patterns on either command.
+`--limit` and `--cursor`, on `trace` only, page through a trace too big to
+answer at once.
 
 ## A run that crashes
 
