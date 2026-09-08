@@ -30,6 +30,14 @@ An ``in`` with no matching ``out`` = a call that entered but never completed
 Robustness: only lines beginning with ``{`` are parsed, each via ``json.loads``;
 anything else (kernel boot spam, a line torn by concurrent-CPU printf) is skipped
 and counted in ``malformed`` — not raised.
+
+**The rules above are not written here.** Which lines are worth parsing, what
+pairs an exit with its entry, what a completed call is made of and which entries
+are still in flight are decided in ``ouroboros/brain/trace_brain.flang``, where a
+compiler checks the types, proves every function terminates and runs the examples
+that state each rule. This module does what a pure function may not: it reads the
+text, decodes the JSON and keeps the hash index that makes the join a lookup
+instead of a scan. See ``docs/sdd/brain-in-flang.md``.
 """
 
 from __future__ import annotations
@@ -39,6 +47,9 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
+
+from ouroboros.brain import Brain
+from ouroboros.brain._flang.flang_runtime import Value
 
 
 @dataclass
@@ -72,75 +83,68 @@ class Loaded:
 
 
 def load(text: str) -> Loaded:
-    """Parse a JSONL trace into completed call records + in-flight calls."""
-    ins: dict[str, dict[str, Any]] = {}
+    """Parse a JSONL trace into completed call records + in-flight calls.
+
+    The loop is here and the rules are not: every branch below asks the brain
+    what this line is, what this event is and what a completed call is made of.
+    What stays on this side is the part a pure function cannot do — splitting
+    the text, decoding the JSON, and the ``ins`` index.
+
+    The index is the one deliberate split. The brain states the rule (``«Is in
+    flight»``: an entry whose id is not among the completed ones) by scanning
+    the ids, which is linear per entry and quadratic over a trace; a hash set
+    answers the same question in one lookup. ``tests/test_brain.py`` holds the
+    two answers against each other on every sample here, so the fast path
+    cannot quietly stop meaning what the rule says.
+    """
+    brain = Brain()
+    ins: dict[str, Value] = {}
     calls: list[Record] = []
-    in_order: list[dict[str, Any]] = []
+    in_order: list[tuple[str, Value]] = []
     malformed = 0
     order = 0
     for line in text.splitlines():
-        s = line.strip()
-        if not s.startswith("{"):
-            if s:
+        kind = brain.line_kind(line)
+        if kind != "Candidate":
+            # Blank lines are not evidence of damage; anything else that carries
+            # text is (kernel boot spam, a line torn by concurrent-CPU printf).
+            if kind == "Malformed":
                 malformed += 1
             continue
         try:
-            ev = json.loads(s)
+            ev = json.loads(line)
         except ValueError:
             # A torn record: two writers appended at once and the kernel split
             # one of them. Counted as malformed, never guessed at.
             malformed += 1
             continue
-        # No isinstance check here on purpose. `s` starts with `{`, and a JSON
-        # document that starts with `{` is either an object or a parse error —
-        # so a "not a dict" branch would be one no input can reach, and it sat
-        # here for a while looking like it was doing something.
-        if ev.get("p") not in ("in", "out"):
+        # No isinstance check here on purpose. The line starts with `{`, and a
+        # JSON document that starts with `{` is either an object or a parse
+        # error — so a "not a dict" branch would be one no input can reach, and
+        # it sat here for a while looking like it was doing something.
+        phase = brain.event_kind(ev.get("p"))
+        if phase == "Ignored":
             # Well-formed JSON that isn't a call event (e.g. an `exec` meta
             # record appended by the sandbox) — not a torn line; skip silently.
             continue
-        if ev["p"] == "in":
-            ins[str(ev.get("id", ""))] = ev
-            in_order.append(ev)
+        # The join id is normalised to str so an entry pairs with its exit (and
+        # with the completed set below) however the producer typed it.
+        call_id = str(ev.get("id", ""))
+        if phase == "Entered":
+            entered = brain.entry(ev)
+            ins[call_id] = entered
+            in_order.append((call_id, entered))
             continue
-        # "out": join with its entry event (may be missing in a truncated capture).
-        # Normalise the join id to str so it pairs with the `in` key above (and the
-        # completed/in_flight sets below) regardless of how the producer typed it.
-        entry = ins.get(str(ev.get("id", "")), {})
-        if "x" in ev:
-            kind, outcome = "raised", str(ev["x"])
-        elif "r" in ev:
-            kind, outcome = "result", str(ev["r"])
-        else:
-            kind, outcome = "", ""
-        d = ev.get("d")
-        calls.append(Record(
-            index=order,
-            started=str(entry.get("t", "")),
-            call_id=str(ev.get("id", "")),
-            name=str(ev.get("fn") or entry.get("fn", "")),
-            args=str(entry.get("a", "")),
-            kwargs=str(entry.get("k", "")),
-            outcome_kind=kind,
-            outcome=outcome,
-            duration=float(d) if isinstance(d, (int, float)) else None,
-            cpu=_cpu(entry),
-            thread=str(entry.get("th", "")),
-        ))
+        # "out": join with its entry event, which a capture truncated at a panic
+        # may never have written.
+        joined = ins.get(call_id)
+        calls.append(Record(**brain.completed_call(
+            order, brain.no_entry() if joined is None else joined, brain.exit(ev))))
         order += 1
     completed = {c.call_id for c in calls}
-    in_flight = [{"name": str(ev.get("fn", "")), "call_id": str(ev.get("id", "")),
-                  "started": str(ev.get("t", "")),
-                  "cpu": _cpu(ev), "thread": str(ev.get("th", ""))}
-                 for ev in in_order if str(ev.get("id", "")) not in completed]
+    in_flight = [brain.flight_view(entry)
+                 for call_id, entry in in_order if call_id not in completed]
     return Loaded(calls=calls, in_flight=in_flight, malformed=malformed)
-
-
-def _cpu(ev: dict[str, Any]) -> int | None:
-    """Read the ``ci`` CPU-index field. The kernel sink emits a real index; the
-    userland sink emits -1 ("not available") — both map to None when unknown."""
-    ci = ev.get("ci")
-    return ci if isinstance(ci, int) and not isinstance(ci, bool) and ci >= 0 else None
 
 
 def parse(text: str) -> list[Record]:

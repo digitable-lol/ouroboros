@@ -1,0 +1,817 @@
+module «Trace brain»
+
+note "The brain of the trace reader. Every rule that decides something about a
+trace lives here and nowhere else: which lines are worth parsing, what pairs an
+exit with its entry, what a completed call is, which entries are still in
+flight, and how an oversized value is cut down. The Python shell around it does
+what a pure function may not do at all — read files, decode JSON, keep an index
+— and asks this module for every answer."
+
+note "Values crossing the boundary are flat: scalars and presence flags, never
+an absent field. flang has no null, and a record whose optional fields are
+carried by flags converts to a Python dict in one pass, with no per-call-site
+unwrapping."
+
+type «Line kind»
+  variant Blank
+  variant Malformed
+  variant Candidate
+
+type «Event kind»
+  variant Entered
+  variant Returned
+  variant Ignored
+
+type «Outcome»
+  variant Raised contains text: string
+  variant Produced contains text: string
+  variant Silent
+
+type «Cpu»
+  variant OnCpu contains index: number
+  variant CpuUnknown
+
+type «Span»
+  variant Lasted contains seconds: number
+  variant Untimed
+
+object «Entry»
+  «id»: string
+  «started»: string
+  «name»: string
+  «args»: string
+  «kwargs»: string
+  «has cpu»: flag
+  «cpu»: number
+  «thread»: string
+
+object «Exit»
+  «id»: string
+  «name»: string
+  «raised»: flag
+  «raised text»: string
+  «produced»: flag
+  «produced text»: string
+  «has duration»: flag
+  «duration»: number
+
+object «Call»
+  «index»: number
+  «started»: string
+  «call id»: string
+  «name»: string
+  «args»: string
+  «kwargs»: string
+  «outcome kind»: string
+  «outcome»: string
+  «has duration»: flag
+  «duration»: number
+  «has cpu»: flag
+  «cpu»: number
+  «thread»: string
+
+note "Whitespace is the ASCII set Python's str.strip removes: horizontal tab
+through carriage return (9 to 13), the four file separators (28 to 31) and the
+space itself. A line made only of these is blank, and a blank line is not a
+malformed one."
+
+total function «Is space»
+  accepts one: string
+  returns flag
+  example «a space is space»
+    given one equals " "
+    expected yes
+  example «a brace is not»
+    given one equals "{"
+    expected no
+  example «the empty string is not»
+    given one equals ""
+    expected no
+  if (length one) is at most 0
+    then no
+    else
+      let code equals character code one
+      (code equals 32) or ((code is at least 9) and also (code is at most 13)) or ((code is at least 28) and also (code is at most 31))
+
+total function «Without leading space»
+  accepts text: string
+  returns string
+  example «two spaces dropped»
+    given text equals "  {}"
+    expected "{}"
+  example «nothing to drop»
+    given text equals "{}"
+    expected "{}"
+  match text
+    case empty
+      then text
+    case head and tail
+      then if «Is space» of head then («Without leading space» of tail) else text
+
+total function «Without trailing space»
+  accepts text: string
+  returns string
+  decreases length text
+  example «trailing return dropped»
+    given text equals "{} "
+    expected "{}"
+  example «nothing to drop»
+    given text equals "{}"
+    expected "{}"
+  if (length text) is at most 0
+    then text
+    else if «Is space» of (char (length text) in text)
+      then «Without trailing space» of (substring text with 1 by ((length text) minus 1))
+      else text
+
+total function «Trimmed»
+  accepts text: string
+  returns string
+  example «both ends»
+    given text equals "  {} "
+    expected "{}"
+  example «all space»
+    given text equals "   "
+    expected ""
+  «Without trailing space» of («Without leading space» of text)
+
+note "Only a line whose first non-space character is an opening brace is handed
+to the JSON decoder. Anything else that carries text at all is counted as
+malformed — kernel boot spam, a line torn by two CPUs printing at once. An
+empty line is neither: it is not evidence of damage."
+
+total function «Line kind»
+  accepts line: string
+  returns «Line kind»
+  example «a record is a candidate»
+    given line equals "{\"p\":\"in\"}"
+    expected variant Candidate
+  example «boot spam is malformed»
+    given line equals "[ 1.0] booting"
+    expected variant Malformed
+  example «a torn line is malformed»
+    given line equals "}{ torn line from concurrent printf"
+    expected variant Malformed
+  example «an empty line is blank»
+    given line equals ""
+    expected variant Blank
+  example «spaces only are blank»
+    given line equals "   "
+    expected variant Blank
+  let clean equals «Trimmed» of line
+  if (length clean) is at most 0
+    then variant Blank
+    else if clean begins with "{" then (variant Candidate) else (variant Malformed)
+
+total function «Counts as malformed»
+  accepts line: string
+  returns flag
+  example «boot spam counts»
+    given line equals "[ 1.0] booting"
+    expected yes
+  example «blank does not count»
+    given line equals ""
+    expected no
+  example «a candidate does not count»
+    given line equals "{}"
+    expected no
+  match «Line kind» of line
+    case Malformed
+      then yes
+    case Blank
+      then no
+    case Candidate
+      then no
+
+note "A decoded object is a call event only when its phase field says so. Well
+formed JSON that is not a call event — a meta record appended by the sandbox —
+is ignored silently, which is not the same as malformed."
+
+total function «Event kind»
+  accepts phase: string
+  returns «Event kind»
+  example «in is an entry»
+    given phase equals "in"
+    expected variant Entered
+  example «out is an exit»
+    given phase equals "out"
+    expected variant Returned
+  example «anything else is ignored»
+    given phase equals "exec"
+    expected variant Ignored
+  if phase equals "in"
+    then variant Entered
+    else if phase equals "out" then (variant Returned) else (variant Ignored)
+
+note "Raised and produced are mutually exclusive and raised wins: a call that
+raised carries no result. An exit that carries neither is an orphan whose kind
+is the empty string, and that empty string is a third outcome, not a missing
+one."
+
+total function «Outcome of»
+  accepts «raised»: flag, «raised text»: string, «produced»: flag, «produced text»: string
+  returns «Outcome»
+  example «a raise wins over a result»
+    given «raised» equals yes
+    given «raised text» equals "ValueError: nope"
+    given «produced» equals yes
+    given «produced text» equals "3"
+    expected variant Raised with text equals "ValueError: nope"
+  example «a result is a result»
+    given «raised» equals no
+    given «raised text» equals ""
+    given «produced» equals yes
+    given «produced text» equals "3"
+    expected variant Produced with text equals "3"
+  example «neither is silence»
+    given «raised» equals no
+    given «raised text» equals ""
+    given «produced» equals no
+    given «produced text» equals ""
+    expected variant Silent
+  if «raised»
+    then variant Raised with text equals «raised text»
+    else if «produced» then (variant Produced with text equals «produced text») else (variant Silent)
+
+total function «Outcome kind»
+  accepts outcome: «Outcome»
+  returns string
+  example «a raise is named raised»
+    given outcome equals (variant Raised with text equals "ValueError: nope")
+    expected "raised"
+  example «a result is named result»
+    given outcome equals (variant Produced with text equals "3")
+    expected "result"
+  example «silence has no name»
+    given outcome equals (variant Silent)
+    expected ""
+  match outcome
+    case variant Raised with text as one
+      then "raised"
+    case variant Produced with text as one
+      then "result"
+    case Silent
+      then ""
+
+total function «Outcome text»
+  accepts outcome: «Outcome»
+  returns string
+  example «a raise carries its message»
+    given outcome equals (variant Raised with text equals "ValueError: nope")
+    expected "ValueError: nope"
+  example «silence carries nothing»
+    given outcome equals (variant Silent)
+    expected ""
+  match outcome
+    case variant Raised with text as one
+      then one
+    case variant Produced with text as one
+      then one
+    case Silent
+      then ""
+
+note "The kernel sink writes a real CPU index; the userland sink writes minus
+one, meaning the interpreter could not tell. Both are read as unknown here, so
+an empty CPU column never reads as every call ran on CPU zero."
+
+total function «Cpu of»
+  accepts «present»: flag, index: number
+  returns «Cpu»
+  example «a real index is kept»
+    given «present» equals yes
+    given index equals 2
+    expected variant OnCpu with index equals 2
+  example «minus one is unknown»
+    given «present» equals yes
+    given index equals -1
+    expected variant CpuUnknown
+  example «an absent field is unknown»
+    given «present» equals no
+    given index equals 0
+    expected variant CpuUnknown
+  if «present» and also (index is at least 0)
+    then variant OnCpu with index equals index
+    else variant CpuUnknown
+
+total function «Span of»
+  accepts «present»: flag, seconds: number
+  returns «Span»
+  example «a recorded duration is kept»
+    given «present» equals yes
+    given seconds equals 0.5
+    expected variant Lasted with seconds equals 0.5
+  example «an absent duration stays absent»
+    given «present» equals no
+    given seconds equals 0
+    expected variant Untimed
+  if «present»
+    then variant Lasted with seconds equals seconds
+    else variant Untimed
+
+note "The name is taken from the exit line first: an exit orphaned by a capture
+that stopped before its entry was written still says what returned. An empty
+name there falls back to the entry."
+
+total function «Call name»
+  accepts «exit name»: string, «entry name»: string
+  returns string
+  example «the exit names the call»
+    given «exit name» equals "add"
+    given «entry name» equals "add"
+    expected "add"
+  example «an empty exit name falls back»
+    given «exit name» equals ""
+    given «entry name» equals "add"
+    expected "add"
+  example «both empty stay empty»
+    given «exit name» equals ""
+    given «entry name» equals ""
+    expected ""
+  if (length «exit name») is greater than 0
+    then «exit name»
+    else «entry name»
+
+total function «No entry»
+  returns «Entry»
+  example «an orphan entry is all empty»
+    expected record «Entry» with «id» equals "" and «started» equals "" and «name» equals "" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals ""
+  record «Entry» with «id» equals "" and «started» equals "" and «name» equals "" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals ""
+
+note "A completed call is an exit joined with the entry that shares its call id.
+Everything the reader shows about a call is decided here: where the timing,
+the arguments, the thread and the CPU come from, and what happens when the
+entry is missing."
+
+total function «Completed call»
+  accepts index: number, entry: «Entry», exit: «Exit»
+  returns «Call»
+  example «an exit joined with its entry»
+    given index equals 0
+    given entry equals (record «Entry» with «id» equals "a1" and «started» equals "2026-06-15T10:00:00.001" and «name» equals "add" and «args» equals "1, 2" and «kwargs» equals "" and «has cpu» equals yes and «cpu» equals 3 and «thread» equals "4242.7")
+    given exit equals (record «Exit» with «id» equals "a1" and «name» equals "add" and «raised» equals no and «raised text» equals "" and «produced» equals yes and «produced text» equals "3" and «has duration» equals yes and «duration» equals 0.5)
+    expected record «Call» with «index» equals 0 and «started» equals "2026-06-15T10:00:00.001" and «call id» equals "a1" and «name» equals "add" and «args» equals "1, 2" and «kwargs» equals "" and «outcome kind» equals "result" and «outcome» equals "3" and «has duration» equals yes and «duration» equals 0.5 and «has cpu» equals yes and «cpu» equals 3 and «thread» equals "4242.7"
+  example «an exit with no entry keeps its own name»
+    given index equals 7
+    given entry equals (record «Entry» with «id» equals "" and «started» equals "" and «name» equals "" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")
+    given exit equals (record «Exit» with «id» equals "b2" and «name» equals "Mod.boom" and «raised» equals yes and «raised text» equals "ValueError: nope" and «produced» equals no and «produced text» equals "" and «has duration» equals no and «duration» equals 0)
+    expected record «Call» with «index» equals 7 and «started» equals "" and «call id» equals "b2" and «name» equals "Mod.boom" and «args» equals "" and «kwargs» equals "" and «outcome kind» equals "raised" and «outcome» equals "ValueError: nope" and «has duration» equals no and «duration» equals 0 and «has cpu» equals no and «cpu» equals 0 and «thread» equals ""
+  let outcome equals «Outcome of» of exit.«raised» and exit.«raised text» and exit.«produced» and exit.«produced text»
+  record «Call» with «index» equals index and «started» equals entry.«started» and «call id» equals exit.«id» and «name» equals («Call name» of exit.«name» and entry.«name») and «args» equals entry.«args» and «kwargs» equals entry.«kwargs» and «outcome kind» equals («Outcome kind» of outcome) and «outcome» equals («Outcome text» of outcome) and «has duration» equals exit.«has duration» and «duration» equals exit.«duration» and «has cpu» equals entry.«has cpu» and «cpu» equals entry.«cpu» and «thread» equals entry.«thread»
+
+note "Pairing is by call id and nothing else: an exit belongs to the entry
+whose id it repeats. The Python shell keeps a hash index so the join costs one
+lookup instead of a scan, and this predicate is what that index has to agree
+with."
+
+total function «Same call»
+  accepts entry: «Entry», exit: «Exit»
+  returns flag
+  example «same id joins»
+    given entry equals (record «Entry» with «id» equals "a1" and «started» equals "" and «name» equals "add" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")
+    given exit equals (record «Exit» with «id» equals "a1" and «name» equals "add" and «raised» equals no and «raised text» equals "" and «produced» equals yes and «produced text» equals "3" and «has duration» equals no and «duration» equals 0)
+    expected yes
+  example «a different id does not»
+    given entry equals (record «Entry» with «id» equals "a1" and «started» equals "" and «name» equals "add" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")
+    given exit equals (record «Exit» with «id» equals "b2" and «name» equals "add" and «raised» equals no and «raised text» equals "" and «produced» equals yes and «produced text» equals "3" and «has duration» equals no and «duration» equals 0)
+    expected no
+  entry.«id» equals exit.«id»
+
+total function «Has call id»
+  accepts ids: list string, wanted: string
+  returns flag
+  example «present»
+    given ids equals ["a1", "b2"]
+    given wanted equals "b2"
+    expected yes
+  example «absent»
+    given ids equals ["a1", "b2"]
+    given wanted equals "c3"
+    expected no
+  example «nothing is present in nothing»
+    given ids equals []
+    given wanted equals "a1"
+    expected no
+  fold ids starting with no as seen and one → seen or (one equals wanted)
+
+note "An entry with no exit is a call that started and never came back: a hang,
+a crash, or a capture that stopped mid-call. It is not an error in the trace and
+never counted as malformed."
+
+total function «Is in flight»
+  accepts entry: «Entry», «completed ids»: list string
+  returns flag
+  example «an unfinished call is in flight»
+    given entry equals (record «Entry» with «id» equals "c3" and «started» equals "" and «name» equals "hang" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")
+    given «completed ids» equals ["a1"]
+    expected yes
+  example «a finished call is not»
+    given entry equals (record «Entry» with «id» equals "a1" and «started» equals "" and «name» equals "add" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")
+    given «completed ids» equals ["a1"]
+    expected no
+  not («Has call id» of «completed ids» and entry.«id»)
+
+object «Flight»
+  «name»: string
+  «call id»: string
+  «started»: string
+  «has cpu»: flag
+  «cpu»: number
+  «thread»: string
+
+total function «Flight view»
+  accepts entry: «Entry»
+  returns «Flight»
+  example «what an unfinished call shows»
+    given entry equals (record «Entry» with «id» equals "c3" and «started» equals "uptime+5.123" and «name» equals "hang" and «args» equals "x=1" and «kwargs» equals "" and «has cpu» equals yes and «cpu» equals 1 and «thread» equals "4242.7")
+    expected record «Flight» with «name» equals "hang" and «call id» equals "c3" and «started» equals "uptime+5.123" and «has cpu» equals yes and «cpu» equals 1 and «thread» equals "4242.7"
+  record «Flight» with «name» equals entry.«name» and «call id» equals entry.«id» and «started» equals entry.«started» and «has cpu» equals entry.«has cpu» and «cpu» equals entry.«cpu» and «thread» equals entry.«thread»
+
+total function «In flight»
+  accepts entries: list «Entry», «completed ids»: list string
+  returns list «Flight»
+  example «only the unfinished one is left»
+    given entries equals [(record «Entry» with «id» equals "a1" and «started» equals "" and «name» equals "add" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals ""), (record «Entry» with «id» equals "c3" and «started» equals "" and «name» equals "hang" and «args» equals "" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")]
+    given «completed ids» equals ["a1"]
+    expected [(record «Flight» with «name» equals "hang" and «call id» equals "c3" and «started» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "")]
+  map (filter entries where one → («Is in flight» of one and «completed ids»)) as one → «Flight view» of one
+
+note "Cutting values down. The sink renders a live Python object, which no pure
+function can do; but once a value is a string, every rule about how much of it
+survives is arithmetic on that string, and it belongs here. Two hundred
+characters per value and ten items per list are the limits reprlib is
+configured with, and the shortening below is the rule reprlib applies: a head, a
+literal ellipsis of three dots, and a tail, so the cut is visible in the middle
+rather than guessed at from a missing end."
+
+total function «Value characters limit»
+  returns number
+  ensures «a value limit is positive» result is greater than 0
+  example «two hundred»
+    expected 200
+  200
+
+total function «List items limit»
+  returns number
+  ensures «an item limit is positive» result is greater than 0
+  example «ten»
+    expected 10
+  10
+
+note "One record is written with a single append and has to stay under PIPE_BUF,
+which is 4096 bytes on Linux; that promise is what lets several processes share
+one file. The headroom of 64 bytes is what the ellipsis markers added afterwards
+may cost."
+
+total function «Record bytes limit»
+  returns number
+  ensures «one record fits a pipe buffer» result is at most 4096
+  example «pipe buffer»
+    expected 4096
+  4096
+
+total function «Shrink headroom»
+  returns number
+  ensures «the headroom is smaller than the ceiling» result is less than 4096
+  example «room for the markers»
+    expected 64
+  64
+
+total function «Shrink budget»
+  returns number
+  ensures «the budget stays under the ceiling» result is less than 4096
+  example «the ceiling minus the headroom»
+    expected 4032
+  («Record bytes limit») minus («Shrink headroom»)
+
+total function «Record fits»
+  accepts bytes: number
+  returns flag
+  example «a small record fits»
+    given bytes equals 120
+    expected yes
+  example «the ceiling itself fits»
+    given bytes equals 4096
+    expected yes
+  example «one byte over does not»
+    given bytes equals 4097
+    expected no
+  bytes is at most («Record bytes limit»)
+
+total function «Within shrink budget»
+  accepts bytes: number
+  returns flag
+  example «under budget»
+    given bytes equals 4032
+    expected yes
+  example «over budget»
+    given bytes equals 4033
+    expected no
+  bytes is at most («Shrink budget»)
+
+total function «Floor half»
+  accepts value: number
+  returns number
+  example «even»
+    given value equals 10
+    expected 5
+  example «odd rounds down»
+    given value equals 7
+    expected 3
+  example «zero»
+    given value equals 0
+    expected 0
+  let half equals value divided by 2
+  half minus (half modulo 1)
+
+total function «Head chars»
+  accepts text: string, count: number
+  returns string
+  example «first two»
+    given text equals "abcde"
+    given count equals 2
+    expected "ab"
+  example «none»
+    given text equals "abcde"
+    given count equals 0
+    expected ""
+  example «more than there is»
+    given text equals "ab"
+    given count equals 9
+    expected "ab"
+  if count is at most 0
+    then ""
+    else if count is at least (length text) then text else (substring text with 1 by count)
+
+total function «Tail chars»
+  accepts text: string, count: number
+  returns string
+  example «last two»
+    given text equals "abcde"
+    given count equals 2
+    expected "de"
+  example «none»
+    given text equals "abcde"
+    given count equals 0
+    expected ""
+  example «more than there is»
+    given text equals "ab"
+    given count equals 9
+    expected "ab"
+  if count is at most 0
+    then ""
+    else if count is at least (length text) then text else (substring text with ((length text) minus count plus 1) by (length text))
+
+total function «Shorten text»
+  accepts text: string, limit: number
+  returns string
+  example «short enough is untouched»
+    given text equals "abcde"
+    given limit equals 5
+    expected "abcde"
+  example «cut in the middle»
+    given text equals "abcdefghij"
+    given limit equals 7
+    expected "ab...ij"
+  example «an odd limit gives the tail the spare character»
+    given text equals "abcdefghij"
+    given limit equals 8
+    expected "ab...hij"
+  example «no room for anything but the marker»
+    given text equals "abcdefghij"
+    given limit equals 3
+    expected "..."
+  if (length text) is at most limit
+    then text
+    else
+      let room equals (if limit is at most 3 then 0 else (limit minus 3))
+      let front equals «Floor half» of room
+      let back equals room minus front
+      join [(«Head chars» of text and front), "...", («Tail chars» of text and back)] by ""
+
+total function «First items» of «A»
+  accepts items: list «A», count: number
+  returns list «A»
+  decreases count
+  example «first two of three»
+    given items equals ["a", "b", "c"]
+    given count equals 2
+    expected ["a", "b"]
+  example «none»
+    given items equals ["a", "b", "c"]
+    given count equals 0
+    expected []
+  example «more than there is»
+    given items equals ["a"]
+    given count equals 9
+    expected ["a"]
+  if count is at most 0
+    then empty list
+    else
+      match items
+        case empty
+          then empty list
+        case head and tail
+          then prepend head to («First items» of tail and (count minus 1))
+
+total function «Shorten items»
+  accepts pieces: list string, limit: number
+  returns list string
+  example «few enough are untouched»
+    given pieces equals ["1", "2"]
+    given limit equals 10
+    expected ["1", "2"]
+  example «the rest becomes one marker»
+    given pieces equals ["1", "2", "3"]
+    given limit equals 2
+    expected ["1", "2", "..."]
+  if (length pieces) is at most limit
+    then pieces
+    else add "..." to («First items» of pieces and limit)
+
+note "When a whole record is still over the ceiling, the longest of the four
+value fields is halved and the record measured again. Halving rather than a
+fixed cut because the overflow comes either from one enormous argument or from
+thirty ordinary ones, and one rule has to handle both. The name, the call id and
+the timestamp are never touched: they are what makes a torn record identifiable
+at all."
+
+type «Field»
+  variant ArgsField
+  variant KwargsField
+  variant ProducedField
+  variant RaisedField
+
+total function «Longest field»
+  accepts args: string, kwargs: string, produced: string, raised: string
+  returns «Field»
+  example «the arguments are longest»
+    given args equals "aaaa"
+    given kwargs equals "kk"
+    given produced equals "r"
+    given raised equals ""
+    expected variant ArgsField
+  example «a tie goes to the earlier field»
+    given args equals "aa"
+    given kwargs equals "kk"
+    given produced equals ""
+    given raised equals ""
+    expected variant ArgsField
+  example «the raise is longest»
+    given args equals ""
+    given kwargs equals ""
+    given produced equals ""
+    given raised equals "xxx"
+    expected variant RaisedField
+  let la equals length args
+  let lk equals length kwargs
+  let lr equals length produced
+  let lx equals length raised
+  if (la is at least lk) and also (la is at least lr) and also (la is at least lx) then (variant ArgsField) else (if (lk is at least lr) and also (lk is at least lx) then (variant KwargsField) else (if lr is at least lx then (variant ProducedField) else (variant RaisedField)))
+
+total function «Anything to shrink»
+  accepts args: string, kwargs: string, produced: string, raised: string
+  returns flag
+  example «something is left»
+    given args equals ""
+    given kwargs equals ""
+    given produced equals "3"
+    given raised equals ""
+    expected yes
+  example «nothing is left»
+    given args equals ""
+    given kwargs equals ""
+    given produced equals ""
+    given raised equals ""
+    expected no
+  ((length args) is greater than 0) or ((length kwargs) is greater than 0) or ((length produced) is greater than 0) or ((length raised) is greater than 0)
+
+total function «Halved»
+  accepts text: string
+  returns string
+  example «an even value loses its second half»
+    given text equals "abcd"
+    expected "ab"
+  example «an odd value rounds down»
+    given text equals "abcde"
+    expected "ab"
+  example «one character disappears»
+    given text equals "a"
+    expected ""
+  «Head chars» of text and («Floor half» of (length text))
+
+note "The two shapes below are what the shell hands in and gets back. Raw
+fields go in — the strings and numbers a decoded JSON object carries — and a
+decided record comes out, so the shell never has to know that an absent CPU
+index and a negative one mean the same thing."
+
+total function «Cpu known»
+  accepts cpu: «Cpu»
+  returns flag
+  example «a known index»
+    given cpu equals (variant OnCpu with index equals 2)
+    expected yes
+  example «an unknown one»
+    given cpu equals (variant CpuUnknown)
+    expected no
+  match cpu
+    case variant OnCpu with index as one
+      then yes
+    case CpuUnknown
+      then no
+
+total function «Cpu index»
+  accepts cpu: «Cpu»
+  returns number
+  example «a known index»
+    given cpu equals (variant OnCpu with index equals 2)
+    expected 2
+  example «an unknown one reads as zero»
+    given cpu equals (variant CpuUnknown)
+    expected 0
+  match cpu
+    case variant OnCpu with index as one
+      then one
+    case CpuUnknown
+      then 0
+
+total function «Span timed»
+  accepts span: «Span»
+  returns flag
+  example «a timed call»
+    given span equals (variant Lasted with seconds equals 0.5)
+    expected yes
+  example «an untimed one»
+    given span equals (variant Untimed)
+    expected no
+  match span
+    case variant Lasted with seconds as one
+      then yes
+    case Untimed
+      then no
+
+total function «Span seconds»
+  accepts span: «Span»
+  returns number
+  example «a timed call»
+    given span equals (variant Lasted with seconds equals 0.5)
+    expected 0.5
+  example «an untimed one reads as zero»
+    given span equals (variant Untimed)
+    expected 0
+  match span
+    case variant Lasted with seconds as one
+      then one
+    case Untimed
+      then 0
+
+total function «Entry from»
+  accepts id: string, started: string, name: string, args: string, kwargs: string, «cpu present»: flag, «cpu index»: number, thread: string
+  returns «Entry»
+  example «a kernel entry keeps its CPU»
+    given id equals "a1"
+    given started equals "uptime+5.123"
+    given name equals "pmap_segtab_activate"
+    given args equals "pm=0xdead"
+    given kwargs equals ""
+    given «cpu present» equals yes
+    given «cpu index» equals 3
+    given thread equals "4242.7"
+    expected record «Entry» with «id» equals "a1" and «started» equals "uptime+5.123" and «name» equals "pmap_segtab_activate" and «args» equals "pm=0xdead" and «kwargs» equals "" and «has cpu» equals yes and «cpu» equals 3 and «thread» equals "4242.7"
+  example «a userland entry loses its minus one»
+    given id equals "a1"
+    given started equals "2026-06-15T10:00:00.001"
+    given name equals "add"
+    given args equals "1, 2"
+    given kwargs equals ""
+    given «cpu present» equals yes
+    given «cpu index» equals -1
+    given thread equals "4242.7"
+    expected record «Entry» with «id» equals "a1" and «started» equals "2026-06-15T10:00:00.001" and «name» equals "add" and «args» equals "1, 2" and «kwargs» equals "" and «has cpu» equals no and «cpu» equals 0 and «thread» equals "4242.7"
+  let cpu equals «Cpu of» of «cpu present» and «cpu index»
+  record «Entry» with «id» equals id and «started» equals started and «name» equals name and «args» equals args and «kwargs» equals kwargs and «has cpu» equals («Cpu known» of cpu) and «cpu» equals («Cpu index» of cpu) and «thread» equals thread
+
+total function «Exit from»
+  accepts id: string, name: string, «raised»: flag, «raised text»: string, «produced»: flag, «produced text»: string, «duration present»: flag, duration: number
+  returns «Exit»
+  example «a returned call»
+    given id equals "a1"
+    given name equals "add"
+    given «raised» equals no
+    given «raised text» equals ""
+    given «produced» equals yes
+    given «produced text» equals "3"
+    given «duration present» equals yes
+    given duration equals 0.5
+    expected record «Exit» with «id» equals "a1" and «name» equals "add" and «raised» equals no and «raised text» equals "" and «produced» equals yes and «produced text» equals "3" and «has duration» equals yes and «duration» equals 0.5
+  example «an untimed call carries no stale number»
+    given id equals "a1"
+    given name equals "add"
+    given «raised» equals no
+    given «raised text» equals ""
+    given «produced» equals yes
+    given «produced text» equals "3"
+    given «duration present» equals no
+    given duration equals 7
+    expected record «Exit» with «id» equals "a1" and «name» equals "add" and «raised» equals no and «raised text» equals "" and «produced» equals yes and «produced text» equals "3" and «has duration» equals no and «duration» equals 0
+  let span equals «Span of» of «duration present» and duration
+  record «Exit» with «id» equals id and «name» equals name and «raised» equals «raised» and «raised text» equals «raised text» and «produced» equals «produced» and «produced text» equals «produced text» and «has duration» equals («Span timed» of span) and «duration» equals («Span seconds» of span)
