@@ -1,18 +1,20 @@
-"""Ищет слова, в которых смешаны кириллица и латиница.
+"""Finds words that mix Cyrillic and Latin letters inside one word.
 
-Такое слово почти всегда — опечатка от раскладки: русское слово, в котором одна
-или две буквы набраны латиницей. Читается как обычное, а найти его глазами
-в двух тысячах строк нельзя: буквы `а`, `е`, `о`, `с`, `р`, `х` в двух алфавитах выглядят одинаково.
-Поиском по слову оно тоже не находится — набирают-то его правильно.
+Such a word is almost always a keyboard-layout slip: a Russian word with one or
+two letters typed in Latin. It reads like the ordinary word, and no eye finds it
+in two thousand lines, because `а`, `е`, `о`, `с`, `р`, `х` look the same in the
+two alphabets. Searching for the word does not find it either — the search term
+is typed correctly, only the text is not.
 
-Правило дерева: либо кириллица целиком, либо английские слова. Смешанного слова
-не бывает.
+The rule of this tree: a word is either all Cyrillic or an English word. There is
+no such thing as a half-and-half word.
 
-Что не считается бедой: латинское слово рядом с русским (`поле a`, `git`), имена
-из кода (`write_file`), русское окончание через дефис у латинского имени
-(`JSON-строка`) — дефис делит слово на части, и каждая часть однородна.
+What is not a problem: a Latin word standing next to a Russian one (`поле a`,
+`git`), names taken from the code (`write_file`), a Russian ending hyphenated
+onto a Latin name (`JSON-строка`) — a hyphen splits the word into parts, and each
+part is of one alphabet.
 
-Запуск: uv run python scripts/check_no_mixed_script.py
+Run: uv run python scripts/check_no_mixed_script.py
 """
 from __future__ import annotations
 
@@ -22,19 +24,21 @@ from pathlib import Path
 
 CYR = re.compile(r"[А-Яа-яЁё]")
 LAT = re.compile(r"[A-Za-z]")
-#: Слово — буквы подряд. Дефис и подчёркивание словоразделители: они соединяют
-#: разнородные части намеренно (`JSON-строка`, `write_file`).
-WORD = re.compile("[A-Za-z" + "А-Яа-яЁё]+")  # разбито, чтобы не ловить само себя
+#: A word is a run of letters. Hyphen and underscore separate words: they join
+#: parts of different alphabets on purpose (`JSON-строка`, `write_file`).
+WORD = re.compile("[A-Za-z" + "А-Яа-яЁё]+")  # split so it does not match itself
 
-#: Управляющая последовательность в строке кода: перевод строки перед русским
-#: словом приклеивает свою латинскую букву к слову и даёт мнимую находку.
-#: Убираем такие последовательности до разбора, иначе проверка ловит свой вывод.
+#: An escape sequence inside a code string: a newline written before a Russian
+#: word glues its Latin letter onto that word and yields a phantom find. Such
+#: sequences are dropped before the scan, or the check would flag its own output.
 ESCAPE = re.compile(r"\\.")
 
-#: Пометка «здесь смешанное слово стоит намеренно» — для примеров в описаниях.
+#: Marker meaning "the mixed word right here is deliberate" — for the examples
+#: that prose about this very problem has to spell out. Kept in Russian on
+#: purpose: it is written into Russian text, and it is data, not a message.
 OPT_OUT = "смешанные-алфавиты: нарочно"
 
-#: Где смотрим. Исходники и страницы; чужое и собранное не трогаем.
+#: Where we look. Sources and pages; vendored and generated trees are left alone.
 ROOTS = ("docs", "scripts", "ouroboros", "tests")
 EXTS = {".md", ".py", ".sh", ".toml"}
 SKIP_PARTS = {".venv", "node_modules", "__pycache__", "_js", "_flang", ".probe-work"}
@@ -56,15 +60,17 @@ def main() -> int:
             for m in WORD.finditer(ESCAPE.sub(" ", line)):
                 w = m.group()
                 if CYR.search(w) and LAT.search(w):
-                    bad.append(f"{path.relative_to(root)}:{n}: {w!r} в строке: {line.strip()[:90]}")
+                    bad.append(f"{path.relative_to(root)}:{n}: {w!r} in line: {line.strip()[:90]}")
 
     if bad:
-        print("Слова со смешанными алфавитами (кириллица и латиница в одном слове):\n")
+        print("Words with mixed alphabets (Cyrillic and Latin inside one word):\n")
         for b in bad:
             print(f"  - {b}")
-        print(f"\nВсего: {len(bad)}. Либо кириллица целиком, либо английское слово.")
+        print(f"\nTotal: {len(bad)}. A word is either all Cyrillic or an English "
+              f"word: retype the letters that came from the wrong keyboard layout. "
+              f"If a mix is deliberate, put {OPT_OUT!r} on that line.")
         return 1
-    print("Слов со смешанными алфавитами нет.")
+    print("No words mix alphabets.")
     return 0
 
 
