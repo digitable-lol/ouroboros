@@ -46,6 +46,13 @@ addopts = "-q"
 [tool.coverage.run]
 branch = true
 source = ["ouroboros"]
+# Напечатанный компилятором flang мозг (`ouroboros/brain/_flang`) — это ВЫВОД
+# компилятора, а не код проекта, ровно как подопытные программы замеров у ruff
+# ниже. Его правильность держат 96 примеров, которые компилятор прогоняет внутри
+# самих функций (`flang test`), и доказанное завершение каждой из 42 — а не то,
+# до какой его ветви добралась питоновская проверка. Считать его покрытие значит
+# мерить чужую работу своей линейкой: см. docs/sdd/brain-in-flang.md.
+omit = ["ouroboros/brain/_flang/*"]
 
 # --------------------------------------------------------------------------- #
 # Code-quality gates. STANDING RULE: any edit to MCP code (ouroboros/), however
@@ -65,7 +72,12 @@ target-version = "py312"
 # то, что читатель у себя запустит.
 # Снимки прогонов под site/examples/captured — тоже входные данные, а не код
 # проекта: это вывод инструмента, показанный на сайте дословно.
-extend-exclude = ["scripts/measure/samples", "site/examples/captured"]
+# Напечатанный мозг на flang — тоже вывод компилятора, не исходник проекта:
+# правится он в `ouroboros/brain/trace_brain.flang` и печатается заново
+# (`scripts/emit_brain.py`), а причёсывать печать под правила проекта значило
+# бы править то, что при следующей печати вернётся как было.
+extend-exclude = ["scripts/measure/samples", "site/examples/captured",
+                  "ouroboros/brain/_flang"]
 
 [tool.ruff.lint]
 # pycodestyle(E/W), pyflakes(F), isort(I), pyupgrade(UP), bugbear(B),

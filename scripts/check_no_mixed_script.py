@@ -37,7 +37,7 @@ OPT_OUT = "смешанные-алфавиты: нарочно"
 #: Где смотрим. Исходники и страницы; чужое и собранное не трогаем.
 ROOTS = ("docs", "scripts", "ouroboros", "tests")
 EXTS = {".md", ".py", ".sh", ".toml"}
-SKIP_PARTS = {".venv", "node_modules", "__pycache__", "_js", ".probe-work"}
+SKIP_PARTS = {".venv", "node_modules", "__pycache__", "_js", "_flang", ".probe-work"}
 
 
 def main() -> int:

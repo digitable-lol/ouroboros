@@ -41,7 +41,18 @@ later Elixir port is a re-implementation of the same shapes, not a redesign.
      runtime records + a framed stdout/stderr section land in `debug.info`.
    - `finish` → mirror `draft/` → `clean/`, minus `.git` and `debug.info`.
 
-3. **`ouroboros/mcp` + `ouroboros/cli`** — two front-ends over identical engine
+3. **`ouroboros/brain`** — the rules the trace reader decides by, written in
+   flang and printed into Python. `trace_brain.flang` says which lines are worth
+   decoding, what a call event is, what a completed call is made of, which
+   entries are still in flight and how an oversized value is cut down; the
+   compiler checks the types, proves all 42 functions terminate and runs the 96
+   examples written inside them. `ouroboros/trace.py` keeps what a pure function
+   may not do — reading, JSON decoding, the id index — and asks the brain for
+   every answer. `brain/__init__.py` is the only place a flang value becomes a
+   Python one or back. Design and trade-offs:
+   [docs/sdd/brain-in-flang.md](docs/sdd/brain-in-flang.md).
+
+4. **`ouroboros/mcp` + `ouroboros/cli`** — two front-ends over identical engine
    functions. Tools: `wrap_code_snippet`, `wrap_file` (brief-mandated) plus
    `create_project` / `write_file` / `read_file` / `list_files` / `execute` /
    `finish`. Tool impls are plain dict-returning functions (unit-testable);
@@ -176,7 +187,7 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->1011<!--/state--> tests,
+Suite: <!--state:tests-->1072<!--/state--> tests,
 <!--state:coverage_percent-->100<!--/state-->% coverage (statements **and**
 branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
 (all by compile+run where applicable). MCP tools declared by the server:
@@ -199,13 +210,13 @@ The 91% was 9.5 points above the ceiling, not 25 points above the current state:
 no amount of work on the untested part could have produced it.
 
 That ceiling has since been passed, because the parts it was computed over were
-tested rather than argued about. All 29 measured files are at 100% of statements
+tested rather than argued about. Every measured file is at 100% of statements
 and branches: `clangtools/`, `sandbox/`, `mcp/server.py`, `cli.py`, `trace.py`,
-`runtime.py`, and every backend under `languages/` together with its support
-modules.
+`runtime.py`, `brain/`, and every backend under `languages/` together with its
+support modules.
 
 What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
-statement-and-branch units out of <!--state:total_units-->3727<!--/state-->.
+statement-and-branch units out of <!--state:total_units-->3848<!--/state-->.
 
 The last 15 closed in three different ways, and the ways are worth separating,
 because only one of them is "write a test".
