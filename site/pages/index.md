@@ -49,7 +49,7 @@ on the [install page]({{repo}}/blob/main/docs/install.md).
 
 ### 2. Point it at the file
 
-Here is the program. It is twenty-eight lines and it has no logging in it at
+Here is the program. It is twenty-nine lines and it has no logging in it at
 all.
 
 {{source: site/examples/shop.py | site/examples/shop.py, before}}

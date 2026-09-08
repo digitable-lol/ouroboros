@@ -63,7 +63,9 @@ target-version = "py312"
 # `contextlib.suppress`), потому что их текст показан в docs/measurements.md и
 # обмазывается как есть. Причёсывать их под правила проекта значило бы мерять не
 # то, что читатель у себя запустит.
-extend-exclude = ["scripts/measure/samples"]
+# Снимки прогонов под site/examples/captured — тоже входные данные, а не код
+# проекта: это вывод инструмента, показанный на сайте дословно.
+extend-exclude = ["scripts/measure/samples", "site/examples/captured"]
 
 [tool.ruff.lint]
 # pycodestyle(E/W), pyflakes(F), isort(I), pyupgrade(UP), bugbear(B),

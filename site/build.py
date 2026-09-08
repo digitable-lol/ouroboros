@@ -297,7 +297,7 @@ class Renderer:
                 bad(f"diagram {name}: no {theme} SVG. Run site/render-diagrams.sh")
                 return
         alt = html.escape(caption or f"{name} diagram", quote=True)
-        figure = [f'<figure class="diagram">']
+        figure = ['<figure class="diagram">']
         for theme in ("light", "dark"):
             figure.append(f'<img class="{theme}" src="diagrams/{name}.{theme}.svg" alt="{alt}">')
         if caption:
