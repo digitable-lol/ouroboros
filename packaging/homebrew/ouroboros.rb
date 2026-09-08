@@ -86,7 +86,7 @@ class Ouroboros < Formula
     # быстрее и без сборочной цепочки. Цена — версии зависимостей не
     # закреплены отпечатками в самой формуле; закрепление у пакета своё, в
     # uv.lock.
-    python = Formula["python@3.12"].opt_bin/"python3.12"
+    python = formula_opt_bin("python@3.12")/"python3.12"
     system python, "-m", "venv", libexec
     system libexec/"bin/python", "-m", "pip", "install", "--quiet",
            "--no-cache-dir", "--upgrade", "pip"
@@ -137,7 +137,7 @@ class Ouroboros < Formula
     assert_match "_ouro_log", (testpath/"m.py").read
 
     with_env(OUROBOROS_DEBUG_INFO: testpath/"debug.info") do
-      assert_equal "5\n", shell_output("#{Formula["python@3.12"].opt_bin}/python3.12 #{testpath}/m.py")
+      assert_equal "5\n", shell_output("#{formula_opt_bin("python@3.12")}/python3.12 #{testpath}/m.py")
     end
 
     trace = shell_output("#{bin}/ouroboros trace-stats #{testpath}/debug.info")
