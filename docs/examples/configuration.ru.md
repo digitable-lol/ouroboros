@@ -85,7 +85,7 @@ references          call_hierarchy   describe_symbol
 Где они читаются:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 и
-[`ouroboros/mcp/server.py:894`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L894).
+[`ouroboros/mcp/server.py:909`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L909).
 
 Пример: положить записи не рядом с программой, а в отдельный файл.
 
