@@ -16,7 +16,7 @@ later Elixir port is a re-implementation of the same shapes, not a redesign.
                     └───────────┬───────────┘   └──────────┬───────────┘
                                 │                          │
                          debug.info  ◄────────────  ouroboros_runtime.py
-                         (ШАБЛОН records)            (injected, stdlib-only)
+                         (in/out records)            (injected, stdlib-only)
 ```
 
 ## Layers
@@ -64,7 +64,7 @@ Each new language is an external JSON helper + a thin `Transformer`:
    that subclass is thinner still: `ClangTransformer` in `clangbridge.py` holds
    the wrap loop both share, and each language supplies only the text it injects.
 3. Ship a runtime helper (the language's analogue of `ouroboros_runtime.py`)
-   that appends the exact [SPEC.md](SPEC.md) `ШАБЛОН` block to
+   that appends the exact [SPEC.md](SPEC.md) `in`/`out` record pair to
    `OUROBOROS_DEBUG_INFO`. **Not** via stdout. If the language resolves siblings
    by directory rather than by import — Go does — the helper has to be told
    which package it is joining: override `runtime_asset_for(source)` instead of

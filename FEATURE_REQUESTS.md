@@ -212,7 +212,7 @@ passing.
   2. **Smart cross-file symbol search** — find symbols/definitions/references across a
      whole tree (NetBSD/ROS = ~14.7k files) to pick `wrap_functions` targets, instead of
      grepping raw text.
-- **Why:** "кричит, что есть проблемы" + "умный поиск" — makes the MCP actually
+- **Why:** "shout when something is wrong" + "search that understands the code" — makes the MCP actually
   authoritative on C/C++ quality, and finds instrumentation targets fast. North-star is
   a top-tier MCP (see memory `ouroboros-godtier`).
 - **Official tool:** **clangd** (LLVM's official C/C++ language server, LSP over stdio)
@@ -254,13 +254,14 @@ passing.
     mypy-strict + 134 tests). clangd-18 installed on gpu; both verified live on the deployed
     package. (Live `mcp__ouroboros__*` exposes them after the client reconnects.)
 
-## Опыт «помогает ли трасса» на сотнях программ
+## "Does a trace help?" — the experiment, scaled to hundreds of programs
 
-Расширить опыт с двенадцати программ до сотен, включая длинные, и ответить
-числом, где живёт прибавка от трассы. Готовое задание с картой — где лежит
-инструмент, прежний опыт, набор данных и уже измеренные числа:
+Grow the experiment from twelve programs to hundreds, long ones included, and
+answer with a number: where does the gain from a trace actually live. The brief
+is written, with the map — where the tool sits, what the earlier experiment did,
+which dataset, and the numbers already measured:
 [`scripts/measure/trace-help/scale-up-master-prompt.md`](scripts/measure/trace-help/scale-up-master-prompt.md).
 
-Три угрозы достоверности названы там же и обязаны быть закрыты: заученность
-готовых задач моделями, шаблон генератора, связанность вопросов внутри одной
-программы.
+Three threats to validity are named there and have to be closed: models having
+memorised the off-the-shelf tasks, the generator's template showing through, and
+questions inside one program depending on each other.
