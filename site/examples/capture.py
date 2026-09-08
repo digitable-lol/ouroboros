@@ -27,8 +27,10 @@ runs the same program twice on eight languages, seven times each::
 That calls the project's own `scripts/measure/run.sh` and only renames its
 fields; no number on the site is measured by this file itself.
 
-The captures carry no timestamps and no temporary paths, so re-taking them on
-an unchanged tree produces an unchanged diff.
+Captures are scrubbed of the throwaway directory the run happened in — a
+stack trace printed from `/tmp/tmpugcdpwje` teaches the reader nothing — but
+NOT of times, durations and call ids. Those are what a real trace looks like,
+and re-taking the captures moves them. That is the point of them.
 """
 
 from __future__ import annotations
@@ -60,7 +62,13 @@ def ouroboros(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
                           text=True, check=True, timeout=600)
 
 
-def write(name: str, text: str) -> None:
+#: Replaced in every capture: the throwaway directory the run happened in.
+WHERE = "/home/you/shop"
+
+
+def write(name: str, text: str, work: Path | None = None) -> None:
+    if work is not None:
+        text = text.replace(str(work), WHERE)
     if not text.endswith("\n"):
         text += "\n"
     (OUT / name).write_text(text, encoding="utf-8")
@@ -76,31 +84,31 @@ def shop_example() -> dict[str, object]:
         shutil.copy(HERE / "shop.py", work / "shop.py")
 
         wrapped = ouroboros("wrap-file", "shop.py", cwd=work)
-        write("shop-wrap.json", wrapped.stdout.strip())
-        write("shop-wrapped.py", (work / "shop.py").read_text(encoding="utf-8"))
+        write("shop-wrap.json", wrapped.stdout.strip(), work)
+        write("shop-wrapped.py", (work / "shop.py").read_text(encoding="utf-8"), work)
 
         run = subprocess.run([sys.executable, "shop.py", *ORDER], cwd=work,
                              capture_output=True, text=True, check=True, timeout=600)
-        write("shop-run.txt", run.stdout.strip())
+        write("shop-run.txt", run.stdout.strip(), work)
 
         trace = (work / "debug.info").read_text(encoding="utf-8")
-        write("shop-debug-info.jsonl", trace.strip())
+        write("shop-debug-info.jsonl", trace.strip(), work)
         lines = [ln for ln in trace.splitlines() if ln.strip()]
         calls = sum(1 for ln in lines if json.loads(ln)["p"] == "in")
 
         read = ouroboros("trace", "debug.info", cwd=work)
-        write("shop-trace.json", read.stdout.strip())
+        write("shop-trace.json", read.stdout.strip(), work)
 
         stats = ouroboros("trace-stats", "debug.info", cwd=work)
-        write("shop-trace-stats.json", stats.stdout.strip())
+        write("shop-trace-stats.json", stats.stdout.strip(), work)
 
         # The same program, an order with a typo in it: the call raises.
         (work / "debug.info").unlink()
         crash = subprocess.run([sys.executable, "shop.py", *TYPO], cwd=work,
                                capture_output=True, text=True, timeout=600)
-        write("shop-crash-stderr.txt", crash.stderr.strip())
+        write("shop-crash-stderr.txt", crash.stderr.strip(), work)
         raised = ouroboros("trace", "debug.info", "--outcome", "raised", cwd=work)
-        write("shop-crash-trace.json", raised.stdout.strip())
+        write("shop-crash-trace.json", raised.stdout.strip(), work)
 
         return {
             "wrapped_functions": json.loads(wrapped.stdout)["functions_wrapped"],

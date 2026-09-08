@@ -11,8 +11,8 @@
   "records": [
     {
       "index": 0,
-      "started": "2026-09-08T15:43:19.135",
-      "call_id": "1530daf8-2cfc-4685-944b-48ea6bde9f03",
+      "started": "2026-09-08T15:50:09.581",
+      "call_id": "b898115d-2023-4299-9c21-3f580f686691",
       "name": "subtotal",
       "args": "['tea', 'mug', 'kettle']",
       "kwargs": "",
@@ -20,25 +20,25 @@
       "outcome": "52.0",
       "duration": 3e-06,
       "cpu": null,
-      "thread": "4065309.140405652486016"
+      "thread": "4102424.138269349349248"
     },
     {
       "index": 1,
-      "started": "2026-09-08T15:43:19.135",
-      "call_id": "9396a0b9-c6fc-4801-bb31-f336b05a2a01",
+      "started": "2026-09-08T15:50:09.581",
+      "call_id": "bd13922b-8aa2-4751-a7db-101c332fb16b",
       "name": "discount",
       "args": "52.0",
       "kwargs": "",
       "outcome_kind": "result",
       "outcome": "5.2",
-      "duration": 2e-06,
+      "duration": 3e-06,
       "cpu": null,
-      "thread": "4065309.140405652486016"
+      "thread": "4102424.138269349349248"
     },
     {
       "index": 2,
-      "started": "2026-09-08T15:43:19.135",
-      "call_id": "a64b426b-fcd8-4835-85d5-f1710830ea45",
+      "started": "2026-09-08T15:50:09.581",
+      "call_id": "a61fc823-5c12-4c6d-bd3a-99c370d35c12",
       "name": "delivery",
       "args": "46.8",
       "kwargs": "",
@@ -46,20 +46,20 @@
       "outcome": "5.0",
       "duration": 1e-06,
       "cpu": null,
-      "thread": "4065309.140405652486016"
+      "thread": "4102424.138269349349248"
     },
     {
       "index": 3,
-      "started": "2026-09-08T15:43:19.135",
-      "call_id": "fd796d30-cea8-43d3-a967-5d11751f4f3a",
+      "started": "2026-09-08T15:50:09.581",
+      "call_id": "0deff01d-9ae2-4b24-b7bc-448f9eea6b21",
       "name": "total",
       "args": "['tea', 'mug', 'kettle']",
       "kwargs": "",
       "outcome_kind": "result",
       "outcome": "51.8",
-      "duration": 0.000231,
+      "duration": 0.000252,
       "cpu": null,
-      "thread": "4065309.140405652486016"
+      "thread": "4102424.138269349349248"
     }
   ]
 }
