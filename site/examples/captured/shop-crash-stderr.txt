@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/tmp/tmpugcdpwje/shop.py", line 34, in <module>
+    print(f"Total: {total(sys.argv[1:]):.2f}")
+                    ~~~~~^^^^^^^^^^^^^^
+  File "/tmp/tmpugcdpwje/ouroboros_runtime.py", line 234, in wrapper
+    result = fn(*args, **kwargs)
+  File "/tmp/tmpugcdpwje/shop.py", line 28, in total
+    goods = subtotal(order)
+  File "/tmp/tmpugcdpwje/ouroboros_runtime.py", line 234, in wrapper
+    result = fn(*args, **kwargs)
+  File "/tmp/tmpugcdpwje/shop.py", line 11, in subtotal
+    return sum(PRICES[name] for name in order)
+  File "/tmp/tmpugcdpwje/shop.py", line 11, in <genexpr>
+    return sum(PRICES[name] for name in order)
+               ~~~~~~^^^^^^
+KeyError: 'mugg'

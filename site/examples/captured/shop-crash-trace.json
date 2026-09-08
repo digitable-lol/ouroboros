@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "path": "debug.info",
+  "calls_parsed": 2,
+  "malformed": 0,
+  "matched": 2,
+  "returned": 2,
+  "next_cursor": null,
+  "in_flight": [],
+  "in_flight_truncated": false,
+  "records": [
+    {
+      "index": 0,
+      "started": "2026-09-08T15:43:20.114",
+      "call_id": "2d166c79-46f0-4b29-a8c1-e9a1c33d80fc",
+      "name": "subtotal",
+      "args": "['tea', 'mugg']",
+      "kwargs": "",
+      "outcome_kind": "raised",
+      "outcome": "KeyError: 'mugg'",
+      "duration": 4e-06,
+      "cpu": null,
+      "thread": "4065320.127078518916992"
+    },
+    {
+      "index": 1,
+      "started": "2026-09-08T15:43:20.114",
+      "call_id": "693de96c-d54b-435f-bf15-450c1634a579",
+      "name": "total",
+      "args": "['tea', 'mugg']",
+      "kwargs": "",
+      "outcome_kind": "raised",
+      "outcome": "KeyError: 'mugg'",
+      "duration": 0.000112,
+      "cpu": null,
+      "thread": "4065320.127078518916992"
+    }
+  ]
+}

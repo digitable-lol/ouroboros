@@ -1,0 +1,58 @@
+{
+  "shop": {
+    "wrapped_functions": 4,
+    "trace_lines": 8,
+    "trace_calls": 4,
+    "trace_bytes": 1039,
+    "bytes_per_call": 259.8,
+    "crash_returncode": 1
+  },
+  "languages": {
+    "python": {
+      "fn": "add"
+    },
+    "javascript": {
+      "fn": "add"
+    },
+    "c": {
+      "fn": "add"
+    },
+    "cpp": {
+      "fn": "add"
+    },
+    "elixir": {
+      "fn": "add"
+    },
+    "go": {
+      "fn": "add"
+    },
+    "java": {
+      "fn": "Prog.add"
+    },
+    "csharp": {
+      "fn": "Prog.add"
+    },
+    "taken": [
+      "python",
+      "javascript",
+      "c",
+      "cpp",
+      "elixir",
+      "go",
+      "java",
+      "csharp"
+    ]
+  },
+  "machine": {
+    "cpu": "AMD EPYC 7742 64-Core Processor",
+    "cores": "256",
+    "kernel": "Linux 7.0.0-29-generic x86_64",
+    "python": "3.13.15",
+    "node": "v26.7.0",
+    "gcc": "15.2.0",
+    "go": "go version go1.26.5 linux/amd64",
+    "javac": "javac 26-internal",
+    "dotnet": "10.0.110",
+    "elixir": "1.20.3"
+  }
+}

@@ -1,0 +1,19 @@
+flowchart TD
+    A[A file you point at] --> B{Is the extension one of the eight languages?}
+    B -- no --> R1[Refused: no backend for this file]
+    B -- yes --> C{Does that language's own parser accept the file?}
+    C -- no --> R2[Refused: CorruptedSourceError. Nothing is written]
+    C -- yes --> D[Walk every declaration the parser found]
+    D --> E{Is it a declared function or method?}
+    E -- "no: lambda, arrow with a short body, Go func value" --> S1[Skipped, silently. Its calls never appear]
+    E -- yes --> F{Does it have a body to splice into?}
+    F -- "no: abstract, native, interface declaration" --> S2[Skipped: there is nothing to instrument]
+    F -- yes --> G{Would the instrumented form still compile?}
+    G -- "no: C# yield, ref return, pointers, ref struct" --> S3[Skipped, and the answer says why]
+    G -- yes --> H[Recording spliced in, line numbers preserved]
+    H --> I[Every call now writes two lines]
+    I --> J["{p:in} on entry: time, call id, thread, arguments"]
+    I --> K["{p:out} on exit: result or exception, duration"]
+    K --> L{Did the call finish?}
+    L -- "no: hang, crash, hard exit" --> M[The in line stands alone. trace lists it under in_flight]
+    L -- yes --> N[The pair joins on id]
