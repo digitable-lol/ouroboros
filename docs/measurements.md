@@ -16,6 +16,12 @@ Not one number on this page was copied from somewhere else. Run the same thing
 yourself and you will get your own numbers — they will differ, because the
 machine differs — but the ratios between languages should hold.
 
+One difference from the files on disk, stated once so it does not surprise you
+later: the sample programs in `scripts/measure/samples/` carry Russian string
+literals, and this page shows them translated — "division by zero", "by design",
+"total" — in the sources and in the records alike. Everything else is exactly
+what came out: the numbers, the commands, the keys, the durations.
+
 ## What was measured
 
 The same work in all eight languages: a function `add(a, b)` called 20 000 times
