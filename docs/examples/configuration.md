@@ -81,13 +81,13 @@ There are two, both read in the source, and there are no others.
 
 | variable | what it does |
 |---|---|
-| `OUROBOROS_DEBUG_INFO` | path to the trace file. Not set — records go to `./debug.info` in the process's working directory. `ouroboros execute` sets it itself, pointing at `<черновик>/debug.info` |
+| `OUROBOROS_DEBUG_INFO` | path to the trace file. Not set — records go to `./debug.info` in the process's working directory. `ouroboros execute` sets it itself, pointing at `<draft>/debug.info` |
 | `OUROBOROS_MCP_TRANSPORT` | how the MCP server talks: `stdio` (the default), `sse` or `streamable-http`. Anything else — the server refuses to start and names the values it takes |
 
 Where they are read:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 and
-[`ouroboros/mcp/server.py:909`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L909).
+[`ouroboros/mcp/server.py:935`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L935).
 
 An example: put the records into a file of their own instead of next to the
 program.

@@ -65,11 +65,12 @@ from .sandbox import Project, execute as sandbox_execute, write_file as sandbox_
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ouroboros", description="Ouroboros-Logger Executor")
-    # Инструмент ставят тремя способами — uv, Homebrew, asdf, — и они ставят РАЗНОЕ,
-    # если что-то из трёх отстало. Вопрос «а что у меня стоит» должен иметь ответ у
-    # самой команды, а не только в чужих списках пакетов. Число берётся из метаданных
-    # установки (см. ouroboros/__init__.py): это версия того, что действительно
-    # установлено, а не строка, вписанная когда-то в исходник.
+    # The tool gets installed three ways — uv, Homebrew, asdf — and they install
+    # DIFFERENT things whenever one of the three has fallen behind. "What have I
+    # actually got" must have an answer from the command itself, not only from
+    # somebody else's package listing. The number comes from the installation's
+    # metadata (see ouroboros/__init__.py): the version of what is really
+    # installed, not a string typed into the source at some point.
     p.add_argument("--version", action="version", version=f"ouroboros {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 

@@ -137,18 +137,35 @@ field — calls that have an entry line and no exit line.
 
 | command | what it does |
 |---|---|
-| `create <path>` | makes `<path>/черновик/` with a change history |
+| `create <path>` | makes `<path>/draft/` with a change history |
 | `write <path> <file>` | adds the records **before** saving, content from stdin |
 | `execute <path> -- <command>` | runs inside the draft, filling in the path to `debug.info` itself |
-| `finish <path>` | moves the draft into the sibling `<path>/чистовик/` |
+| `finish <path>` | moves the draft into the sibling `<path>/clean/` |
 
 ```sh
 ouroboros create /srv/tmp/probe
 ```
 
 ```json
-{"ok": true, "base": "/srv/tmp/probe", "draft": "/srv/tmp/probe/черновик", "clean": "/srv/tmp/probe/чистовик"}
+{"ok": true, "base": "/srv/tmp/probe", "draft": "/srv/tmp/probe/draft", "clean": "/srv/tmp/probe/clean"}
 ```
+
+#### A project made before these directories were renamed
+
+Those two directories used to be called `черновик` and `чистовик` — Russian for
+draft and clean. A project made by an earlier release still has them on disk,
+with its change history inside, so `create` **opens that project as it is**
+rather than starting an empty `draft/` beside it and reporting success:
+
+```json
+{"ok": true, "draft": "…/черновик", "clean": "…/чистовик", "legacy_layout": true,
+ "legacy_note": "This project still uses the previous directory names …"}
+```
+
+Rename them whenever it suits you — `mv черновик draft`, and `mv чистовик clean`
+if that one exists. The git history lives inside the directory and travels with
+it. If both a `draft/` and a `черновик/` are present, `draft/` is the one used
+and `legacy_note` names the other one instead of passing over it in silence.
 
 ```sh
 ouroboros execute /srv/tmp/probe -- python3 stats.py
@@ -209,7 +226,7 @@ The literal answer, on the same project as above:
 ```json
 {
   "ok": true,
-  "clean": "…/чистовик",
+  "clean": "…/clean",
   "synced": [".gitignore", "ouroboros_runtime.py", "stats.py"],
   "skipped": [],
   "instrumentation_removed": false,

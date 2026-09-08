@@ -1,8 +1,8 @@
 {
-  "taken_at": "2026-08-29T08:29:50",
+  "taken_at": "2026-09-08T18:20:24",
   "how": "живой разговор с `ouroboros-mcp` по стандартному вводу-выводу",
   "server_name": "ouroboros-logger",
-  "server_version": "1.27.2",
+  "server_version": "0.5.0",
   "protocol_version": "2025-11-25",
   "entry_point": "ouroboros-mcp (pyproject [project.scripts])",
   "instructions": "Ouroboros-Logger: guaranteed function-level logging instrumentation for code.\n\nThe loop is instrument -> run -> observe:\n  1. instrument: wrap_code_snippet (in memory), wrap_file (whole file in place),\n     or wrap_functions (only named functions — for hot/kernel paths). Or work in\n     a sandbox: create_project, then write_file (wrap-on-save), execute, finish.\n  2. run: execute the instrumented code (execute, or run it yourself); every\n     wrapped call appends `in`/`out` JSONL records to a debug.info trace.\n  3. observe: read_trace (structural query + pagination) and trace_stats\n     (per-function counts + real durations). min_duration finds slow calls;\n     in_flight surfaces hung/crashed ones.\n\nChoosing WHAT to instrument in a large C/C++ tree — six clangd/clang-tidy tools,\nlisted here because a tool absent from these instructions does not get chosen:\nsymbol_search (find a name across the tree), document_symbols (what one file\ndefines), references (who uses it), call_hierarchy (who calls whom, transitively),\ndescribe_symbol (where it is defined, with what signature), lint_file (clang-tidy\nfindings). Use them BEFORE wrap_functions to pick the functions worth wrapping,\ninstead of wrapping a whole hot file. They need `clangd` and `clang-tidy` on PATH\nand, for anything cross-file, a compile_commands.json; without those they return\n{ok: false} explaining what is missing, so it is safe to try one and read the answer.\n\nFilesystem effects: wrap_file/wrap_functions overwrite the target file in place;\nwrite_file/finish mutate the sandbox tree; execute runs arbitrary commands. The\nread_* / list_files / trace / clangd tools never write. See SPEC.md for the trace\nschema.\n",
@@ -12,7 +12,7 @@
     {
       "name": "create_project",
       "title": "Create draft project",
-      "description": "Create a draft (черновик) git project under the given base path.",
+      "description": "Create a draft (`draft/`) git project under the given base path.\n\nA base left over from a build that used the previous directory names is\nadopted as it is, rather than a fresh draft being made beside it; either\nway the answer says which layout it found.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
@@ -43,8 +43,8 @@
       "example_answer": {
         "ok": true,
         "base": "<work>/site",
-        "draft": "<work>/site/черновик",
-        "clean": "<work>/site/чистовик"
+        "draft": "<work>/site/draft",
+        "clean": "<work>/site/clean"
       },
       "example_is_error": false
     },
@@ -241,14 +241,14 @@
         "returncode": 0,
         "stdout": "36\n",
         "stderr": "",
-        "debug_info": "<work>/site/черновик/debug.info"
+        "debug_info": "<work>/site/draft/debug.info"
       },
       "example_is_error": false
     },
     {
       "name": "finish",
       "title": "Copy draft into the output tree",
-      "description": "Copy the draft (черновик) into the output tree (чистовик).\n\nThe copy KEEPS the logging instrumentation — there is no un-instrument\nstep, and this is not one. write_file wraps code before saving it, so no\nun-instrumented copy of the source exists anywhere to restore. Left\nbehind: .git, debug.info, and build output (__pycache__, *.pyc, *.beam,\ntool caches). Wipes the output tree first, then rebuilds it.",
+      "description": "Copy the draft (`draft/`) into the output tree (`clean/`).\n\nThe copy KEEPS the logging instrumentation — there is no un-instrument\nstep, and this is not one. write_file wraps code before saving it, so no\nun-instrumented copy of the source exists anywhere to restore. Left\nbehind: .git, debug.info, and build output (__pycache__, *.pyc, *.beam,\ntool caches). Wipes the output tree first, then rebuilds it.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -278,7 +278,7 @@
       },
       "example_answer": {
         "ok": true,
-        "clean": "<work>/site/чистовик",
+        "clean": "<work>/site/clean",
         "synced": [
           ".gitignore",
           "main.py",

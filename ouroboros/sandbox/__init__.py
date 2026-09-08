@@ -1,4 +1,4 @@
-"""The draft/clean (``черновик``/``чистовик``) workspace layer."""
+"""The draft/clean (``draft/``/``clean/``) workspace layer."""
 
 from .crud import WriteOutcome, delete_file, list_files, read_file, write_file
 from .executor import ExecResult, execute

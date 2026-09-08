@@ -113,6 +113,38 @@ def test_build_server_registers_tools():
     assert server.name == "ouroboros-logger"
 
 
+def test_the_server_reports_its_own_version_not_the_libraries(tmp_path):
+    """serverInfo.version is what an agent reads as the version of the TOOL.
+
+    Left unset, the layer below fills in the version of the `mcp` package, and
+    the server introduces itself with somebody else's number."""
+
+    from ouroboros import __version__
+
+    assert build_server()._mcp_server.version == __version__
+
+
+def test_the_server_still_builds_if_that_field_is_ever_renamed(monkeypatch):
+    """The negative control for the guard around it: the field is set through a
+    private attribute, so the code checks it exists first. Take the attribute
+    away and the server must still come up — falling back to the previous
+    behaviour is acceptable, failing to start is not."""
+
+    import mcp.server.fastmcp as fastmcp_mod
+
+    class _Renamed(fastmcp_mod.FastMCP):  # type: ignore[misc]
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            del self._mcp_server.version
+
+    monkeypatch.setattr(fastmcp_mod, "FastMCP", _Renamed)
+
+    server = build_server()
+
+    assert not hasattr(server._mcp_server, "version")
+    assert {t.name for t in server._tool_manager.list_tools()}
+
+
 def test_server_advertises_instructions():
     """The 2025-11-25 surface: the server hands the client a description so an
     agent can reason about the toolset before the first call."""
@@ -435,10 +467,76 @@ def test_trace_stats_invalid_regex(tmp_path):
 # ---- sandbox tools called against a base that is not a project ------------- #
 
 
+def test_create_project_adopts_a_draft_left_under_the_old_name(tmp_path):
+    """The answer an agent gets when the base was made before the rename.
+
+    The tool opens the draft that is there instead of building an empty `draft/`
+    beside it, and says which layout it found — an agent that reads only `draft`
+    would otherwise have no way to learn it is holding yesterday's project."""
+
+    base = tmp_path / "site"
+    tool_create_project(str(base))
+    (base / "draft").rename(base / "черновик")
+
+    res = tool_create_project(str(base))
+
+    assert res["ok"] is True
+    assert res["draft"].endswith("/черновик")
+    assert res["clean"].endswith("/чистовик")
+    assert res["legacy_layout"] is True
+    assert "черновик" in res["legacy_note"] and "draft" in res["legacy_note"]
+    assert not (base / "draft").exists()
+
+
+def test_create_project_names_an_old_draft_left_beside_the_current_one(tmp_path):
+    """Both present: the current names are used, and the leftover is not passed
+    over in silence — `ok: true` with no word about it is how work gets lost."""
+
+    base = tmp_path / "site"
+    tool_create_project(str(base))
+    (base / "черновик").mkdir()
+
+    res = tool_create_project(str(base))
+
+    assert res["ok"] is True
+    assert res["draft"].endswith("/draft")
+    assert res["legacy_layout"] is False
+    assert "черновик" in res["legacy_note"]
+
+
+def test_finish_says_it_wrote_into_the_old_output_tree(tmp_path):
+    """`finish` on an adopted project rebuilds the OLD output tree, not a second
+    `clean/` — and says which one it wrote, so nobody goes looking in the wrong
+    directory for the copy."""
+
+    base = tmp_path / "site"
+    tool_create_project(str(base))
+    tool_write_file(str(base), "m.py", "def f(n):\n    return n\n")
+    (base / "draft").rename(base / "черновик")
+
+    res = tool_finish(str(base))
+
+    assert res["ok"] is True
+    assert res["clean"].endswith("/чистовик")
+    assert res["legacy_layout"] is True
+    assert "черновик" in res["legacy_note"]
+    assert (base / "чистовик" / "m.py").is_file()
+    assert not (base / "clean").exists()
+
+
+def test_a_project_with_nothing_left_over_is_told_nothing(tmp_path):
+    """The negative control for the two above: no leftover, no notice."""
+
+    res = tool_create_project(str(tmp_path / "site"))
+
+    assert res["ok"] is True
+    assert "legacy_note" not in res and "legacy_layout" not in res
+
+
 def test_create_project_on_a_broken_base(tmp_path):
-    """A черновик directory that is not a git repo: create(exist_ok) re-opens and
+    """A draft directory that is not a git repo: create(exist_ok) re-opens and
     the open fails, so the tool reports it instead of pretending it created one."""
-    (tmp_path / "site" / "черновик").mkdir(parents=True)
+    (tmp_path / "site" / "draft").mkdir(parents=True)
     res = tool_create_project(str(tmp_path / "site"))
     assert res["ok"] is False and "no draft git repo" in res["error"]
 
@@ -707,7 +805,7 @@ def test_finish_answer_names_what_it_left_behind(tmp_path):
     base = tmp_path / "site"
     tool_create_project(str(base))
     tool_write_file(str(base), "prog.c", "int add(int a, int b) { return a + b; }\n")
-    (base / "черновик" / "prog").write_bytes(b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 64)
+    (base / "draft" / "prog").write_bytes(b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 64)
 
     res = tool_finish(str(base))
 

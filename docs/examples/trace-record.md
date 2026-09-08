@@ -41,7 +41,7 @@ the nesting from which calls landed between an entry and its exit.
 - One file, **append-only**, UTF-8, one JSON object per line.
 - The path comes from the `OUROBOROS_DEBUG_INFO` environment variable. Not set —
   the file is `./debug.info` in the process's working directory.
-- `ouroboros execute` sets `OUROBOROS_DEBUG_INFO` to `<черновик>/debug.info`
+- `ouroboros execute` sets `OUROBOROS_DEBUG_INFO` to `<draft>/debug.info`
   before the run — which is why instrumented code in any language writes into
   one and the same file.
 - **Records do not go through standard output.** The runtime helper appends them

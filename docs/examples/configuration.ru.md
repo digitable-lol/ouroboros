@@ -79,13 +79,13 @@ references          call_hierarchy   describe_symbol
 
 | переменная | что делает |
 |---|---|
-| `OUROBOROS_DEBUG_INFO` | путь к файлу записей. Не задана — записи идут в `./debug.info` в рабочем каталоге процесса. `ouroboros execute` подставляет её сам, указывая на `<черновик>/debug.info` |
+| `OUROBOROS_DEBUG_INFO` | путь к файлу записей. Не задана — записи идут в `./debug.info` в рабочем каталоге процесса. `ouroboros execute` подставляет её сам, указывая на `<draft>/debug.info` |
 | `OUROBOROS_MCP_TRANSPORT` | как сервер MCP разговаривает: `stdio` (по умолчанию), `sse` или `streamable-http`. Другое значение — сервер откажется запускаться и назовёт допустимые |
 
 Где они читаются:
 [`ouroboros/runtime.py:62`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/runtime.py#L62)
 и
-[`ouroboros/mcp/server.py:909`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L909).
+[`ouroboros/mcp/server.py:935`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L935).
 
 Пример: положить записи не рядом с программой, а в отдельный файл.
 
