@@ -215,6 +215,13 @@ code {
   border-radius: 4px; padding: .05em .32em;
 }
 pre code { background: none; border: 0; padding: 0; }
+
+/* Trace records are one long line each, and the interesting half of the
+ * comparison between languages — the `a` field — sits past the right edge of
+ * the column. Sideways scrolling hides it: the reader has to know it is there
+ * to go looking. So JSON wraps, and only JSON; indented code would lose its
+ * shape and gains nothing, because its lines are short already. */
+pre.lang-json code { white-space: pre-wrap; overflow-wrap: anywhere; }
 a code { color: inherit; }
 
 /* --------------------------------------------------------------- tables --- */
