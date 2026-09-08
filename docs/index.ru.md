@@ -65,7 +65,7 @@ ouroboros trace debug.info --outcome raised
 сломалось; запись говорит, **с чем позвали**.
 
 Полностью, с исходником и выводом каждого шага, — в
-[README хранилища](https://github.com/digitable-lol/ouroboros#четыре-шага).
+[README хранилища](https://github.com/digitable-lol/ouroboros/blob/main/README.ru.md#четыре-шага).
 
 ## Что лежит в `debug.info`
 

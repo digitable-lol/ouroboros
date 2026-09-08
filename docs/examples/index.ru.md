@@ -20,4 +20,4 @@ title: Как это выглядит
 выводе стоит `ci: -1` или пустой `cpus`, значит так и было.
 
 Короткий сквозной пример — четыре шага от установки до прочитанной записи — в
-[README хранилища](https://github.com/digitable-lol/ouroboros#четыре-шага).
+[README хранилища](https://github.com/digitable-lol/ouroboros/blob/main/README.ru.md#четыре-шага).
