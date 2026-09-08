@@ -93,58 +93,29 @@ total function «Is space»
       let code equals character code one
       (code equals 32) or ((code is at least 9) and also (code is at most 13)) or ((code is at least 28) and also (code is at most 31))
 
-total function «Without leading space»
-  accepts text: string
-  returns string
-  example «two spaces dropped»
-    given text equals "  {}"
-    expected "{}"
-  example «nothing to drop»
-    given text equals "{}"
-    expected "{}"
-  match text
-    case empty
-      then text
-    case head and tail
-      then if «Is space» of head then («Without leading space» of tail) else text
-
-total function «Without trailing space»
-  accepts text: string
-  returns string
-  decreases length text
-  example «trailing return dropped»
-    given text equals "{} "
-    expected "{}"
-  example «nothing to drop»
-    given text equals "{}"
-    expected "{}"
-  if (length text) is at most 0
-    then text
-    else if «Is space» of (char (length text) in text)
-      then «Without trailing space» of (substring text with 1 by ((length text) minus 1))
-      else text
-
-total function «Trimmed»
-  accepts text: string
-  returns string
-  example «both ends»
-    given text equals "  {} "
-    expected "{}"
-  example «all space»
-    given text equals "   "
-    expected ""
-  «Without trailing space» of («Without leading space» of text)
-
 note "Only a line whose first non-space character is an opening brace is handed
 to the JSON decoder. Anything else that carries text at all is counted as
 malformed — kernel boot spam, a line torn by two CPUs printing at once. An
 empty line is neither: it is not evidence of damage."
+
+note "The rule is read left to right and stops at the first thing that settles
+it: an opening brace at the front answers on its own, a space passes the
+question to the rest of the line, anything else is damage. Order matters here
+and it is the whole of the speed: a trace is almost all records, so the brace is
+asked about first and nothing else is asked at all. Written as trim-then-look
+instead — trim both ends, then look — the same answers cost ten times as much on
+every line of a trace, because the trailing end was trimmed to settle a question
+only the leading end can settle, and «Is space» was asked about a brace before a
+brace was compared with a brace."
 
 total function «Line kind»
   accepts line: string
   returns «Line kind»
   example «a record is a candidate»
     given line equals "{\"p\":\"in\"}"
+    expected variant Candidate
+  example «a record behind spaces is still a candidate»
+    given line equals "   {}"
     expected variant Candidate
   example «boot spam is malformed»
     given line equals "[ 1.0] booting"
@@ -158,10 +129,13 @@ total function «Line kind»
   example «spaces only are blank»
     given line equals "   "
     expected variant Blank
-  let clean equals «Trimmed» of line
-  if (length clean) is at most 0
-    then variant Blank
-    else if clean begins with "{" then (variant Candidate) else (variant Malformed)
+  if line begins with "{"
+    then variant Candidate
+    else match line
+      case empty
+        then variant Blank
+      case head and tail
+        then if «Is space» of head then («Line kind» of tail) else (variant Malformed)
 
 total function «Counts as malformed»
   accepts line: string

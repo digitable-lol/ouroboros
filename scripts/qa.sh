@@ -87,10 +87,22 @@ fi
 
 # The emitted code lives in the tree so that installing takes one pip. There is a
 # single price for that: the emission can quietly fall behind its source. So a
-# machine compares them. Code 2 means there is nothing to compare against (no
-# compiler, or a different version); that is not a gate failure, but it is not
-# 'all is well' either: the comparison only happens where the very compiler that
-# made the emission is installed.
+# machine compares them, and the comparison is in two halves that fail apart. The
+# source stamp (`_flang/printed-from.txt`) says WHOSE emission this is, and is
+# asked without a compiler. The byte-for-byte comparison with a fresh emission
+# says whether it is THE one, and needs that very compiler. The first half closes
+# the hole an edit to a `note` or to a proved postcondition used to slip through:
+# such an edit never reaches the emission, the emitted bytes do not move, and the
+# source is already a different source.
+# A check that has never gone red says nothing, so the self-test comes first: the
+# guard is handed a source it did not emit from and has to refuse it.
+echo "== the emitted-brain guard: self-test =="
+uv run python scripts/emit_brain.py --self-test
+
+# Code 2 means there is nothing to compare the emission against (no compiler, or
+# a different version); that is not a gate failure, but it is not 'all is well'
+# either: the comparison only happens where the very compiler that made the
+# emission is installed. The source stamp is checked either way.
 echo "== the emitted brain matches a fresh emission =="
 brain_status=0
 uv run python scripts/emit_brain.py --check || brain_status=$?

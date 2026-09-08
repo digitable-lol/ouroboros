@@ -308,118 +308,43 @@ def fn_is_space(ctx, one):
                 return rt.flag(False)
 
 
-def fn_without_leading_space(ctx, text):
-    """Функция flang «Without leading space».
-
-    Тотальная: завершение доказано анализом завершаемости (totality.mjs).
-
-    Хвостовой самовызов развёрнут в цикл: стек не растёт.
-
-    Рекурсивная: считает глубину, на превышении — FLANG_RECURSION_LIMIT.
-
-    Параметр text — «text»: строка.
-    Результат — значение: строка.
-    """
-    ctx.enter("Without leading space")
-    try:
-        while True:
-            if rt.chain_empty(text):
-                return text
-            elif rt.chain_cons(text):
-                # голова «head»
-                head = rt.chain_head(text)
-                # хвост «tail»
-                tail = rt.chain_tail(text)
-                if rt.cond(ctx, fn_is_space(ctx, head)):
-                    text = tail
-                    # виток цикла — тоже шаг вычисления: незавершающийся хвостовой
-                    # самовызов обязан упереться в лимит, а не крутиться вечно
-                    ctx.step("Without leading space")
-                    continue
-                else:
-                    return text
-            else:
-                raise rt.match_fail(ctx, text)
-    finally:
-        ctx.leave()
-
-
-def fn_without_trailing_space(ctx, text):
-    """Функция flang «Without trailing space».
-
-    Тотальная: завершение доказано анализом завершаемости (totality.mjs).
-
-    Хвостовой самовызов развёрнут в цикл: стек не растёт.
-
-    Рекурсивная: считает глубину, на превышении — FLANG_RECURSION_LIMIT.
-
-    Параметр text — «text»: строка.
-    Результат — значение: строка.
-    """
-    ctx.enter("Without trailing space")
-    try:
-        while True:
-            if rt.cond(ctx, rt.lte(ctx, rt.b_length(ctx, text), rt.number(0.0))):
-                return text
-            else:
-                if rt.cond(ctx, fn_is_space(ctx, rt.b_char(ctx, rt.b_length(ctx, text), text))):
-                    # пусть «довод 1»
-                    dovod_1 = rt.b_substring(ctx, text, rt.number(1.0), rt.sub(ctx, rt.b_length(ctx, text), rt.number(1.0)))
-                    # пусть «мера витка»
-                    mera_vitka = rt.b_length(ctx, text)
-                    # пусть «мера шага»
-                    mera_shaga = rt.b_length(ctx, dovod_1)
-                    if rt.cond(ctx, rt.lt(ctx, mera_shaga, mera_vitka)):
-                        if rt.cond(ctx, rt.gte(ctx, mera_shaga, rt.number(0.0))):
-                            _t4 = rt.flag(rt.equal(rt.sub(ctx, mera_shaga, rt.mod(ctx, mera_shaga, rt.number(1.0))), mera_shaga))
-                        else:
-                            _t4 = rt.flag(False)
-                        _t3 = _t4
-                    else:
-                        _t3 = rt.flag(False)
-                    if rt.cond(ctx, _t3):
-                        _t5 = dovod_1
-                    else:
-                        _t5 = fn_obyavlennaya_mera_ubyvaet(ctx, mera_shaga, mera_vitka, dovod_1)
-                    text = _t5
-                    # виток цикла — тоже шаг вычисления: незавершающийся хвостовой
-                    # самовызов обязан упереться в лимит, а не крутиться вечно
-                    ctx.step("Without trailing space")
-                    continue
-                else:
-                    return text
-    finally:
-        ctx.leave()
-
-
-def fn_trimmed(ctx, text):
-    """Функция flang «Trimmed».
-
-    Тотальная: завершение доказано анализом завершаемости (totality.mjs).
-
-    Параметр text — «text»: строка.
-    Результат — значение: строка.
-    """
-    return fn_without_trailing_space(ctx, fn_without_leading_space(ctx, text))
-
-
 def fn_line_kind(ctx, line):
     """Функция flang «Line kind».
 
     Тотальная: завершение доказано анализом завершаемости (totality.mjs).
 
+    Хвостовой самовызов развёрнут в цикл: стек не растёт.
+
+    Рекурсивная: считает глубину, на превышении — FLANG_RECURSION_LIMIT.
+
     Параметр line — «line»: строка.
     Результат — значение: «Line kind».
     """
-    # пусть «clean»
-    clean = fn_trimmed(ctx, line)
-    if rt.cond(ctx, rt.lte(ctx, rt.b_length(ctx, clean), rt.number(0.0))):
-        return rt.variant("Blank", {})
-    else:
-        if rt.cond(ctx, rt.b_starts_with(ctx, clean, rt.text("{"))):
-            return rt.variant("Candidate", {})
-        else:
-            return rt.variant("Malformed", {})
+    ctx.enter("Line kind")
+    try:
+        while True:
+            if rt.cond(ctx, rt.b_starts_with(ctx, line, rt.text("{"))):
+                return rt.variant("Candidate", {})
+            else:
+                if rt.chain_empty(line):
+                    return rt.variant("Blank", {})
+                elif rt.chain_cons(line):
+                    # голова «head»
+                    head = rt.chain_head(line)
+                    # хвост «tail»
+                    tail = rt.chain_tail(line)
+                    if rt.cond(ctx, fn_is_space(ctx, head)):
+                        line = tail
+                        # виток цикла — тоже шаг вычисления: незавершающийся хвостовой
+                        # самовызов обязан упереться в лимит, а не крутиться вечно
+                        ctx.step("Line kind")
+                        continue
+                    else:
+                        return rt.variant("Malformed", {})
+                else:
+                    raise rt.match_fail(ctx, line)
+    finally:
+        ctx.leave()
 
 
 def fn_counts_as_malformed(ctx, line):
@@ -430,15 +355,15 @@ def fn_counts_as_malformed(ctx, line):
     Параметр line — «line»: строка.
     Результат — значение.
     """
-    _t6 = fn_line_kind(ctx, line)
-    if rt.variant_is(_t6, "Malformed"):
+    _t3 = fn_line_kind(ctx, line)
+    if rt.variant_is(_t3, "Malformed"):
         return rt.flag(True)
-    elif rt.variant_is(_t6, "Blank"):
+    elif rt.variant_is(_t3, "Blank"):
         return rt.flag(False)
-    elif rt.variant_is(_t6, "Candidate"):
+    elif rt.variant_is(_t3, "Candidate"):
         return rt.flag(False)
     else:
-        raise rt.match_fail(ctx, _t6)
+        raise rt.match_fail(ctx, _t3)
 
 
 def fn_event_kind(ctx, phase):
@@ -532,10 +457,10 @@ def fn_cpu_of(ctx, present, index):
     Результат — значение: «Cpu».
     """
     if rt.cond(ctx, present):
-        _t7 = rt.gte(ctx, index, rt.number(0.0))
+        _t4 = rt.gte(ctx, index, rt.number(0.0))
     else:
-        _t7 = rt.flag(False)
-    if rt.cond(ctx, _t7):
+        _t4 = rt.flag(False)
+    if rt.cond(ctx, _t4):
         return rt.variant("OnCpu", {"index": index})
     else:
         return rt.variant("CpuUnknown", {})
@@ -617,15 +542,15 @@ def fn_has_call_id(ctx, ids, wanted):
     Параметр wanted — «wanted»: строка.
     Результат — значение.
     """
-    _t8 = rt.require_list(ctx, ids, "свёртка")
+    _t5 = rt.require_list(ctx, ids, "свёртка")
     # «seen»
     seen = rt.flag(False)
-    for one in _t8:
+    for one in _t5:
         if rt.cond(ctx, seen):
-            _t9 = rt.flag(True)
+            _t6 = rt.flag(True)
         else:
-            _t9 = rt.flag(rt.equal(one, wanted))
-        seen = _t9
+            _t6 = rt.flag(rt.equal(one, wanted))
+        seen = _t6
     return seen
 
 
@@ -664,16 +589,16 @@ def fn_in_flight(ctx, entries, completed_ids):
     Параметр completed_ids — «completed ids»: список: строка.
     Результат — значение: список: «Flight».
     """
-    _t10 = rt.require_list(ctx, entries, "отфильтровать")
-    _t11 = []
-    for one in _t10:
+    _t7 = rt.require_list(ctx, entries, "отфильтровать")
+    _t8 = []
+    for one in _t7:
         if rt.keep(ctx, fn_is_in_flight(ctx, one, completed_ids)):
-            _t11.append(one)
-    _t12 = rt.require_list(ctx, rt.list_of(_t11), "отобразить")
-    _t13 = []
-    for one2 in _t12:
-        _t13.append(fn_flight_view(ctx, one2))
-    return rt.list_of(_t13)
+            _t8.append(one)
+    _t9 = rt.require_list(ctx, rt.list_of(_t8), "отобразить")
+    _t10 = []
+    for one2 in _t9:
+        _t10.append(fn_flight_view(ctx, one2))
+    return rt.list_of(_t10)
 
 
 def fn_value_characters_limit(ctx):
@@ -810,11 +735,11 @@ def fn_shorten_text(ctx, text, limit):
         return text
     else:
         if rt.cond(ctx, rt.lte(ctx, limit, rt.number(3.0))):
-            _t14 = rt.number(0.0)
+            _t11 = rt.number(0.0)
         else:
-            _t14 = rt.sub(ctx, limit, rt.number(3.0))
+            _t11 = rt.sub(ctx, limit, rt.number(3.0))
         # пусть «room»
-        room = _t14
+        room = _t11
         # пусть «front»
         front = fn_floor_half(ctx, room)
         # пусть «back»
@@ -887,21 +812,21 @@ def fn_longest_field(ctx, args2, kwargs, produced, raised):
     # пусть «lx»
     lx = rt.b_length(ctx, raised)
     if rt.cond(ctx, rt.gte(ctx, la, lk)):
-        _t15 = rt.gte(ctx, la, lr)
+        _t12 = rt.gte(ctx, la, lr)
     else:
-        _t15 = rt.flag(False)
-    if rt.cond(ctx, _t15):
-        _t16 = rt.gte(ctx, la, lx)
+        _t12 = rt.flag(False)
+    if rt.cond(ctx, _t12):
+        _t13 = rt.gte(ctx, la, lx)
     else:
-        _t16 = rt.flag(False)
-    if rt.cond(ctx, _t16):
+        _t13 = rt.flag(False)
+    if rt.cond(ctx, _t13):
         return rt.variant("ArgsField", {})
     else:
         if rt.cond(ctx, rt.gte(ctx, lk, lr)):
-            _t17 = rt.gte(ctx, lk, lx)
+            _t14 = rt.gte(ctx, lk, lx)
         else:
-            _t17 = rt.flag(False)
-        if rt.cond(ctx, _t17):
+            _t14 = rt.flag(False)
+        if rt.cond(ctx, _t14):
             return rt.variant("KwargsField", {})
         else:
             if rt.cond(ctx, rt.gte(ctx, lr, lx)):
@@ -922,14 +847,14 @@ def fn_anything_to_shrink(ctx, args2, kwargs, produced, raised):
     Результат — значение.
     """
     if rt.cond(ctx, rt.gt(ctx, rt.b_length(ctx, args2), rt.number(0.0))):
-        _t18 = rt.flag(True)
+        _t15 = rt.flag(True)
     else:
-        _t18 = rt.gt(ctx, rt.b_length(ctx, kwargs), rt.number(0.0))
-    if rt.cond(ctx, _t18):
-        _t19 = rt.flag(True)
+        _t15 = rt.gt(ctx, rt.b_length(ctx, kwargs), rt.number(0.0))
+    if rt.cond(ctx, _t15):
+        _t16 = rt.flag(True)
     else:
-        _t19 = rt.gt(ctx, rt.b_length(ctx, produced), rt.number(0.0))
-    if rt.cond(ctx, _t19):
+        _t16 = rt.gt(ctx, rt.b_length(ctx, produced), rt.number(0.0))
+    if rt.cond(ctx, _t16):
         return rt.flag(True)
     else:
         return rt.gt(ctx, rt.b_length(ctx, raised), rt.number(0.0))
@@ -1058,29 +983,6 @@ def fn_exit_from(ctx, id2, name, raised, raised_text, produced, produced_text, d
     return rt.record({"id": id2, "name": name, "raised": raised, "raised text": raised_text, "produced": produced, "produced text": produced_text, "has duration": fn_span_timed(ctx, span), "duration": fn_span_seconds(ctx, span)})
 
 
-def fn_obyavlennaya_mera_ubyvaet(ctx, shag, mera, znachenie):
-    """Функция flang «объявленная мера убывает».
-
-    Тотальная: завершение доказано анализом завершаемости (totality.mjs).
-
-    Параметр shag — «шаг»: число.
-    Параметр mera — «мера»: число.
-    Параметр znachenie — «значение»: «Значение под сторожем».
-    Результат — значение: «Значение под сторожем».
-    """
-    _t20 = znachenie
-    # постусловие «объявленная мера убывает»
-    if not rt.post(ctx, rt.lt(ctx, shag, mera), "объявленная мера убывает", "объявленная мера убывает"):
-        raise rt.fail("FLANG_MEASURE", "тотальная функция «Without trailing space»: мера на вызове «Without trailing space» — длина «text» — не убыла. Завершение доказано тем, что она строго убывает; равенство цепочку не обрывает, а значит этот вызов может не кончиться никогда")
-    # постусловие «объявленная мера убывает»
-    if not rt.post(ctx, rt.gte(ctx, shag, rt.number(0.0)), "объявленная мера убывает", "объявленная мера убывает"):
-        raise rt.fail("FLANG_MEASURE", "тотальная функция «Without trailing space»: мера на вызове «Without trailing space» — длина «text» — ушла ниже нуля. Мера обязана оставаться неотрицательной: иначе цепочка уходит в минус бесконечность и убывание ничего не доказывает. Чаще всего это выбор меры, а не ошибка вызова — мере, которая на последнем витке становится −1, обычно не хватает «плюс 1»")
-    # постусловие «объявленная мера убывает»
-    if not rt.post(ctx, rt.flag(rt.equal(rt.sub(ctx, shag, rt.mod(ctx, shag, rt.number(1.0))), shag)), "объявленная мера убывает", "объявленная мера убывает"):
-        raise rt.fail("FLANG_MEASURE", "тотальная функция «Without trailing space»: мера на вызове «Without trailing space» — длина «text» — перестала быть целой. Целость — это то, чем мера вообще что-то доказывает: строго убывающая цепочка целых неотрицательных чисел не длиннее своего первого члена, а дробная не обрывается вовсе (0.618, 0.382, 0.236 … больше нуля всегда). Отказ здесь честнее зацикливания")
-    return _t20
-
-
 def call(ctx, name, args):
     """Вызов функции по её исходному имени flang.
 
@@ -1096,30 +998,6 @@ def call(ctx, name, args):
                 + str(len(args)),
             )
         return fn_is_space(ctx, args[0])
-    if name == "Without leading space":
-        if len(args) != 1:
-            raise rt.fail(
-                rt.CODE_TYPE,
-                "функция «Without leading space» принимает 1 аргум., получено "
-                + str(len(args)),
-            )
-        return fn_without_leading_space(ctx, args[0])
-    if name == "Without trailing space":
-        if len(args) != 1:
-            raise rt.fail(
-                rt.CODE_TYPE,
-                "функция «Without trailing space» принимает 1 аргум., получено "
-                + str(len(args)),
-            )
-        return fn_without_trailing_space(ctx, args[0])
-    if name == "Trimmed":
-        if len(args) != 1:
-            raise rt.fail(
-                rt.CODE_TYPE,
-                "функция «Trimmed» принимает 1 аргум., получено "
-                + str(len(args)),
-            )
-        return fn_trimmed(ctx, args[0])
     if name == "Line kind":
         if len(args) != 1:
             raise rt.fail(
@@ -1424,14 +1302,6 @@ def call(ctx, name, args):
                 + str(len(args)),
             )
         return fn_exit_from(ctx, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7])
-    if name == "объявленная мера убывает":
-        if len(args) != 3:
-            raise rt.fail(
-                rt.CODE_TYPE,
-                "функция «объявленная мера убывает» принимает 3 аргум., получено "
-                + str(len(args)),
-            )
-        return fn_obyavlennaya_mera_ubyvaet(ctx, args[0], args[1], args[2])
     raise rt.fail(rt.CODE_UNKNOWN_NAME, "не найдена функция «" + name + "»")
 
 

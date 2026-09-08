@@ -314,7 +314,7 @@ them — 0 runs out of 3. The negative result, with the exact boundary, is in
 | directory | what is there |
 |---|---|
 | [`ouroboros/`](ouroboros/) | the package itself: CLI, MCP server, draft workspace, languages |
-| [`tests/`](tests/) | tests: <!--state:tests-->1072<!--/state--> |
+| [`tests/`](tests/) | tests: <!--state:tests-->1074<!--/state--> |
 | [`bench/`](bench/) | the bench and its results |
 | [`packaging/`](packaging/) | single-file program, image, Homebrew formula, asdf plugin |
 | [`docs/`](docs/) | the pages, the same ones that are published |
@@ -371,7 +371,7 @@ There is nothing here to drift: lying in this file means failing to compile it.
 
 ## State
 
-Version <!--state:version-->0.5.0<!--/state-->. Tests: <!--state:tests-->1072<!--/state--> of <!--state:tests-->1072<!--/state-->, branch coverage <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Installation
+Version <!--state:version-->0.5.0<!--/state-->. Tests: <!--state:tests-->1074<!--/state--> of <!--state:tests-->1074<!--/state-->, branch coverage <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Installation
 is checked end to end, not eyeballed: `uv tool install`;
 `brew install digitable-lol/tap/ouroboros` together with `brew test` — the short
 line taps the formula repository itself, verified from nothing: tap removed, old
