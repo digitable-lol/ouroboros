@@ -41,58 +41,333 @@ packages = ["ouroboros"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Coverage is measured on EVERY run, not by hand once in a while. It used to be
+# the other way round: `scripts/state_numbers.py --measure` took the number when
+# somebody remembered to, and between two takings the tree was free to grow an
+# unvisited branch. It did — a branch was added after a measurement and "100 %"
+# stayed on the pages for a week. The threshold lives in [tool.coverage.report]
+# below, so the same number holds for `pytest`, for `uv run pytest tests/x.py`
+# and for the gate.
+addopts = "-q --cov --cov-report=term-missing:skip-covered --cov-report=json:.coverage.json"
 
 [tool.coverage.run]
 branch = true
-source = ["ouroboros"]
-# Напечатанный компилятором flang мозг (`ouroboros/brain/_flang`) — это ВЫВОД
-# компилятора, а не код проекта, ровно как подопытные программы замеров у ruff
-# ниже. Его правильность держат 91 пример, которые компилятор прогоняет внутри
-# самих функций (`flang test`), и доказанное завершение каждой из 39 — а не то,
-# до какой его ветви добралась питоновская проверка. Считать его покрытие значит
-# мерить чужую работу своей линейкой: см. docs/sdd/brain-in-flang.md.
-omit = ["ouroboros/brain/_flang/*"]
+# The package and the guards that hold the tree together. The guards used to be
+# outside the measurement, so their refusal branches — the site answered with
+# something that is not JSON, GitHub is rate-limiting us, git is not installed —
+# were written and never executed by anything.
+source = ["ouroboros", "scripts"]
+# The brain printed by the flang compiler (`ouroboros/brain/_flang`) is the
+# compiler's OUTPUT, not this project's code — exactly like the measurement's
+# specimen programs under ruff below. Its correctness is held by the 91 examples
+# the compiler runs inside the functions themselves (`flang test`) and by the
+# proven termination of each of the 39, not by which of its branches a Python
+# check reached. Measuring its coverage means measuring somebody else's work
+# with our own ruler: see docs/sdd/brain-in-flang.md.
+#
+# scripts/measure and scripts/probe are the research harness: they drive real
+# agents and real toolchains over the network, and a run of them costs money and
+# hours. scripts/kernel_instrument_gate.py needs a NetBSD tree and a riscv64
+# cross-compiler that exist on one machine. Neither is reachable from a unit
+# test, and pretending otherwise by faking every subprocess would measure the
+# fake.
+omit = [
+    "ouroboros/brain/_flang/*",
+    "scripts/measure/*",
+    "scripts/probe/*",
+    "scripts/kernel_instrument_gate.py",
+]
+
+[tool.coverage.report]
+fail_under = 100
+skip_covered = true
+show_missing = true
+# A line is allowed out of the measurement only with a reason written beside it.
+# `# pragma: no cover` on its own is not one, so the pragma this tree honours
+# carries the reason in the same comment.
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
 
 # --------------------------------------------------------------------------- #
-# Code-quality gates. STANDING RULE: any edit to MCP code (ouroboros/), however
-# minor, must pass `ruff check`, `mypy ouroboros`, and `pytest` before it is
-# considered done. The Elixir lesson — "gone-green != warning-free" — applies:
-# don't suppress findings (no blanket noqa / type: ignore); fix the real defect.
-# scripts/qa.sh runs all three.
+# Code-quality gates. STANDING RULE: any edit to the code under ouroboros/ or
+# scripts/, however minor, must pass `ruff check`, `mypy`, and `pytest` before
+# it is considered done. The Elixir lesson — "gone-green != warning-free" —
+# applies: don't suppress findings (no blanket noqa / type: ignore); fix the
+# real defect. scripts/qa.sh runs all three.
 # --------------------------------------------------------------------------- #
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# Подопытные программы замеров — это ВХОДНЫЕ ДАННЫЕ, а не код проекта. Они
-# нарочно написаны так, как пишет обычный человек (`try/except/pass`, а не
-# `contextlib.suppress`), потому что их текст показан в docs/measurements.md и
-# обмазывается как есть. Причёсывать их под правила проекта значило бы мерять не
-# то, что читатель у себя запустит.
-# Снимки прогонов под site/examples/captured — тоже входные данные, а не код
-# проекта: это вывод инструмента, показанный на сайте дословно.
-# Напечатанный мозг на flang — тоже вывод компилятора, не исходник проекта:
-# правится он в `ouroboros/brain/trace_brain.flang` и печатается заново
-# (`scripts/emit_brain.py`), а причёсывать печать под правила проекта значило
-# бы править то, что при следующей печати вернётся как было.
-extend-exclude = ["scripts/measure/samples", "site/examples/captured",
-                  "ouroboros/brain/_flang"]
+# The measurement's specimen programs are INPUT DATA, not project code. They are
+# deliberately written the way an ordinary person writes (`try/except/pass`, not
+# `contextlib.suppress`), because their text is shown in docs/measurements.md
+# and instrumented as it stands. Combing them to this project's rules would mean
+# measuring something other than what the reader will run.
+# The run snapshots under site/examples/captured are input data too: the tool's
+# own output, quoted on the site word for word.
+# bench/runs and bench/runs_debug are the benchmark's recorded runs — the files
+# an agent wrote under measurement, kept as evidence; bench/task_debug holds the
+# knowingly broken program the agent is asked to fix.
+# The printed flang brain is the compiler's output, not this project's source:
+# it is edited in `ouroboros/brain/trace_brain.flang` and printed again
+# (`scripts/emit_brain.py`), so combing the print to this project's rules would
+# mean editing what the next print puts back.
+extend-exclude = [
+    "scripts/measure/samples",
+    "scripts/measure/trace-help/programs",
+    "site/examples/captured",
+    "ouroboros/brain/_flang",
+    "bench/runs",
+    "bench/runs_debug",
+    "bench/task_debug",
+]
 
 [tool.ruff.lint]
-# pycodestyle(E/W), pyflakes(F), isort(I), pyupgrade(UP), bugbear(B),
-# comprehensions(C4), simplify(SIM), pep8-naming(N).
-select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "N"]
+# Everything ruff ships, minus the families named in `ignore` below. A rule is
+# either obeyed or switched off with the reason written down; there is no third
+# state, and no bare `noqa` anywhere in the tree (PGH004 enforces that).
+select = ["ALL"]
+
+ignore = [
+    # --- families switched off whole ------------------------------------- #
+    # D (pydocstyle): D103 alone would demand a docstring on 587 functions, and
+    # a docstring written to satisfy a counter is the exact thing this release
+    # is removing. Docstrings here are written where they say something the
+    # signature does not.
+    "D",
+    # ANN (annotations): inside ouroboros/ and scripts/ mypy --strict already
+    # demands them and says more when they are wrong. Inside tests/ it would ask
+    # for ~800 annotations on `def test_x():` and buy nothing; what tests need
+    # is `check_untyped_defs`, which they now get (see [tool.mypy] below).
+    "ANN",
+    # COM812 (trailing comma) and ISC001 conflict with each other and with any
+    # formatter; this tree has no formatter, and comma placement is not a defect.
+    "COM",
+    # EM/TRY003: both demand that an exception message be lifted into a variable
+    # or a bespoke Exception subclass. 86 raise sites here carry a sentence that
+    # names the fix; splitting each into a class plus a message would put the
+    # sentence one file away from the condition that produced it.
+    "EM", "TRY003",
+    # FIX/TD: this tree keeps no TODO markers; the ledger of what is not done is
+    # PENDING in scripts/check_doc_language.py, which is checked, unlike a
+    # comment.
+    "FIX",
+    # CPY: no per-file copyright headers, the licence is in LICENSE.
+    "CPY",
+    # DOC: docstring-section rules, same reason as D.
+    "DOC",
+
+    # --- single rules, with the reason ------------------------------------ #
+    # T201/T203: these are command-line programs and gate scripts. What they
+    # print IS the product; a logger would put the product behind a handler.
+    "T201", "T203",
+    # S603/S607: instrumenting eight languages means running eight compilers,
+    # found on PATH the way the user's shell finds them. `shell=True` is what
+    # would be dangerous here; absolute paths would break every toolchain
+    # manager (asdf, brew, nvm) the project supports.
+    "S603", "S607",
+    # S310: the release and site guards exist to fetch https:// addresses. The
+    # addresses are literals in the tree, not user input.
+    "S310",
+    # RUF001/2/3: the tree holds Russian text on purpose (docs/*.ru.md, the
+    # flang description) and typographic dashes in prose. Every "ambiguous"
+    # character found is a Cyrillic letter inside a Russian sentence.
+    "RUF001", "RUF002", "RUF003",
+    # PLR2004: a test compares against the literal it expects. Naming 117
+    # expected values would hide what the test asserts.
+    "PLR2004",
+    # PLC0415: imports inside a function are deliberate here — a heavy optional
+    # backend, a module imported after sys.path is arranged, a cycle broken.
+    "PLC0415",
+    # PT018: `assert a and b` states one fact. Splitting it in two produces two
+    # half-facts and a longer test.
+    "PT018",
+    # TID252: the package imports its own modules relatively, on purpose: the
+    # tree is copied into a user's project by `ouroboros wrap-tree`, where the
+    # top-level package name is not `ouroboros`.
+    "TID252",
+    # TC (typing-only imports): FastMCP builds every tool's JSON schema by
+    # reading the annotations of the tool function AT RUN TIME. An import moved
+    # into `if TYPE_CHECKING:` is then a NameError inside the schema builder,
+    # and the rule cannot tell a tool signature from any other one. The cost of
+    # not moving them is a few microseconds of import time.
+    "TC",
+    # PLR0911: a validator that returns the first thing wrong with its argument
+    # wants one `return` per way of being wrong. The alternative is nesting, and
+    # nesting is what these functions were written to avoid.
+    "PLR0911",
+    # PERF401: the loops it points at append one English sentence per problem
+    # found. Turning a four-line f-string into a comprehension saves a bound
+    # method lookup in a program that runs once and prints; it costs a reader.
+    "PERF401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert — S101 is the whole point of a test — and reach into the private
+# parts of what they test, which is the only way to check that a private rule
+# holds.
+# ARG: a fake handed to monkeypatch must accept the real function's parameters,
+# by name, whether or not the fake looks at them; renaming one to `_x` breaks the
+# call that passes it by keyword.
+# S102/S103: a test that the generated code runs has to run it, and a test that
+# a read-only directory is reported has to make one — the mode is the condition
+# under test, not a permission being handed out.
+# PT006/PT011: `parametrize("a,b", ...)` and a bare `pytest.raises(ValueError)`
+# whose message is asserted on the next line; both are house style, not defects.
+# PLR0913/FBT001/FBT003: a helper that builds a trace record takes the record's
+# fields, and a helper that runs both arms of a comparison takes which arm.
+# PTH: a test of `os.chmod` behaviour makes the same call the code makes.
+"tests/*" = [
+    "S101", "SLF001", "INP001", "ARG",
+    "S102", "S103", "PT006", "PT011", "PLR0913", "FBT001", "FBT003", "PTH",
+]
+# INP001 wants an `__init__.py` beside every module. These are directories of
+# programs run from the repository root (`uv run python scripts/x.py`), not
+# importable packages; giving them one would make `scripts.check_doc_links` a
+# name that means something, and it does not.
+"bench/*" = ["INP001"]
+"site/*" = ["INP001"]
+"scripts/*" = ["INP001"]
+"packaging/entry.py" = ["INP001"]
+# runtime.py is the sink: the sandbox copies this exact file into every draft
+# project as `ouroboros_runtime.py`, so it stays stdlib-only and as small as it
+# can be. PTH123 would add a pathlib import to open one path that arrives as a
+# string from the environment. DTZ005 would put an offset into the `t` field —
+# the record format SPEC.md fixes for all eight languages, which read the same
+# local wall clock.
+"ouroboros/runtime.py" = ["PTH123", "DTZ005"]
+# The bridge names its arguments after the flang records they carry: `«Exit»`
+# becomes `exit`. A2xx is right that `exit` is a builtin; renaming it would make
+# the bridge unreadable against ouroboros/brain/trace_brain.flang, which is the
+# one thing it has to be read against.
+"ouroboros/brain/__init__.py" = ["A002"]
+# treeflags.py, toolchain.py and clangd.py speak the vocabulary of a compile
+# database and of a compiler's own output, where a path IS a string: it arrives
+# as a JSON string, it leaves as an `-I` argument. PTH would put a `Path(...)`
+# and a `str(...)` on both sides of every one of them. And `os.path.abspath` is
+# not `Path.resolve`: the second follows symbolic links, which changes which
+# entry of a compile database matches a file.
+"ouroboros/languages/treeflags.py" = ["PTH"]
+"ouroboros/languages/toolchain.py" = ["PTH"]
+"ouroboros/clangtools/clangd.py" = ["PTH"]
+# The `tool_*` functions ARE the MCP tools. Their parameter list is the tool's
+# declared schema — a client sends those names — so its length and the presence
+# of a boolean flag in it are decisions of the protocol, not of Python style.
+"ouroboros/mcp/server.py" = ["PLR0913", "FBT001", "FBT002"]
+# crud.py, executor.py and sync.py are the sandbox's own operations, split out
+# of Project only so that one file does not hold everything. `Project._git` is
+# private to the package, not to them.
+"ouroboros/sandbox/crud.py" = ["SLF001"]
+# The research harness under scripts/measure and scripts/probe is one program
+# per experiment: `prepare` builds every case, `grade` scores every answer.
+# Splitting them would hide the order of the experiment, which is the thing a
+# reader of a measurement needs to see. They are also not part of what is
+# installed. S311: shuffling the question order needs to be repeatable, so it
+# uses a seeded Mersenne generator on purpose — a cryptographic one could not be
+# seeded to reproduce the published run.
+"scripts/measure/*" = ["C901", "PLR0912", "PLR0915", "S311"]
+"scripts/probe/*" = ["C901", "PLR0912", "PLR0915"]
+# The site builder is a Markdown dialect implemented as one dispatch over line
+# shapes (heading, table, quote, list, fence, directive). Every branch is one
+# shape; a "simpler" version would be the same branches behind an extra name.
+"site/build.py" = ["C901", "PLR0912", "PLR0915"]
+# PLW0108 as well in check-live.py: its table of sabotages pairs a name with an
+# action to run LATER, so `lambda: f()` is the point — inlining the call would
+# break the site while the table is still being built.
+"site/check-live.py" = ["C901", "PLR0912", "PLR0915", "PLW0108"]
 
 [tool.ruff.lint.isort]
 # keep `from x import (a as b, c as d)` as one block instead of one per name.
 combine-as-imports = true
 
+[tool.ruff.lint.mccabe]
+# The ceiling the tree already meets, so that the next function to cross it is
+# noticed while it is being written rather than a year later.
+max-complexity = 12
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
-# No per-module relaxations. There used to be one for `clang.*` (libclang ships
-# no type stubs), needed because the C and C++ backends imported clang.cindex
-# and passed untyped cursors around. They no longer import it: libclang is
-# spoken to by ouroboros/languages/_clang/emitter.c, on the far side of a
-# process boundary, and what crosses back is JSON.
+# The specimen programs of the measurement and the recorded benchmark runs are
+# input data, not code — the same list ruff excludes above, and for the same
+# reason. Several of them also share a module name (`prog.py` in every language
+# directory), which mypy cannot resolve and should not have to.
+exclude = [
+    "^scripts/measure/samples/",
+    # The trace-help experiment is a directory of one-shot programs run by
+    # scripts/measure/trace-help/run.sh, one per stage; its `build.py` collides by
+    # name with the site builder, and neither is imported by anything.
+    "^scripts/measure/trace-help/",
+    "^site/examples/captured/",
+    # site/examples/shop.py is the program the site shows a reader running: it is
+    # written the way an ordinary Python file is written, without annotations,
+    # because that is the file the pages instrument in front of them.
+    "^site/examples/shop\\.py$",
+    "^ouroboros/brain/_flang/",
+    "^bench/runs/", "^bench/runs_debug/", "^bench/task_debug/",
+]
+# No per-module relaxations for the package. There used to be one for `clang.*`
+# (libclang ships no type stubs), needed because the C and C++ backends imported
+# clang.cindex and passed untyped cursors around. They no longer import it:
+# libclang is spoken to by ouroboros/languages/_clang/emitter.c, on the far side
+# of a process boundary, and what crosses back is JSON.
+
+[[tool.mypy.overrides]]
+# Tests: the bodies are checked, the signatures are not demanded. Checking the
+# bodies is what catches an assertion that cannot fail — `x.field` where `x` is
+# `T | None` means the test would error rather than assert, and mypy says so.
+# Demanding `-> None` on 841 test functions would buy nothing but 841 lines.
+# implicit_reexport, because a test monkeypatches `module.subprocess`, which is
+# exactly a re-export of an imported name.
+# The names are module names, not paths: tests/ has no __init__.py, so
+# tests/test_cli.py is the module `test_cli`. mypy will not take `test_*` as a
+# pattern (a wildcard has to be a whole dotted component), so the list is
+# written out. A test file missing from it is checked as strictly as the package
+# and says so at once, which is the failure mode to want.
+module = ["equivalence_cases",
+          "test_base",
+          "test_brain",
+          "test_c",
+          "test_clangbridge",
+          "test_clangtools",
+          "test_cli",
+          "test_cpp",
+          "test_cross_language",
+          "test_csharp",
+          "test_elixir",
+          "test_equivalence",
+          "test_go",
+          "test_java",
+          "test_javascript",
+          "test_mcp",
+          "test_python_lang",
+          "test_registry",
+          "test_runtime",
+          "test_sandbox",
+          "test_schema_parity",
+          "test_toolchain",
+          "test_trace",
+          "test_treeflags"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = true
+implicit_reexport = true
+
+[[tool.mypy.overrides]]
+# The research harness under scripts/measure and scripts/probe drives real
+# agents over the network; it is not part of what is installed, and its
+# dependencies (the agent CLI, a live MCP server) are not importable here.
+module = ["measure.*", "probe.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# scripts/schema_facts.py runs one call in every language by importing the test
+# that already knows how — `tests/` is put on sys.path at run time, which mypy
+# cannot follow and does not need to: the import is guarded by that same path
+# insertion three lines above it.
+module = ["test_schema_parity"]
+ignore_missing_imports = true

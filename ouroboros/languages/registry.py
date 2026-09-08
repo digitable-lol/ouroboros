@@ -7,7 +7,7 @@ decides whether to pass an unsupported file through untouched or reject it.
 
 from __future__ import annotations
 
-import os
+from pathlib import PurePath
 
 from .base import Transformer
 from .c_lang import CTransformer
@@ -52,7 +52,7 @@ def transformer_for_path(path: str) -> Transformer | None:
     extension implies (e.g. gdb compiles ``.c`` files as C++) is routed to the
     backend the build actually used, so it parses instead of failing."""
 
-    t = transformer_for_extension(os.path.splitext(path)[1])
+    t = transformer_for_extension(PurePath(path).suffix)
     # Only *upgrade* a C-extension source the build actually compiled as C++
     # (e.g. gdb's ``.c`` files). A definitive C++ extension is authoritative and
     # is never downgraded to C on the strength of a compile command.

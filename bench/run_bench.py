@@ -129,7 +129,7 @@ def run_report(report: Path, logfile: Path) -> tuple[int, str]:
         cwd=str(report.parent),
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=30, check=False,
     )
     return proc.returncode, proc.stdout
 
@@ -163,9 +163,8 @@ def detect_tool_use(workdir: Path) -> bool:
     if debug.is_file() and "ШАБЛОН_НАЧАЛО" in debug.read_text(encoding="utf-8", errors="replace"):
         return True
     report = find_report(workdir)
-    if report and "_ouro_log" in report.read_text(encoding="utf-8", errors="replace"):
-        return True
-    return False
+    return bool(report and "_ouro_log" in report.read_text(
+        encoding="utf-8", errors="replace"))
 
 
 def debug_info_chars(workdir: Path) -> int:
@@ -197,7 +196,8 @@ def one_run(arm: str, idx: int, model: str) -> dict:
     (run_dir / "cmd.txt").write_text("\n".join(cmd), encoding="utf-8")
 
     t0 = time.monotonic()
-    proc = subprocess.run(cmd, cwd=str(workdir), capture_output=True, text=True, timeout=1800)
+    proc = subprocess.run(cmd, cwd=str(workdir), capture_output=True, text=True,
+                          timeout=1800, check=False)
     wall_s = time.monotonic() - t0
 
     (run_dir / "stdout.json").write_text(proc.stdout, encoding="utf-8")
@@ -240,7 +240,8 @@ def main() -> None:
                               ("success", "sample_ok", "hidden_ok", "used_ouroboros",
                                "num_turns", "output_tokens", "duration_ms")}, ensure_ascii=False),
                   flush=True)
-            (RUNS / "results.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+            (RUNS / "results.json").write_text(
+                json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\nWrote", RUNS / "results.json")
 

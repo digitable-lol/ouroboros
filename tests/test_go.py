@@ -76,7 +76,7 @@ def test_runtime_asset_for_falls_back_to_main_without_a_package_clause(tx):
     ("/* one */ /* two */\npackage twice\n", "twice"),
     ("", None),
     ("/* never closed\n", None),
-    ("import \"fmt\"\n", None),
+    ('import "fmt"\n', None),
 ])
 def test_package_name_reads_the_clause(source, expected):
     """Only comments and whitespace may precede a Go package clause, so skipping
@@ -187,7 +187,7 @@ def test_emit_ranges_reports_a_missing_emitter_binary(tmp_path):
 
 
 def test_build_emitter_reports_a_failed_build(tmp_path, monkeypatch):
-    import ouroboros.languages.go_lang as go_lang
+    from ouroboros.languages import go_lang
     monkeypatch.setattr(go_lang, "_EMITTER_SRC", tmp_path / "broken.go")
     (tmp_path / "broken.go").write_text("package main\nfunc main() { undefined() }\n",
                                         encoding="utf-8")
@@ -364,12 +364,12 @@ def _build_and_run(tx, root, source, *, argv_env=None, filename="prog.go"):
     name, helper = tx.runtime_asset_for(res.code)
     (root / name).write_text(helper, encoding="utf-8")
     build = subprocess.run(["go", "build", "-o", "prog.bin", filename, name],
-                           cwd=root, capture_output=True, text=True, timeout=TIMEOUT)
+                           cwd=root, capture_output=True, text=True, timeout=TIMEOUT, check=False)
     assert build.returncode == 0, build.stderr
     debug = root / "debug.info"
     env = {**os.environ, "OUROBOROS_DEBUG_INFO": str(debug), **(argv_env or {})}
     run = subprocess.run(["./prog.bin"], cwd=root, capture_output=True, text=True,
-                         env=env, timeout=TIMEOUT)
+                         env=env, timeout=TIMEOUT, check=False)
     return run, load(debug.read_text(encoding="utf-8"))
 
 
@@ -394,7 +394,7 @@ def test_end_to_end_records_a_panic_with_type_and_message(tx, tmp_path):
     src = ('package main\n\nimport "fmt"\n\n'
            'func boom() { panic("bad") }\n\n'
            "func main() {\n"
-           "\tdefer func() { fmt.Println(\"caught\", recover()) }()\n"
+           '\tdefer func() { fmt.Println("caught", recover()) }()\n'
            "\tboom()\n}\n")
     run, trace = _build_and_run(tx, tmp_path, src)
     assert run.returncode == 0 and run.stdout == "caught bad\n"
@@ -463,7 +463,7 @@ def test_call_ids_differ_between_processes(tx, tmp_path):
     """Two processes started in the same second must not draw the same ids: the
     id is the only thing pairing an `in` with its `out`, and a sink seeded from
     the clock pairs records across process boundaries."""
-    src = ('package main\n\n'
+    src = ("package main\n\n"
            "func tick(a int) int { return a + 1 }\n\n"
            "func main() { tick(1) }\n")
     ids = []
@@ -546,7 +546,7 @@ def test_duration_comes_from_a_monotonic_reading(tx):
 def test_reported_duration_excludes_the_sinks_own_write(tx, tmp_path):
     """`d` must measure the call, not the logging: the duration clock starts
     after the entry record is written."""
-    src = ('package main\n\n'
+    src = ("package main\n\n"
            "func tick(a int) int { return a + 1 }\n\n"
            "func main() {\n\tv := 0\n\tfor i := 0; i < 200; i++ { v = tick(v) }\n}\n")
     run, trace = _build_and_run(tx, tmp_path, src)
@@ -569,7 +569,7 @@ def test_helper_compiles_inside_an_older_module(tx, tmp_path):
     (tmp_path / name).write_text(helper, encoding="utf-8")
     build = subprocess.run(["go", "build", "./..."], cwd=tmp_path, capture_output=True,
                            text=True, timeout=TIMEOUT,
-                           env={**os.environ, "GOTOOLCHAIN": "local"})
+                           env={**os.environ, "GOTOOLCHAIN": "local"}, check=False)
     assert build.returncode == 0, build.stderr
 
 
@@ -584,7 +584,7 @@ def test_helper_beside_a_library_package_compiles(tx, tmp_path):
     name, helper = tx.runtime_asset_for(res.code)
     (tmp_path / name).write_text(helper, encoding="utf-8")
     build = subprocess.run(["go", "build", "./..."], cwd=tmp_path, capture_output=True,
-                           text=True, timeout=TIMEOUT)
+                           text=True, timeout=TIMEOUT, check=False)
     assert build.returncode == 0, build.stderr
 
 
@@ -596,7 +596,7 @@ def test_the_shipped_helper_alone_would_not_compile_there(tx, tmp_path):
     name, helper = tx.runtime_asset()
     (tmp_path / name).write_text(helper, encoding="utf-8")
     build = subprocess.run(["go", "build", "./..."], cwd=tmp_path, capture_output=True,
-                           text=True, timeout=TIMEOUT)
+                           text=True, timeout=TIMEOUT, check=False)
     assert build.returncode != 0
     assert "package" in build.stderr
 
@@ -616,8 +616,10 @@ def test_wrapping_the_tools_own_go_sources(tx):
 def test_python_is_not_routed_to_go():
     """A guard against the registry mapping the wrong extension: `.go` is the
     only thing this backend owns."""
-    assert transformer_for_path("a.py").language == "python"
-    assert transformer_for_path("a.go").language == "go"
+    for name, language in (("a.py", "python"), ("a.go", "go")):
+        found = transformer_for_path(name)
+        assert found is not None
+        assert found.language == language
     assert sys.version_info >= (3, 12)
 
 
@@ -627,7 +629,7 @@ def test_python_is_not_routed_to_go():
 
 
 def test_a_cold_cache_builds_the_emitter_and_a_warm_one_does_not(tmp_path, monkeypatch):
-    import ouroboros.languages.go_lang as go_lang
+    from ouroboros.languages import go_lang
 
     monkeypatch.setattr(go_lang, "_cache_dir", lambda: tmp_path / "cache")
     monkeypatch.delenv("OUROBOROS_GO_EMITTER", raising=False)
@@ -650,23 +652,21 @@ def test_a_cold_cache_builds_the_emitter_and_a_warm_one_does_not(tmp_path, monke
 
 
 def test_a_go_command_that_cannot_be_started_says_so(monkeypatch, tmp_path):
-    import ouroboros.languages.go_lang as go_lang
 
     def refuse(*_args, **_kwargs):
         raise OSError("no such thing")
 
-    monkeypatch.setattr(go_lang.subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "run", refuse)
     with pytest.raises(GoEmitterError, match="cannot run the go command"):
         build_emitter(tmp_path / "out")
 
 
 def test_a_build_that_never_finishes_says_so(monkeypatch, tmp_path):
-    import ouroboros.languages.go_lang as go_lang
 
     def hang(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(cmd="go build", timeout=300)
 
-    monkeypatch.setattr(go_lang.subprocess, "run", hang)
+    monkeypatch.setattr(subprocess, "run", hang)
     with pytest.raises(GoEmitterError, match="timed out"):
         build_emitter(tmp_path / "out")
 
@@ -675,11 +675,11 @@ def test_a_parse_that_never_finishes_says_so(monkeypatch):
     """A hung helper is a toolchain problem, not a corrupted source: answering
     "your code is corrupt" is how a caller ends up rewriting a file that
     was fine."""
-    import ouroboros.languages.go_lang as go_lang
+    from ouroboros.languages import go_lang
 
     def hang(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(cmd="emitter", timeout=go_lang.EMIT_TIMEOUT)
 
-    monkeypatch.setattr(go_lang.subprocess, "run", hang)
+    monkeypatch.setattr(subprocess, "run", hang)
     with pytest.raises(GoEmitterError, match="did not finish within"):
         emit_ranges(b"package p\n", filename="slow.go", emitter="/bin/true")

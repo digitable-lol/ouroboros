@@ -194,7 +194,7 @@ def build_emitter(destination: Path) -> None:
     argv = [_go_binary(), "build", "-o", str(destination), str(_EMITTER_SRC)]
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=300,
-                              cwd=str(_GO_DIR))
+                              cwd=str(_GO_DIR), check=False)
     except OSError as e:
         raise GoEmitterError(f"cannot run the go command: {e}") from e
     except subprocess.TimeoutExpired as e:
@@ -230,7 +230,7 @@ def emitter_path() -> str:
     staging = built.with_name(f"{built.name}.{os.getpid()}.tmp")
     try:
         build_emitter(staging)
-        os.replace(staging, built)
+        staging.replace(built)
     finally:
         staging.unlink(missing_ok=True)
     return str(built)
@@ -276,7 +276,7 @@ def emit_ranges(source: bytes, *, filename: str, emitter: str | None = None) -> 
     argv = [emitter or emitter_path(), filename]
     try:
         proc = subprocess.run(argv, input=source, capture_output=True,
-                              timeout=EMIT_TIMEOUT)
+                              timeout=EMIT_TIMEOUT, check=False)
     except subprocess.TimeoutExpired as e:
         raise GoEmitterError(
             f"the Go range emitter did not finish within {EMIT_TIMEOUT}s for {filename}"

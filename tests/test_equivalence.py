@@ -109,7 +109,7 @@ def _run(argv: list[str], cwd, env_extra: dict[str, str] | None = None):
     env = {**os.environ, **(env_extra or {})}
     try:
         p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True,
-                           timeout=TIMEOUT, env=env)
+                           timeout=TIMEOUT, env=env, check=False)
     except subprocess.TimeoutExpired:
         return ("TIMEOUT", "", "")
     except OSError as e:
@@ -129,6 +129,7 @@ def _materialise(case: Case, root, code: str, *, wrapped: bool) -> None:
     if not wrapped:
         return
     tx = transformer_for_language(case.lang)
+    assert tx is not None
     # `runtime_asset_for`, not the bare `runtime_asset`: the Go helper joins the
     # wrapped file's package instead of being imported, so it has to carry that
     # package's name. This is the same call the sandbox and the MCP tools make.
@@ -181,6 +182,7 @@ def _debug_env(root, wrapped: bool) -> dict[str, str]:
 
 def _wrapped_code(case: Case) -> str:
     tx = transformer_for_language(case.lang)
+    assert tx is not None
     res = tx.wrap_source(case.source, filename=case.filename)
     if case.lang == "elixir":
         # The trace module is a separate .ex file; a script has to compile it

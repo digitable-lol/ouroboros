@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 from .project import Project
 
@@ -51,7 +52,7 @@ def execute(
         env=env,
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=timeout, check=False,
     )
 
     _append_exec_section(project, command, proc)
@@ -74,5 +75,5 @@ def _append_exec_section(
         "err": proc.stderr,
     }
     line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-    with open(project.debug_info_path(), "a", encoding="utf-8") as fh:
+    with Path(project.debug_info_path()).open("a", encoding="utf-8") as fh:
         fh.write(line)

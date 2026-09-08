@@ -38,45 +38,45 @@ class Case:
         return f"{self.lang}:{self.name}"
 
 
-PYTHON: tuple[Case, ...] = tuple(
-    Case("python", name, src, "prog.py")
-    for name, src in {
-        'docstring': r'''"""Module docstring."""
+PYTHON: tuple[Case, ...] = (
+    *(Case("python", name, src, "prog.py")
+      for name, src in {
+        "docstring": r'''"""Module docstring."""
 def f(x):
     return x * 2
 print("doc:", repr(__doc__))
 print("f:", f(3))
 ''',
-        'future_import': r'''from __future__ import annotations
+        "future_import": r"""from __future__ import annotations
 def f(x: int) -> int:
     return x + 1
 print("f:", f(1))
-''',
-        'shebang': r'''#!/usr/bin/env python3
+""",
+        "shebang": r"""#!/usr/bin/env python3
 def f():
     return 7
 print("f:", f())
-''',
-        'encoding_decl': r'''# -*- coding: utf-8 -*-
+""",
+        "encoding_decl": r"""# -*- coding: utf-8 -*-
 def f():
     return "\u0442\u0435\u043a\u0441\u0442"
 print("f:", f())
-''',
-        'generator': r'''import inspect
+""",
+        "generator": r"""import inspect
 def gen(n):
     for i in range(n):
         yield i
 print("isgenfunc:", inspect.isgeneratorfunction(gen))
 print("list:", list(gen(3)))
-''',
-        'async_fn': r'''import asyncio, inspect
+""",
+        "async_fn": r"""import asyncio, inspect
 async def work(x):
     await asyncio.sleep(0)
     return x * 3
 print("iscoro:", inspect.iscoroutinefunction(work))
 print("result:", asyncio.run(work(4)))
-''',
-        'recursion_limit': r'''import sys
+""",
+        "recursion_limit": r"""import sys
 sys.setrecursionlimit(200)
 def deep(n):
     if n == 0:
@@ -86,8 +86,8 @@ try:
     print("deep:", deep(60))
 except RecursionError as e:
     print("RecursionError")
-''',
-        'doctest': r'''def add(a, b):
+""",
+        "doctest": r'''def add(a, b):
     """Add.
 
     >>> add(1, 2)
@@ -98,7 +98,7 @@ import doctest, sys
 r = doctest.testmod(sys.modules["__main__"], verbose=False)
 print("doctest:", r.attempted, r.failed)
 ''',
-        'introspection': r'''import inspect
+        "introspection": r"""import inspect
 class C:
     def m(self, a, b=2):
         return a + b
@@ -106,32 +106,32 @@ print("sig:", str(inspect.signature(C.m)))
 print("name:", C.m.__name__)
 print("src_ok:", "def m" in inspect.getsource(C.m))
 print("m:", C().m(1))
-''',
-        'pickle_fn': r'''import pickle
+""",
+        "pickle_fn": r"""import pickle
 def f(x):
     return x
 print("pickled:", pickle.dumps(f) is not None)
-''',
-        'side_effect_free': r'''def add(a, b):
+""",
+        "side_effect_free": r"""def add(a, b):
     return a + b
 def mul(a, b):
     return a * b
 print(add(2, 3), mul(4, 5))
-''',
-        'nested_closure': r'''def outer(n):
+""",
+        "nested_closure": r"""def outer(n):
     def inner(m):
         return m + n
     return inner
 print("r:", outer(10)(5))
-''',
-        'exception_flow': r'''def boom():
+""",
+        "exception_flow": r"""def boom():
     raise ValueError("bad")
 try:
     boom()
 except ValueError as e:
     print("caught:", e)
-''',
-        'classmethod_static': r'''class C:
+""",
+        "classmethod_static": r"""class C:
     @staticmethod
     def s(x):
         return x + 1
@@ -142,16 +142,16 @@ except ValueError as e:
     def p(self):
         return 42
 print(C.s(1), C.c(1), C().p)
-''',
-        'dataclass_slots': r'''from dataclasses import dataclass
+""",
+        "dataclass_slots": r"""from dataclasses import dataclass
 @dataclass
 class P:
     x: int
     def double(self):
         return self.x * 2
 print(P(3), P(3).double())
-''',
-        'recursion_depth': r'''import sys
+""",
+        "recursion_depth": r"""import sys
 sys.setrecursionlimit(120)
 def deep(n):
     if n == 0:
@@ -161,19 +161,19 @@ try:
     print("deep:", deep(50))
 except RecursionError:
     print("RecursionError")
-''',
-        'func_defaults': r'''def f(a, b=10, *, c=20):
+""",
+        "func_defaults": r"""def f(a, b=10, *, c=20):
     return a + b + c
 print("defaults:", f.__defaults__, f.__kwdefaults__)
 print("f:", f(1))
-''',
-        'docstring_and_future': r'''"""Real module."""
+""",
+        "docstring_and_future": r'''"""Real module."""
 from __future__ import annotations
 def f() -> int:
     return 1
 print(f())
 ''',
-        'threading_order': r'''import threading
+        "threading_order": r"""import threading
 out = []
 def work(i):
     out.append(i)
@@ -181,23 +181,22 @@ ts = [threading.Thread(target=work, args=(i,)) for i in range(5)]
 for t in ts: t.start()
 for t in ts: t.join()
 print("len:", len(out))
-''',
-        'yield_from': r'''def inner():
+""",
+        "yield_from": r"""def inner():
     yield 1
     yield 2
 def outer():
     yield from inner()
 print(list(outer()))
-''',
-        'contextmanager': r'''from contextlib import contextmanager
+""",
+        "contextmanager": r"""from contextlib import contextmanager
 @contextmanager
 def cm():
     yield 5
 with cm() as v:
     print("v:", v)
-''',
-    }.items()
-) + (
+""",
+    }.items()),
     # Run through the `#!` line rather than `python prog.py`: the only way to
     # notice that the shebang stopped being the first line of the file.
     Case(
@@ -210,87 +209,86 @@ with cm() as v:
 )
 
 _JS_SOURCES: dict[str, str] = {
-        'simple': r'''function add(a,b){ return a+b; }
+        "simple": r"""function add(a,b){ return a+b; }
 console.log(add(2,3));
-''',
-        'use_strict_file': r'''"use strict";
+""",
+        "use_strict_file": r""""use strict";
 function f(){
   try { undeclared = 1; return "assigned"; }
   catch(e){ return "threw:"+e.constructor.name; }
 }
 console.log(f());
-''',
-        'use_strict_fn': r'''function f(){
+""",
+        "use_strict_fn": r"""function f(){
   "use strict";
   try { undeclared = 1; return "assigned"; }
   catch(e){ return "threw:"+e.constructor.name; }
 }
 console.log(f());
-''',
-        'generator': r'''function* g(n){ for(let i=0;i<n;i++) yield i; }
+""",
+        "generator": r"""function* g(n){ for(let i=0;i<n;i++) yield i; }
 console.log([...g(3)]);
-''',
-        'fn_tostring': r'''function f(a,b){ return a+b; }
+""",
+        "fn_tostring": r"""function f(a,b){ return a+b; }
 console.log(f.toString().length > 0, f.length, f.name);
 console.log(f(1,2));
-''',
-        'try_finally_return': r'''function f(){ try { return 1; } finally { console.log("fin"); } }
+""",
+        "try_finally_return": r"""function f(){ try { return 1; } finally { console.log("fin"); } }
 console.log(f());
-''',
-        'closure_var_scope': r'''function f(){ var x = 1; if (true) { var x = 2; } return x; }
+""",
+        "closure_var_scope": r"""function f(){ var x = 1; if (true) { var x = 2; } return x; }
 console.log(f());
-''',
-        'hoisted_fn': r'''function outer(){ return inner(); function inner(){ return 42; } }
+""",
+        "hoisted_fn": r"""function outer(){ return inner(); function inner(){ return 42; } }
 console.log(outer());
-''',
-        'this_arguments': r'''const o = {
+""",
+        "this_arguments": r"""const o = {
   v: 7,
   m: function(){ return this.v + arguments.length; },
 };
 console.log(o.m(1,2));
-''',
-        'async_await': r'''async function w(x){ await null; return x*2; }
+""",
+        "async_await": r"""async function w(x){ await null; return x*2; }
 w(5).then(v=>console.log("v:",v));
-''',
-        'throw_flow': r'''function boom(){ throw new Error("bad"); }
+""",
+        "throw_flow": r"""function boom(){ throw new Error("bad"); }
 try { boom(); } catch(e){ console.log("caught:", e.message); }
-''',
-        'class_method': r'''class C { constructor(){ this.v=1; } m(x){ return x+this.v; } }
+""",
+        "class_method": r"""class C { constructor(){ this.v=1; } m(x){ return x+this.v; } }
 console.log(new C().m(4));
-''',
-        'shebang': r'''#!/usr/bin/env node
+""",
+        "shebang": r"""#!/usr/bin/env node
 function f(){ return 3; }
 console.log(f());
-''',
-        'recursion': r'''function fib(n){ if(n<2) return n; return fib(n-1)+fib(n-2); }
+""",
+        "recursion": r"""function fib(n){ if(n<2) return n; return fib(n-1)+fib(n-2); }
 console.log(fib(12));
-''',
-        'labeled_break': r'''function f(){
+""",
+        "labeled_break": r"""function f(){
   outer: for(let i=0;i<3;i++){
     for(let j=0;j<3;j++){ if(j==1) continue outer; }
   }
   return "ok";
 }
 console.log(f());
-''',
-        'getter_setter': r'''const o = {
+""",
+        "getter_setter": r"""const o = {
   _v: 1,
   get v(){ return this._v; },
   set v(x){ this._v = x; },
 };
 o.v = 9; console.log(o.v);
-''',
-    'non_bmp_characters': '''// \U0001F600 above the function
+""",
+    "non_bmp_characters": """// \U0001F600 above the function
 function pick() {
   return "\U0001F600 tail";
 }
 console.log(pick());
-''',
+""",
 }
 
-JAVASCRIPT: tuple[Case, ...] = tuple(
-    Case("javascript", name, src, "prog.js") for name, src in _JS_SOURCES.items()
-) + (
+JAVASCRIPT: tuple[Case, ...] = (
+    *(Case("javascript", name, src, "prog.js") for name, src in _JS_SOURCES.items()),
     Case("javascript", "cjs_script",
          "function f(){ return 5; }\nconsole.log(f());\n", "prog2.cjs"),
 )
@@ -299,9 +297,9 @@ JAVASCRIPT: tuple[Case, ...] = tuple(
 #: what the file's own syntax suggests, so a backend that picks `require` vs
 #: `import` from the parse rather than from the extension breaks every one of
 #: them ("require is not defined in ES module scope").
-JAVASCRIPT_MJS: tuple[Case, ...] = tuple(
-    Case("javascript", f"mjs_{name}", src, "prog.mjs") for name, src in _JS_SOURCES.items()
-) + (
+JAVASCRIPT_MJS: tuple[Case, ...] = (
+    *(Case("javascript", f"mjs_{name}", src, "prog.mjs")
+      for name, src in _JS_SOURCES.items()),
     Case("javascript", "mjs_esm_export",
          "export function f(){ return 5; }\nconsole.log(f());\n", "prog.mjs"),
 )
@@ -310,41 +308,41 @@ JAVASCRIPT_MJS: tuple[Case, ...] = tuple(
 C: tuple[Case, ...] = tuple(
     Case("c", name, src, "prog.c")
     for name, src in {
-        'simple': r'''#include <stdio.h>
+        "simple": r"""#include <stdio.h>
 int add(int a,int b){ return a+b; }
 int main(void){ printf("%d\n", add(2,3)); return 0; }
-''',
-        'side_effect_in_return': r'''#include <stdio.h>
+""",
+        "side_effect_in_return": r"""#include <stdio.h>
 int counter = 0;
 int bump(void){ return ++counter; }
 int main(void){ printf("%d %d %d\n", bump(), counter, bump()); return 0; }
-''',
-        'string_return': r'''#include <stdio.h>
+""",
+        "string_return": r"""#include <stdio.h>
 const char *name(void){ return "hello"; }
 int main(void){ printf("%s\n", name()); return 0; }
-''',
-        'null_string_arg': r'''#include <stdio.h>
+""",
+        "null_string_arg": r"""#include <stdio.h>
 int len(const char *s){ return s ? 1 : 0; }
 int main(void){ printf("%d\n", len(0)); return 0; }
-''',
-        'recursion': r'''#include <stdio.h>
+""",
+        "recursion": r"""#include <stdio.h>
 int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }
 int main(void){ printf("%d\n", fib(20)); return 0; }
-''',
-        'goto_cleanup': r'''#include <stdio.h>
+""",
+        "goto_cleanup": r"""#include <stdio.h>
 int f(int n){ int r = 0; if(n<0) goto out; r = n*2; out: return r; }
 int main(void){ printf("%d %d\n", f(3), f(-1)); return 0; }
-''',
-        'struct_return': r'''#include <stdio.h>
+""",
+        "struct_return": r"""#include <stdio.h>
 struct P { int x, y; };
 struct P mk(int a){ struct P p = {a, a*2}; return p; }
 int main(void){ struct P p = mk(3); printf("%d %d\n", p.x, p.y); return 0; }
-''',
-        'stdout_order': r'''#include <stdio.h>
+""",
+        "stdout_order": r"""#include <stdio.h>
 void say(const char *s){ printf("%s\n", s); }
 int main(void){ say("a"); say("b"); return 0; }
-''',
-        'varargs': r'''#include <stdio.h>
+""",
+        "varargs": r"""#include <stdio.h>
 #include <stdarg.h>
 int sum(int n, ...){
     va_list ap; va_start(ap,n);
@@ -354,27 +352,27 @@ int sum(int n, ...){
     return t;
 }
 int main(void){ printf("%d\n", sum(3,1,2,3)); return 0; }
-''',
-        'static_local': r'''#include <stdio.h>
+""",
+        "static_local": r"""#include <stdio.h>
 int next(void){ static int c = 0; return ++c; }
 int main(void){ printf("%d %d %d\n", next(), next(), next()); return 0; }
-''',
-        'main_wrapped_exit': r'''#include <stdio.h>
+""",
+        "main_wrapped_exit": r"""#include <stdio.h>
 int main(void){ printf("x\n"); return 3; }
-''',
-        'const_char_arg_null': r'''#include <stdio.h>
+""",
+        "const_char_arg_null": r"""#include <stdio.h>
 #include <string.h>
 size_t l(const char*s){ return strlen(s); }
 int main(void){ printf("%zu\n", l("abcd")); return 0; }
-''',
-        'float_return': r'''#include <stdio.h>
+""",
+        "float_return": r"""#include <stdio.h>
 double half(double x){ return x/2.0; }
 int main(void){ printf("%.2f\n", half(5.0)); return 0; }
-''',
-        'stderr_vs_stdout': r'''#include <stdio.h>
+""",
+        "stderr_vs_stdout": r"""#include <stdio.h>
 int f(void){ fprintf(stderr, "E\n"); return 1; }
 int main(void){ printf("O\n"); return f(); }
-''',
+""",
     }.items()
 )
 
@@ -382,29 +380,29 @@ int main(void){ printf("O\n"); return f(); }
 CPP: tuple[Case, ...] = tuple(
     Case("cpp", name, src, "prog.cpp")
     for name, src in {
-        'simple': r'''#include <iostream>
+        "simple": r"""#include <iostream>
 int add(int a,int b){ return a+b; }
 int main(){ std::cout << add(2,3) << "\n"; }
-''',
-        'unique_ptr_return': r'''#include <iostream>
+""",
+        "unique_ptr_return": r"""#include <iostream>
 #include <memory>
 std::unique_ptr<int> mk(int v){ return std::make_unique<int>(v); }
 int main(){ std::cout << *mk(5) << "\n"; }
-''',
-        'reference_return': r'''#include <iostream>
+""",
+        "reference_return": r"""#include <iostream>
 int g = 7;
 int &ref(){ return g; }
 int main(){ ref() = 9; std::cout << g << "\n"; }
-''',
-        'exception': r'''#include <iostream>
+""",
+        "exception": r"""#include <iostream>
 #include <stdexcept>
 int boom(){ throw std::runtime_error("bad"); }
 int main(){
     try { boom(); }
     catch(const std::exception &e){ std::cout << "caught " << e.what() << "\n"; }
 }
-''',
-        'copy_count': r'''#include <iostream>
+""",
+        "copy_count": r"""#include <iostream>
 struct T {
     int v;
     T(int x) : v(x) {}
@@ -413,50 +411,50 @@ struct T {
 };
 T mk(){ return T(1); }
 int main(){ T t = mk(); std::cout << t.v << "\n"; }
-''',
-        'namespace_class': r'''#include <iostream>
+""",
+        "namespace_class": r"""#include <iostream>
 namespace ns { struct C { int m(int x){ return x+1; } }; }
 int main(){ ns::C c; std::cout << c.m(4) << "\n"; }
-''',
-        'vector_return': r'''#include <iostream>
+""",
+        "vector_return": r"""#include <iostream>
 #include <vector>
 std::vector<int> mk(){ return {1,2,3}; }
 int main(){ std::cout << mk().size() << "\n"; }
-''',
-        'recursion': r'''#include <iostream>
+""",
+        "recursion": r"""#include <iostream>
 int fib(int n){ if(n<2) return n; return fib(n-1)+fib(n-2); }
 int main(){ std::cout << fib(18) << "\n"; }
-''',
-        'static_local': r'''#include <iostream>
+""",
+        "static_local": r"""#include <iostream>
 int next(){ static int c = 0; return ++c; }
 int main(){ std::cout << next() << next() << next() << "\n"; }
-''',
-        'nonmovable_return': r'''#include <iostream>
+""",
+        "nonmovable_return": r"""#include <iostream>
 #include <mutex>
 struct NM { int v; NM(int x):v(x){} NM(const NM&)=delete; NM(NM&&)=delete; };
 NM mk(){ return NM(3); }
 int main(){ NM n = mk(); std::cout << n.v << "\n"; }
-''',
-        'braced_struct_return': r'''#include <iostream>
+""",
+        "braced_struct_return": r"""#include <iostream>
 struct P { int x, y; };
 P mk(){ return {1,2}; }
 int main(){ P p = mk(); std::cout << p.x << p.y << "\n"; }
-''',
-        'initializer_list': r'''#include <iostream>
+""",
+        "initializer_list": r"""#include <iostream>
 #include <map>
 #include <string>
 std::map<std::string,int> mk(){ return {{"a",1}}; }
 int main(){ std::cout << mk().size() << "\n"; }
-''',
-        'noexcept_fn': r'''#include <iostream>
+""",
+        "noexcept_fn": r"""#include <iostream>
 int f() noexcept { return 4; }
 int main(){ std::cout << f() << "\n"; }
-''',
-        'constexpr_fn': r'''#include <iostream>
+""",
+        "constexpr_fn": r"""#include <iostream>
 constexpr int sq(int x){ return x*x; }
 int main(){ constexpr int v = sq(5); std::cout << v << "\n"; }
-''',
-        'dtor_order': r'''#include <iostream>
+""",
+        "dtor_order": r"""#include <iostream>
 struct L {
     const char *n;
     L(const char *x) : n(x) { std::cout << "ctor " << n << "\n"; }
@@ -464,7 +462,7 @@ struct L {
 };
 int f(){ L a("a"); return 1; }
 int main(){ std::cout << f() << "\n"; }
-''',
+""",
     }.items()
 )
 
@@ -472,24 +470,24 @@ int main(){ std::cout << f() << "\n"; }
 ELIXIR: tuple[Case, ...] = tuple(
     Case("elixir", name, src, "prog.exs")
     for name, src in {
-        'simple': r'''defmodule M do
+        "simple": r"""defmodule M do
   def add(a, b), do: a + b
 end
 IO.puts(M.add(2, 3))
-''',
-        'guards_clauses': r'''defmodule M do
+""",
+        "guards_clauses": r"""defmodule M do
   def f(n) when n < 0, do: :neg
   def f(0), do: :zero
   def f(_), do: :pos
 end
 IO.inspect([M.f(-1), M.f(0), M.f(1)])
-''',
-        'defaults': r'''defmodule M do
+""",
+        "defaults": r"""defmodule M do
   def f(a, b \\ 10), do: a + b
 end
 IO.puts(M.f(1))
-''',
-        'raise_flow': r'''defmodule M do
+""",
+        "raise_flow": r"""defmodule M do
   def boom, do: raise("bad")
 end
 try do
@@ -497,32 +495,32 @@ try do
 rescue
   e -> IO.puts("caught " <> Exception.message(e))
 end
-''',
-        'private_fn': r'''defmodule M do
+""",
+        "private_fn": r"""defmodule M do
   def pub(x), do: priv(x) * 2
   defp priv(x), do: x + 1
 end
 IO.puts(M.pub(3))
-''',
-        'tail_recursion': r'''defmodule M do
+""",
+        "tail_recursion": r"""defmodule M do
   def loop(0, acc), do: acc
   def loop(n, acc), do: loop(n - 1, acc + n)
 end
 IO.puts(M.loop(200_000, 0))
-''',
-        'struct_module': r'''defmodule P do
+""",
+        "struct_module": r"""defmodule P do
   defstruct [:x, :y]
   def mk(a), do: %P{x: a, y: a * 2}
 end
 IO.inspect(P.mk(3))
-''',
-        'module_attr_doc': r'''defmodule M do
+""",
+        "module_attr_doc": r"""defmodule M do
   @moduledoc "docs"
   def f, do: 1
 end
 IO.puts(M.f())
-''',
-        'behaviour_impl': r'''defmodule B do
+""",
+        "behaviour_impl": r"""defmodule B do
   @callback go(integer) :: integer
 end
 defmodule M do
@@ -531,20 +529,20 @@ defmodule M do
   def go(x), do: x + 1
 end
 IO.puts(M.go(1))
-''',
-        'pattern_binary': r'''defmodule M do
+""",
+        "pattern_binary": r"""defmodule M do
   def head(<<h::8, _rest::binary>>), do: h
 end
 IO.puts(M.head("ABC"))
-''',
-        'nested_module': r'''defmodule Outer do
+""",
+        "nested_module": r"""defmodule Outer do
   defmodule Inner do
     def f, do: 5
   end
   def g, do: Inner.f() + 1
 end
 IO.puts(Outer.g())
-''',
+""",
     }.items()
 )
 
@@ -552,7 +550,7 @@ IO.puts(Outer.g())
 GO: tuple[Case, ...] = tuple(
     Case("go", name, src, "prog.go")
     for name, src in {
-        'simple': r"""package main
+        "simple": r"""package main
 
 import "fmt"
 
@@ -560,7 +558,7 @@ func add(a, b int) int { return a + b }
 
 func main() { fmt.Println(add(2, 3)) }
 """,
-        'multiple_results': r"""package main
+        "multiple_results": r"""package main
 
 import (
 	"errors"
@@ -579,7 +577,7 @@ func main() {
 	fmt.Println(div(1, 0))
 }
 """,
-        'named_results_naked_return': r"""package main
+        "named_results_naked_return": r"""package main
 
 import "fmt"
 
@@ -591,7 +589,7 @@ func split(n int) (half int, rest int) {
 
 func main() { fmt.Println(split(7)) }
 """,
-        'blank_result': r"""package main
+        "blank_result": r"""package main
 
 import "fmt"
 
@@ -599,7 +597,7 @@ func f() (_ int, err error) { return 3, nil }
 
 func main() { fmt.Println(f()) }
 """,
-        'deferred_result_change': r"""package main
+        "deferred_result_change": r"""package main
 
 import "fmt"
 
@@ -610,7 +608,7 @@ func f() (n int) {
 
 func main() { fmt.Println(f()) }
 """,
-        'defer_order': r"""package main
+        "defer_order": r"""package main
 
 import "fmt"
 
@@ -622,7 +620,7 @@ func f() int {
 
 func main() { fmt.Println(f()) }
 """,
-        'recover_in_caller': r"""package main
+        "recover_in_caller": r"""package main
 
 import "fmt"
 
@@ -633,7 +631,7 @@ func main() {
 	fmt.Println(boom())
 }
 """,
-        'recover_in_self': r"""package main
+        "recover_in_self": r"""package main
 
 import "fmt"
 
@@ -648,7 +646,7 @@ func safe() (out string) {
 
 func main() { fmt.Println(safe()) }
 """,
-        'recursion': r"""package main
+        "recursion": r"""package main
 
 import "fmt"
 
@@ -661,7 +659,7 @@ func fib(n int) int {
 
 func main() { fmt.Println(fib(18)) }
 """,
-        'variadic': r"""package main
+        "variadic": r"""package main
 
 import "fmt"
 
@@ -674,7 +672,7 @@ func sum(xs ...int) (total int) {
 
 func main() { fmt.Println(sum(1, 2, 3), sum()) }
 """,
-        'method_receivers': r"""package main
+        "method_receivers": r"""package main
 
 import "fmt"
 
@@ -694,7 +692,7 @@ func main() {
 	fmt.Println(c.Value())
 }
 """,
-        'interface_satisfaction': r"""package main
+        "interface_satisfaction": r"""package main
 
 import "fmt"
 
@@ -708,7 +706,7 @@ func describe(s Shape) string { return fmt.Sprint("area=", s.Area()) }
 
 func main() { fmt.Println(describe(Square{side: 4})) }
 """,
-        'goroutines_channel': r"""package main
+        "goroutines_channel": r"""package main
 
 import (
 	"fmt"
@@ -737,7 +735,7 @@ func main() {
 	fmt.Println(got)
 }
 """,
-        'closure_literal': r"""package main
+        "closure_literal": r"""package main
 
 import "fmt"
 
@@ -748,7 +746,7 @@ func main() {
 	fmt.Println(apply(double, 21))
 }
 """,
-        'os_exit_code': r"""package main
+        "os_exit_code": r"""package main
 
 import (
 	"fmt"
@@ -762,7 +760,7 @@ func leave(code int) {
 
 func main() { leave(3) }
 """,
-        'stdout_and_stderr': r"""package main
+        "stdout_and_stderr": r"""package main
 
 import (
 	"fmt"
@@ -779,7 +777,7 @@ func main() {
 	os.Exit(warn("bad"))
 }
 """,
-        'struct_return': r"""package main
+        "struct_return": r"""package main
 
 import "fmt"
 
@@ -792,7 +790,7 @@ func main() {
 	fmt.Println(p.X, p.Y)
 }
 """,
-        'build_tag_and_doc_comment': r"""//go:build !ouroboros_never
+        "build_tag_and_doc_comment": r"""//go:build !ouroboros_never
 
 // Package main greets.
 package main
@@ -803,7 +801,7 @@ func greet() string { return "hi" }
 
 func main() { fmt.Println(greet(), len("//go:build")) }
 """,
-        'generic_function': r"""package main
+        "generic_function": r"""package main
 
 import "fmt"
 
@@ -819,7 +817,7 @@ func main() {
 	fmt.Println(first([]string{}, "none"))
 }
 """,
-        'init_function': r"""package main
+        "init_function": r"""package main
 
 import "fmt"
 
@@ -831,7 +829,7 @@ func use() int { return seed * 2 }
 
 func main() { fmt.Println(use()) }
 """,
-        'unicode_source': r"""package main
+        "unicode_source": r"""package main
 
 import "fmt"
 
@@ -840,7 +838,7 @@ func длина(строка string) int { return len([]rune(строка)) }
 
 func main() { fmt.Println(длина("привет"), длина("hi")) }
 """,
-        'labeled_break': r"""package main
+        "labeled_break": r"""package main
 
 import "fmt"
 
@@ -859,7 +857,7 @@ outer:
 
 func main() { fmt.Println(find(12)) }
 """,
-        'shadowed_result_name': r"""package main
+        "shadowed_result_name": r"""package main
 
 import "fmt"
 
@@ -881,12 +879,12 @@ func main() { fmt.Println(f(1), f(-1)) }
 JAVA: tuple[Case, ...] = tuple(
     Case("java", name, src, "Prog.java")
     for name, src in {
-        'simple': r'''public class Prog {
+        "simple": r"""public class Prog {
     static int add(int a, int b) { return a + b; }
     public static void main(String[] args) { System.out.println(add(2, 3)); }
 }
-''',
-        'ctor_super_and_final_field': r'''class Base {
+""",
+        "ctor_super_and_final_field": r"""class Base {
     Base(int x) { System.out.println("base " + x); }
 }
 public class Prog extends Base {
@@ -895,16 +893,16 @@ public class Prog extends Base {
     int kept() { return kept; }
     public static void main(String[] args) { System.out.println(new Prog(4).kept()); }
 }
-''',
-        'ctor_this_delegation': r'''public class Prog {
+""",
+        "ctor_this_delegation": r"""public class Prog {
     private final String label;
     Prog() { this("fallback"); }
     Prog(String label) { this.label = label; }
     String label() { return label; }
     public static void main(String[] args) { System.out.println(new Prog().label()); }
 }
-''',
-        'narrowing_returns': r'''public class Prog {
+""",
+        "narrowing_returns": r"""public class Prog {
     static long asLong() { return 1; }
     static double asDouble() { return 2; }
     static float asFloat() { return 3; }
@@ -916,8 +914,8 @@ public class Prog extends Base {
                            + asShort() + asByte() + asChar());
     }
 }
-''',
-        'lambda_return_target_type': r'''import java.util.function.*;
+""",
+        "lambda_return_target_type": r"""import java.util.function.*;
 public class Prog {
     static Supplier<Integer> maker(int n) { return () -> n * 2; }
     static Function<Integer, Integer> blocky() { return x -> { return x + 1; }; }
@@ -926,8 +924,8 @@ public class Prog {
         System.out.println(blocky().apply(1));
     }
 }
-''',
-        'checked_exception_rethrow': r'''import java.io.*;
+""",
+        "checked_exception_rethrow": r"""import java.io.*;
 public class Prog {
     static String read(boolean fail) throws IOException {
         if (fail) throw new IOException("no file");
@@ -940,8 +938,8 @@ public class Prog {
         } catch (IOException e) { System.out.println("caught " + e.getMessage()); }
     }
 }
-''',
-        'interface_default_and_private': r'''interface Greeter {
+""",
+        "interface_default_and_private": r"""interface Greeter {
     private int base() { return 10; }
     String name();
     default String greet() { return "hello, " + name() + base(); }
@@ -950,16 +948,16 @@ public class Prog implements Greeter {
     public String name() { return "world"; }
     public static void main(String[] args) { System.out.println(new Prog().greet()); }
 }
-''',
-        'enum_with_method': r'''public class Prog {
+""",
+        "enum_with_method": r"""public class Prog {
     enum Colour {
         RED, GREEN;
         String label() { return name().toLowerCase(); }
     }
     public static void main(String[] args) { System.out.println(Colour.GREEN.label()); }
 }
-''',
-        'record_compact_constructor': r'''public class Prog {
+""",
+        "record_compact_constructor": r"""public class Prog {
     record Point(int x, int y) {
         Point {
             if (x < 0) throw new IllegalArgumentException("negative x");
@@ -973,8 +971,8 @@ public class Prog implements Greeter {
         }
     }
 }
-''',
-        'varargs_and_arrays': r'''public class Prog {
+""",
+        "varargs_and_arrays": r"""public class Prog {
     static int total(int... xs) { int s = 0; for (int x : xs) s += x; return s; }
     static String join(String... xs) { return String.join("-", xs); }
     public static void main(String[] args) {
@@ -982,8 +980,8 @@ public class Prog implements Greeter {
         System.out.println(join("a", "b"));
     }
 }
-''',
-        'anonymous_and_local_class': r'''public class Prog {
+""",
+        "anonymous_and_local_class": r"""public class Prog {
     static int run() {
         class Local { int twice(int x) { return x * 2; } }
         Runnable r = new Runnable() { public void run() { System.out.println("anon"); } };
@@ -992,15 +990,15 @@ public class Prog implements Greeter {
     }
     public static void main(String[] args) { System.out.println(run()); }
 }
-''',
-        'static_initializer_untouched': r'''public class Prog {
+""",
+        "static_initializer_untouched": r"""public class Prog {
     static final int SEED;
     static { SEED = 7; System.out.println("static block"); }
     static int use() { return SEED; }
     public static void main(String[] args) { System.out.println(use()); }
 }
-''',
-        'try_with_resources': r'''public class Prog {
+""",
+        "try_with_resources": r"""public class Prog {
     static class Res implements AutoCloseable {
         public void close() { System.out.println("closed"); }
         int value() { return 42; }
@@ -1010,40 +1008,40 @@ public class Prog implements Greeter {
     }
     public static void main(String[] args) { System.out.println(use()); }
 }
-''',
-        'non_bmp_characters': '''public class Prog {
+""",
+        "non_bmp_characters": """public class Prog {
     // \U0001F600 above the method
     static String pick() { return "\U0001F600 tail"; }
     public static void main(String[] args) { System.out.println(pick()); }
 }
-''',
-        'uncaught_exception': r'''public class Prog {
+""",
+        "uncaught_exception": r"""public class Prog {
     static int explode(int n) { return 10 / n; }
     public static void main(String[] args) {
         System.out.println("before");
         System.out.println(explode(0));
     }
 }
-''',
-        'system_exit_mid_call': r'''public class Prog {
+""",
+        "system_exit_mid_call": r"""public class Prog {
     static void quit(int code) { System.out.println("leaving"); System.exit(code); }
     public static void main(String[] args) { quit(3); }
 }
-''',
-        'recursion': r'''public class Prog {
+""",
+        "recursion": r"""public class Prog {
     static int depth(int n) { return n == 0 ? 0 : 1 + depth(n - 1); }
     public static void main(String[] args) { System.out.println(depth(50)); }
 }
-''',
-        'return_inside_finally': r'''public class Prog {
+""",
+        "return_inside_finally": r"""public class Prog {
     @SuppressWarnings("finally")
     static int odd() {
         try { return 1; } finally { return 2; }
     }
     public static void main(String[] args) { System.out.println(odd()); }
 }
-''',
-        'nested_try_finally_flow': r'''public class Prog {
+""",
+        "nested_try_finally_flow": r"""public class Prog {
     static String flow(int n) {
         StringBuilder log = new StringBuilder();
         try {
@@ -1057,8 +1055,8 @@ public class Prog implements Greeter {
     }
     public static void main(String[] args) { System.out.println(flow(1) + " " + flow(0)); }
 }
-''',
-        'threads': r'''public class Prog {
+""",
+        "threads": r"""public class Prog {
     static int work(int n) { return n * n; }
     public static void main(String[] args) throws Exception {
         Thread t = new Thread(() -> System.out.println(work(4)));
@@ -1067,8 +1065,8 @@ public class Prog implements Greeter {
         System.out.println(work(5));
     }
 }
-''',
-        'stack_trace_line_numbers': r'''public class Prog {
+""",
+        "stack_trace_line_numbers": r"""public class Prog {
     static int level3() { throw new IllegalStateException("deep"); }
     static int level2() { return level3(); }
     static int level1() { return level2(); }
@@ -1082,8 +1080,8 @@ public class Prog implements Greeter {
         }
     }
 }
-''',
-        'switch_expression_and_yield': r'''public class Prog {
+""",
+        "switch_expression_and_yield": r"""public class Prog {
     static String label(int n) {
         return switch (n) {
             case 1 -> "one";
@@ -1093,8 +1091,8 @@ public class Prog implements Greeter {
     }
     public static void main(String[] args) { System.out.println(label(2) + label(9)); }
 }
-''',
-        'text_block': '''public class Prog {
+""",
+        "text_block": '''public class Prog {
     static String block() {
         return """
             line one
@@ -1103,7 +1101,7 @@ public class Prog implements Greeter {
     public static void main(String[] args) { System.out.println(block()); }
 }
 ''',
-        'sealed_and_pattern_switch': r'''public class Prog {
+        "sealed_and_pattern_switch": r"""public class Prog {
     sealed interface Shape permits Circle, Square {}
     record Circle(double r) implements Shape {}
     record Square(double s) implements Shape {}
@@ -1115,8 +1113,8 @@ public class Prog implements Greeter {
     }
     public static void main(String[] args) { System.out.println(area(new Square(3))); }
 }
-''',
-        'generics_and_bounds': r'''import java.util.*;
+""",
+        "generics_and_bounds": r"""import java.util.*;
 public class Prog {
     static <T extends Comparable<T>> T biggest(List<T> xs) {
         T best = xs.get(0);
@@ -1130,8 +1128,8 @@ public class Prog {
         System.out.println(Arrays.toString(firstTwo("a", "b", "c")));
     }
 }
-''',
-        'empty_and_comment_only_bodies': r'''public class Prog {
+""",
+        "empty_and_comment_only_bodies": r"""public class Prog {
     static void nothing() {}
     static void onlyComment() { /* empty */ }
     static int afterComment() { // trailing comment
@@ -1143,22 +1141,22 @@ public class Prog {
         System.out.println(afterComment());
     }
 }
-''',
-        'names_that_clash_with_the_helper': r'''public class Prog {
+""",
+        "names_that_clash_with_the_helper": r"""public class Prog {
     static class OuroborosRuntime { static String enter() { return "theirs"; } }
     static int enter(int x) { return x + 1; }
     static String use() { return OuroborosRuntime.enter(); }
     public static void main(String[] args) { System.out.println(use() + enter(1)); }
 }
-''',
-        'unicode_identifiers': '''public class Prog {
+""",
+        "unicode_identifiers": """public class Prog {
     static int \u0441\u0443\u043c\u043c\u0430(int \u0430, int \u0431) { return \u0430 + \u0431; }
     public static void main(String[] args) {
         System.out.println(\u0441\u0443\u043c\u043c\u0430(1, 2));
     }
 }
-''',
-        'thirty_long_arguments': r'''public class Prog {
+""",
+        "thirty_long_arguments": r"""public class Prog {
     static String many(String a0, String a1, String a2, String a3, String a4, String a5,
                        String a6, String a7, String a8, String a9, String a10, String a11,
                        String a12, String a13, String a14, String a15, String a16,
@@ -1174,7 +1172,7 @@ public class Prog {
                                 big, big, big, big, big, big, big, big, big, big));
     }
 }
-''',
+""",
     }.items()
 )
 
@@ -1185,7 +1183,7 @@ public class Prog {
 CSHARP: tuple[Case, ...] = tuple(
     Case("csharp", name, src, "Program.cs")
     for name, src in {
-        'basics': r'''using System;
+        "basics": r"""using System;
 
 namespace Demo
 {
@@ -1224,8 +1222,8 @@ namespace Demo
         }
     }
 }
-''',
-        'iterator': r'''using System;
+""",
+        "iterator": r"""using System;
 using System.Collections.Generic;
 
 class Program
@@ -1253,8 +1251,8 @@ class Program
         Console.WriteLine(Total(Evens(10)));
     }
 }
-''',
-        'outparam': r'''using System;
+""",
+        "outparam": r"""using System;
 
 class Program
 {
@@ -1281,8 +1279,8 @@ class Program
         Console.WriteLine(half + " " + note);
     }
 }
-''',
-        'async': r'''using System;
+""",
+        "async": r"""using System;
 using System.Threading.Tasks;
 
 class Program
@@ -1314,8 +1312,8 @@ class Program
         Console.WriteLine(await Label(5));
     }
 }
-''',
-        'exprbody': r'''using System;
+""",
+        "exprbody": r"""using System;
 
 class Program
 {
@@ -1337,8 +1335,8 @@ class Program
         } catch (NotSupportedException e) { Console.WriteLine("caught " + e.Message); }
     }
 }
-''',
-        'localfn': r'''using System;
+""",
+        "localfn": r"""using System;
 
 class Program
 {
@@ -1359,8 +1357,8 @@ class Program
         Console.WriteLine(Compute(-3));
     }
 }
-''',
-        'lambda': r'''using System;
+""",
+        "lambda": r"""using System;
 using System.Collections.Generic;
 
 class Program
@@ -1385,8 +1383,8 @@ class Program
         Console.WriteLine(string.Join(",", xs));
     }
 }
-''',
-        'ctorbase': r'''using System;
+""",
+        "ctorbase": r"""using System;
 
 class Animal
 {
@@ -1431,8 +1429,8 @@ class Program
         Console.WriteLine(new Animal("cow").Speak());
     }
 }
-''',
-        'boom': r'''using System;
+""",
+        "boom": r"""using System;
 
 class Program
 {
@@ -1454,8 +1452,8 @@ class Program
         Console.WriteLine("never printed");
     }
 }
-''',
-        'emoji': r'''using System;
+""",
+        "emoji": r"""using System;
 
 class Program
 {
@@ -1479,8 +1477,8 @@ class Program
         Console.WriteLine(Wrap("🚀 полёт"));
     }
 }
-''',
-        'generics': r'''using System;
+""",
+        "generics": r"""using System;
 using System.Collections.Generic;
 
 class Program
@@ -1513,8 +1511,8 @@ class Program
         Console.WriteLine(Lookup(map, "z"));
     }
 }
-''',
-        'props': r'''using System;
+""",
+        "props": r"""using System;
 
 class Counter
 {
@@ -1559,8 +1557,8 @@ class Program
         Console.WriteLine(c.Value);
     }
 }
-''',
-        'refin': r'''using System;
+""",
+        "refin": r"""using System;
 
 class Program
 {
@@ -1594,8 +1592,8 @@ class Program
         Console.WriteLine(x + " " + y);
     }
 }
-''',
-        'structops': r'''using System;
+""",
+        "structops": r"""using System;
 
 struct Vec
 {
@@ -1635,8 +1633,8 @@ class Program
         Console.WriteLine(flat);
     }
 }
-''',
-        'refreturn': r'''using System;
+""",
+        "refreturn": r"""using System;
 
 class Box
 {
@@ -1666,8 +1664,8 @@ class Program
         Console.WriteLine(box.At(1));
     }
 }
-''',
-        'unsafeptr': r'''using System;
+""",
+        "unsafeptr": r"""using System;
 
 class Program
 {
@@ -1699,8 +1697,8 @@ class Program
         Console.WriteLine(Safe(6, 7));
     }
 }
-''',
-        'span': r'''using System;
+""",
+        "span": r"""using System;
 
 class Program
 {
@@ -1729,8 +1727,8 @@ class Program
         Console.WriteLine(Plain("done"));
     }
 }
-''',
-        'exprprop': r'''using System;
+""",
+        "exprprop": r"""using System;
 
 class Gauge
 {
@@ -1761,8 +1759,8 @@ class Program
         Console.WriteLine(g.Describe());
     }
 }
-''',
-        'misc': r'''using System;
+""",
+        "misc": r"""using System;
 using System.Collections.Generic;
 
 interface IGreeter
@@ -1835,7 +1833,7 @@ class Program
         Console.WriteLine(new Point(-3, 4).Manhattan());
     }
 }
-''',
+""",
     }.items()
 )
 

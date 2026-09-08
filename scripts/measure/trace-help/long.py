@@ -165,10 +165,10 @@ def records(raw: str) -> tuple[list[dict], set[int]]:
     строк подряд, так что уцелевшие считаются точно, а не по совпадению текста.
     """
 
-    lines = [l for l in ask.lines_of(raw) if l.startswith("{")]
+    lines = [line for line in ask.lines_of(raw) if line.startswith("{")]
     i, j = ask.cut_bounds(lines, LIMIT)
-    alive = set(range(0, i)) | set(range(j + 1, len(lines)))
-    return [json.loads(l) for l in lines], alive
+    alive = set(range(i)) | set(range(j + 1, len(lines)))
+    return [json.loads(line) for line in lines], alive
 
 
 def main() -> int:

@@ -139,7 +139,7 @@ def lint_file(path: str, checks: str | None = None,
     cmd = [tool, str(p), f"--checks={check_arg}", "--quiet",
            "--", *compile_flags_for(str(p), language)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"clang-tidy timed out after {timeout}s"}
     except OSError as e:

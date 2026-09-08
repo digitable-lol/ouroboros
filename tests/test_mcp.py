@@ -132,7 +132,7 @@ def test_the_server_still_builds_if_that_field_is_ever_renamed(monkeypatch):
 
     import mcp.server.fastmcp as fastmcp_mod
 
-    class _Renamed(fastmcp_mod.FastMCP):  # type: ignore[misc]
+    class _Renamed(fastmcp_mod.FastMCP):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             del self._mcp_server.version
@@ -171,22 +171,28 @@ def test_every_tool_has_title_and_annotations():
             assert ann.readOnlyHint is True and ann.openWorldHint is False
         else:
             assert ann.readOnlyHint is False
+    def hints(name: str) -> types.ToolAnnotations:
+        """The annotations of one tool — proved present by the loop above."""
+        found = tools[name].annotations
+        assert found is not None
+        return found
+
     # execute runs arbitrary commands -> the only open-world tool.
-    assert tools["execute"].annotations.openWorldHint is True
-    assert tools["read_trace"].annotations.openWorldHint is False
+    assert hints("execute").openWorldHint is True
+    assert hints("read_trace").openWorldHint is False
     # finish rmtree's the clean tree before rebuilding it -> destructive.
-    assert tools["finish"].annotations.destructiveHint is True
+    assert hints("finish").destructiveHint is True
     # the clang tooling: lint is read-only; symbol_search writes only clangd's
     # own index cache (not read-only) but is additive + idempotent.
-    assert tools["lint_file"].annotations.readOnlyHint is True
-    assert tools["symbol_search"].annotations.readOnlyHint is False
-    assert tools["symbol_search"].annotations.idempotentHint is True
+    assert hints("lint_file").readOnlyHint is True
+    assert hints("symbol_search").readOnlyHint is False
+    assert hints("symbol_search").idempotentHint is True
     # clangd navigation tools: document_symbols needs no index (read-only); the
     # cross-file ones write only the index cache (idempotent, not read-only).
-    assert tools["document_symbols"].annotations.readOnlyHint is True
+    assert hints("document_symbols").readOnlyHint is True
     for name in ("references", "call_hierarchy", "describe_symbol"):
-        assert tools[name].annotations.readOnlyHint is False
-        assert tools[name].annotations.idempotentHint is True
+        assert hints(name).readOnlyHint is False
+        assert hints(name).idempotentHint is True
 
 
 def _call_tool(name: str, arguments: dict[str, object]) -> types.CallToolResult:
@@ -198,7 +204,9 @@ def _call_tool(name: str, arguments: dict[str, object]) -> types.CallToolResult:
         method="tools/call",
         params=types.CallToolRequestParams(name=name, arguments=arguments),
     )
-    return asyncio.run(handler(req)).root
+    # The handler is typed as returning an Awaitable; asyncio.run takes the
+    # coroutine it actually is.
+    return asyncio.run(handler(req)).root  # type: ignore[arg-type]
 
 
 def test_invalid_args_is_error_result_not_protocol_error():
@@ -206,7 +214,9 @@ def test_invalid_args_is_error_result_not_protocol_error():
     tool RESULT (the model can see and recover), not a raised protocol error."""
     res = _call_tool("wrap_code_snippet", {"code": "x"})  # missing `language`
     assert res.isError is True
-    assert "validation error" in res.content[0].text.lower()
+    first = res.content[0]
+    assert isinstance(first, types.TextContent)
+    assert "validation error" in first.text.lower()
 
 
 def test_handled_failure_is_normal_result_with_ok_false():
@@ -718,7 +728,7 @@ def test_bad_transport_env_var_fails_fast():
         [sys.executable, "-c",
          "from ouroboros.mcp.server import main; main()"],
         env={**os.environ, "OUROBOROS_MCP_TRANSPORT": "carrier-pigeon"},
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, timeout=120, check=False,
     )
     assert proc.returncode != 0
     assert "carrier-pigeon" in proc.stderr

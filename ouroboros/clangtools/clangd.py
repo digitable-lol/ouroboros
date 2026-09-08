@@ -85,7 +85,9 @@ class _Clangd:
         self._reader.start()
 
     def _drain(self) -> None:
-        assert self._proc.stdout is not None
+
+        # assert only narrows `IO[bytes] | None` for the type checker.
+        assert self._proc.stdout is not None  # noqa: S101
         while True:
             msg = _read_message(self._proc.stdout)
             self._inbox.put(msg)
@@ -102,7 +104,7 @@ class _Clangd:
         tool. So a dead pipe is reported as the RuntimeError it amounts to: clangd
         is gone.
         """
-        assert self._proc.stdin is not None
+        assert self._proc.stdin is not None  # noqa: S101 — narrows the pipe, created in __init__
         data = json.dumps(payload).encode("utf-8")
         try:
             self._proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii"))
@@ -210,7 +212,7 @@ class _Clangd:
         # from under a blocked `readline`.
         self._reader.join(timeout=5.0)
         for pipe in (self._proc.stdin, self._proc.stdout):
-            assert pipe is not None  # both were created as pipes in __init__
+            assert pipe is not None  # noqa: S101 — both were created as pipes in __init__
             with contextlib.suppress(OSError):
                 pipe.close()
 
@@ -245,7 +247,7 @@ def _loc(node: dict[str, Any]) -> dict[str, Any]:
 
 def _path_from_uri(uri: str) -> str:
     """``file:///a/b.c`` -> ``/a/b.c``; anything else is passed through unchanged."""
-    return uri[len("file://"):] if uri.startswith("file://") else uri
+    return uri.removeprefix("file://")
 
 
 def _extra_args(compile_commands_dir: str | None) -> list[str]:
@@ -572,9 +574,10 @@ def _prepare(path: str, symbol: str | None, *, need_index: bool,
         if symbol is not None and position is None:
             return {"ok": False, "error": f"symbol not found in file: {symbol!r}"}
         handed_off = True
-        return client, uri, position
     except (TimeoutError, RuntimeError) as e:
         return {"ok": False, "error": str(e)}
+    else:
+        return client, uri, position
     finally:
         if not handed_off:
             client.shutdown()
