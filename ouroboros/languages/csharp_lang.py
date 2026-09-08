@@ -145,7 +145,7 @@ def installed_sdks() -> list[tuple[str, str]]:
     argv = [_dotnet(), "--list-sdks"]
     try:
         proc = subprocess.run(
-            argv, capture_output=True, text=True, timeout=EMIT_TIMEOUT, env=_env(),
+            argv, capture_output=True, text=True, timeout=EMIT_TIMEOUT, env=_env(), check=False,
         )
     except OSError as e:
         raise CSharpEmitterError(f"cannot run `dotnet --list-sdks`: {e}") from e
@@ -224,7 +224,7 @@ def build_emitter(destination: Path) -> None:
     ]
     try:
         proc = subprocess.run(
-            argv, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env=_env(),
+            argv, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env=_env(), check=False,
         )
     except OSError as e:
         raise CSharpEmitterError(f"cannot run dotnet build: {e}") from e
@@ -271,7 +271,7 @@ def emitter_assembly() -> str:
     shutil.rmtree(staging, ignore_errors=True)
     try:
         build_emitter(staging)
-        os.replace(staging, built)
+        staging.replace(built)
     except OSError as e:
         raise CSharpEmitterError(f"cannot place the built emitter: {e}") from e
     finally:
@@ -297,7 +297,7 @@ class CSharpTransformer(Transformer):
         try:
             proc = subprocess.run(
                 argv, input=source.encode("utf-8"), capture_output=True,
-                timeout=EMIT_TIMEOUT, env=_env(),
+                timeout=EMIT_TIMEOUT, env=_env(), check=False,
             )
         except OSError as e:
             raise CSharpEmitterError(f"cannot run the C# range emitter: {e}") from e
@@ -317,7 +317,12 @@ class CSharpTransformer(Transformer):
         return data
 
     # ---- transform ------------------------------------------------------ #
-    def wrap_source(self, source: str, *, filename: str | None = None,
+    # PLR0912: the branches are the kinds of edit C# needs, one `if` each — a
+    # ref struct that cannot be captured, a `yield` method, an expression body,
+    # a `throw;` that must stay bare. Each names the language rule it obeys in
+    # the comment above it; a helper per branch would move the rule away from
+    # the edit it produces.
+    def wrap_source(self, source: str, *, filename: str | None = None,  # noqa: PLR0912
                     only: set[str] | None = None,
                     minimal: bool = False) -> WrapResult:
         if minimal:

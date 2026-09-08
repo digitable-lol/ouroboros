@@ -48,7 +48,7 @@ class ElixirTransformer(Transformer):
             proc = subprocess.run(
                 ["elixir", str(_EMITTER)],
                 input=source, cwd=str(_EX_DIR),
-                capture_output=True, text=True, timeout=60,
+                capture_output=True, text=True, timeout=60, check=False,
             )
         except FileNotFoundError as e:
             raise CorruptedSourceError("elixir", f"elixir not found: {e}", filename=filename) from e

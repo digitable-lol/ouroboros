@@ -42,7 +42,7 @@ def _cxx_args() -> list[str]:
     args = ["-x", "c++", "-std=c++17", "-ferror-limit=0", *clang_resource_dir_args()]
     try:
         out = subprocess.run(["g++", "-E", "-x", "c++", "-v", "-"], input="",
-                            capture_output=True, text=True, timeout=10).stderr
+                            capture_output=True, text=True, timeout=10, check=False).stderr
         collecting = False
         for line in out.splitlines():
             if "#include <...> search starts here:" in line:
@@ -108,7 +108,7 @@ class CppTransformer(ClangTransformer):
         """
         return fn.is_constexpr
 
-    def instrument(self, fn: ClangFunction, *, minimal: bool = False) -> list[Edit[bytes]]:
+    def instrument(self, fn: ClangFunction, *, minimal: bool = False) -> list[Edit[bytes]]:  # noqa: ARG002
         qname = fn.qualified_name
         names = [p.name for p in fn.params if p.name]
         open_off = fn.body_start + 1

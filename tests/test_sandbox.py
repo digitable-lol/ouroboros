@@ -470,7 +470,7 @@ def test_finish_keeps_a_source_file_containing_a_real_nul_byte(project):
     """
 
     write_file(project, "m.py", "def f():\n    return 1\n")
-    _draft_file(project, "weird.c", b'/* \x00 */\nint f(void) { return 0; }\n')
+    _draft_file(project, "weird.c", b"/* \x00 */\nint f(void) { return 0; }\n")
 
     result = finish(project)
 

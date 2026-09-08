@@ -36,8 +36,8 @@ def read(path: Path) -> dict[str, dict[str, Any]]:
     """Замеры из файла: имя замера -> что о нём известно."""
 
     out: dict[str, dict[str, Any]] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
         if line.startswith("{"):
             record = json.loads(line)
             out[record["имя"]] = record

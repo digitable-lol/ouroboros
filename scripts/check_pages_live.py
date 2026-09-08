@@ -133,14 +133,79 @@ def documentation_index(root: str) -> tuple[str | None, str]:
     return None, ""
 
 
+def pages_served(root: str) -> tuple[list[str], int]:
+    """1. Every page in the tree is served by the live site."""
+
+    bad = []
+    checked = 0
+    for page in live_pages():
+        code, _ = fetch(f"{root}/{page}")
+        checked += 1
+        if code != 200:
+            bad.append(f"  - {page}: the site answers {code}, yet the page is in "
+                       f"the tree")
+    return bad, checked
+
+
+def state_matches(root: str, tree_state: dict[str, object]) -> tuple[list[str], int]:
+    """2. `state.json` on the site matches the tree — a precise sign of freshness."""
+
+    bad: list[str] = []
+    code, body = fetch(f"{root}/state.json")
+    if code != 200:
+        return [f"  - state.json: the site answers {code}"], 1
+    try:
+        live_state = json.loads(body)
+    except json.JSONDecodeError as e:
+        return [f"  - state.json: the site served something that is not JSON ({e})"], 1
+    if live_state != tree_state:
+        for key in sorted(set(tree_state) | set(live_state)):
+            mine, theirs = tree_state.get(key), live_state.get(key)
+            if mine != theirs:
+                bad.append(
+                    f"  - state.json, field {key!r}: on the site {theirs!r}, "
+                    f"in the tree {mine!r} — the site was built from a "
+                    f"different tree"
+                )
+    return bad, 1
+
+
+def marks_match(root: str, tree_state: dict[str, object]) -> tuple[list[str], int]:
+    """3. The numbers in the marks on the live page equal those in the tree."""
+
+    where, body = documentation_index(root)
+    if where is None:
+        return ([f"  - no documentation page with state marks at either "
+                 f"{DOCS_HOME}/index.html or index.html — there is nothing to "
+                 f"compare the numbers against"], 2)
+    bad = []
+    for key, value in MARK.findall(body):
+        expected = tree_state.get(key)
+        if expected is not None and str(expected) != value.strip():
+            bad.append(
+                f"  - {where}, mark {key!r}: the site shows {value.strip()!r}, "
+                f"the tree says {str(expected)!r}"
+            )
+    return bad, 2
+
+
 def check() -> int:
     root = site_root()
+    tree_state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     bad: list[str] = []
     checked = 0
 
-    # One page first, to tell "the site is behind" from "there is no network".
+    # Every request is inside this one `try`, not just the first. A network that
+    # drops halfway through used to leave an uncaught URLError, i.e. a traceback
+    # and exit 1 — the gate reporting "the site parted ways with the tree" when
+    # what happened was that nobody could ask it. Unreachable is code 2, and it
+    # has to stay code 2 whichever request hits the wall.
     try:
-        fetch(f"{root}/index.html")
+        for found, n in (pages_served(root),
+                         state_matches(root, tree_state),
+                         marks_match(root, tree_state)):
+            bad += found
+            checked += n
     except (urllib.error.URLError, OSError) as e:
         print(
             f"The site could not be reached ({root}): {e}.\n"
@@ -149,55 +214,6 @@ def check() -> int:
             file=sys.stderr,
         )
         return 2
-
-    # 1. Every page in the tree is served by the live site.
-    for page in live_pages():
-        code, _ = fetch(f"{root}/{page}")
-        checked += 1
-        if code != 200:
-            bad.append(f"  - {page}: the site answers {code}, yet the page is in "
-                       f"the tree")
-
-    # 2. state.json on the site matches the tree — a precise sign of freshness.
-    tree_state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    code, body = fetch(f"{root}/state.json")
-    checked += 1
-    if code != 200:
-        bad.append(f"  - state.json: the site answers {code}")
-    else:
-        try:
-            live_state = json.loads(body)
-        except json.JSONDecodeError as e:
-            bad.append(f"  - state.json: the site served something that is not "
-                       f"JSON ({e})")
-            live_state = None
-        if live_state is not None and live_state != tree_state:
-            for key in sorted(set(tree_state) | set(live_state)):
-                mine, theirs = tree_state.get(key), live_state.get(key)
-                if mine != theirs:
-                    bad.append(
-                        f"  - state.json, field {key!r}: on the site {theirs!r}, "
-                        f"in the tree {mine!r} — the site was built from a "
-                        f"different tree"
-                    )
-
-    # 3. The numbers in the marks on the live page equal those in the tree.
-    where, body = documentation_index(root)
-    checked += 2
-    if where is None:
-        bad.append(
-            f"  - no documentation page with state marks at either "
-            f"{DOCS_HOME}/index.html or index.html — there is nothing to compare "
-            f"the numbers against"
-        )
-    else:
-        for key, value in MARK.findall(body):
-            expected = tree_state.get(key)
-            if expected is not None and str(expected) != value.strip():
-                bad.append(
-                    f"  - {where}, mark {key!r}: the site shows {value.strip()!r}, "
-                    f"the tree says {str(expected)!r}"
-                )
 
     if bad:
         print(f"The live site parted ways with the tree ({root}):\n", file=sys.stderr)
@@ -221,13 +237,18 @@ def main() -> int:
                         help="how many seconds to wait between attempts")
     args = parser.parse_args()
 
-    for attempt in range(args.retries + 1):
-        status = check()
-        if status == 0 or attempt == args.retries:
-            return status
+    # The site is asked once, and again only while there are retries left. Written
+    # as "ask, then retry" rather than "loop retries+1 times" because the second
+    # shape returned an unassigned variable when --retries was negative.
+    attempts = max(0, args.retries) + 1
+    status = check()
+    for attempt in range(2, attempts + 1):
+        if status == 0:
+            break
         print(f"\nWaiting {args.wait} s and asking again "
-              f"(attempt {attempt + 2} of {args.retries + 1}).\n")
+              f"(attempt {attempt} of {attempts}).\n")
         time.sleep(args.wait)
+        status = check()
     return status
 
 

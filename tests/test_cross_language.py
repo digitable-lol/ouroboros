@@ -29,12 +29,12 @@ import threading
 
 import pytest
 
-import ouroboros.runtime as runtime
+from ouroboros import runtime
 
 
-def _normalize_lines(text: str) -> list[dict]:
+def _normalize_lines(text: str) -> list[dict[str, object]]:
     """Parse JSONL and blank out the volatile / dialect fields (t, id, d, ci, th)."""
-    out = []
+    out: list[dict[str, object]] = []
     for ln in text.splitlines():
         if not ln.strip():
             continue
@@ -53,14 +53,14 @@ def add(a, b):
     return a + b
 
 
-def _python_lines(tmp_path, monkeypatch) -> list[dict]:
+def _python_lines(tmp_path, monkeypatch) -> list[dict[str, object]]:
     path = tmp_path / "py.debug.info"
     monkeypatch.setenv("OUROBOROS_DEBUG_INFO", str(path))
     add(2, 3)
     return _normalize_lines(path.read_text(encoding="utf-8"))
 
 
-def _js_lines(tmp_path) -> list[dict]:
+def _js_lines(tmp_path) -> list[dict[str, object]]:
     from ouroboros.languages.javascript import JavaScriptTransformer
 
     name, src = JavaScriptTransformer().runtime_asset()

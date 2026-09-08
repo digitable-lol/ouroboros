@@ -95,15 +95,17 @@ def test_method_in_class_is_not_name_mangled(tx):
     assert res.functions_wrapped == 1
     # The decorator carries one leading underscore, so it is not mangled to
     # _C__... — verify the generated module compiles and runs.
-    ns: dict = {}
-    exec(  # noqa: S102 — exercising generated code under test
+    ns: dict[str, object] = {}
+    exec(  # exercising generated code under test
         res.code.replace(
             "from ouroboros_runtime import log as _ouro_log",
             "def _ouro_log(fn):\n    return fn",
         ),
         ns,
     )
-    assert ns["C"]().m(3) == 6
+    made = ns["C"]
+    assert callable(made)
+    assert made().m(3) == 6
 
 
 def test_decorated_function_keeps_existing_decorator(tx):
@@ -225,11 +227,14 @@ def test_a_coding_comment_under_real_code_is_not_a_coding_declaration(tx, monkey
     assert res.code.index("from ouroboros_runtime import") < res.code.index(DECORATOR)
 
     stub = types.ModuleType("ouroboros_runtime")
-    stub.log = lambda fn: fn
+    # A module object takes any attribute; mypy only knows the ModuleType shape.
+    stub.log = (lambda fn: fn)  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "ouroboros_runtime", stub)
-    namespace: dict = {}
+    namespace: dict[str, object] = {}
     exec(compile(res.code, "m.py", "exec"), namespace)   # the point: it still runs
-    assert namespace["f"](3) == 3
+    wrapped = namespace["f"]
+    assert callable(wrapped)
+    assert wrapped(3) == 3
 
 
 def test_runtime_module_is_never_instrumented(tx):

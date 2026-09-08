@@ -28,7 +28,7 @@ def test_example_sum_wraps_and_reparses(tx):
     res = tx.wrap_source("function sum(a, b) {\n    return a + b;\n}\n", filename="m.js")
     assert res.functions_wrapped == 1
     assert '_ouro_rt = require("./ouroboros_runtime.js")' in res.code
-    assert "_ouro_rt.enter(\"sum\", [a, b])" in res.code
+    assert '_ouro_rt.enter("sum", [a, b])' in res.code
     # Wrapping the output again parses it (emitter runs first) and is a no-op.
     again = tx.wrap_source(res.code, filename="m.js")
     assert again.functions_wrapped == 0
@@ -275,7 +275,7 @@ def test_offsets_are_counted_in_code_points_not_utf16(tx):
     `return (__ouro_result = ( + 1;)) }` — a file that no longer parses, from a
     file that was fine. Nothing warned; the wrap reported success.
     """
-    src = '// \U0001F600\nfunction f(a) { return a + 1; }\n'
+    src = "// \U0001F600\nfunction f(a) { return a + 1; }\n"
     res = tx.wrap_source(src, filename="emoji.js")
     assert "(__ouro_result = (a + 1))" in res.code
     assert "// \U0001F600\n" in res.code

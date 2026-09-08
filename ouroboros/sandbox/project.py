@@ -122,7 +122,7 @@ class Project:
             cwd=self.draft,
             env={**_GIT_ENV, "PATH": _path_env()},
             capture_output=True,
-            text=True,
+            text=True, check=False,
         )
         if proc.returncode != 0:
             raise SandboxError(f"git {' '.join(args)} failed: {proc.stderr.strip()}")

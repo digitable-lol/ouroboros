@@ -166,7 +166,9 @@ def parse_timestamp(started: str) -> float | None:
         return None
 
 
-def query(
+# PLR0913: the seven parameters are the seven filters `read_trace` offers, and
+# every one of them is keyword-only, so a call site names what it filters by.
+def query(  # noqa: PLR0913
     records: list[Record],
     *,
     function: str | None = None,

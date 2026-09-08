@@ -24,6 +24,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -32,7 +33,7 @@ FORMULA = ROOT / "packaging" / "homebrew" / "ouroboros.rb"
 ASDF_INSTALL = ROOT / "packaging" / "asdf" / "bin" / "install"
 
 
-def _pyproject() -> dict:
+def _pyproject() -> dict[str, Any]:
     with (ROOT / "pyproject.toml").open("rb") as fh:
         return tomllib.load(fh)
 
@@ -47,7 +48,10 @@ def _subcommands() -> set[str]:
     from ouroboros import cli
 
     names: set[str] = set()
-    for action in cli._build_parser()._actions:
+    # SLF001: the list of subcommands lives in the parser and nowhere else. Asking
+    # the parser is the point — a second list here is the drift this file exists
+    # to catch.
+    for action in cli._build_parser()._actions:  # noqa: SLF001
         choices = getattr(action, "choices", None)
         if isinstance(choices, dict):
             names.update(choices)
@@ -67,90 +71,142 @@ def _formula_body() -> str:
     return "\n".join(line for line in lines if not line.lstrip().startswith("#"))
 
 
-def main() -> int:
-    problems: list[str] = []
-    scripts = _scripts()
-    body = _formula_body()
+# --------------------------------------------------------------------------- #
+# The rules. Each takes its evidence as an argument and answers with a list of
+# complaints — no file is opened inside one, so a rule can be handed a formula
+# that does not exist anywhere and asked what it thinks of it. That is what lets
+# the negative control (tests/test_check_packaging_names.py) prove each rule
+# goes red, which a rule that reads the tree itself cannot be made to do.
+# --------------------------------------------------------------------------- #
 
-    # 1. Everything the formula refers to as an installed command.
-    #    bin/"ouroboros" — but not opt_bin/"python3.12", not libexec/"bin/python".
-    for pattern in (r'(?<![A-Za-z_])bin/"([^"]+)"', r'#\{bin\}/([A-Za-z0-9._-]+)'):
+#: bin/"ouroboros" — but not opt_bin/"python3.12", not libexec/"bin/python".
+COMMAND_PATTERNS = (r'(?<![A-Za-z_])bin/"([^"]+)"', r"#\{bin\}/([A-Za-z0-9._-]+)")
+
+
+def rule_commands_installed(body: str, scripts: set[str]) -> list[str]:
+    """1. Every name the formula calls as an installed command is one."""
+
+    problems: list[str] = []
+    for pattern in COMMAND_PATTERNS:
         found = set(re.findall(pattern, body))
         if not found:
             problems.append(f"the formula has no name matching {pattern!r} — the "
                             "pattern is out of date and the check has stopped "
                             "checking anything")
             continue
-        for name in sorted(found - scripts):
-            problems.append(f"the formula calls the command {name!r}, which the "
-                            f"package does not install; it installs only "
-                            f"{sorted(scripts)}")
+        problems += [f"the formula calls the command {name!r}, which the "
+                     f"package does not install; it installs only {sorted(scripts)}"
+                     for name in sorted(found - scripts)]
+    return problems
 
-    # 2. Every command of the package must be exposed: the formula exposes them
-    #    with the pattern Dir[libexec/"bin/<prefix>*"].
+
+def rule_commands_exposed(body: str, scripts: set[str]) -> list[str]:
+    """2. Every command of the package reaches PATH.
+
+    The formula exposes them with the pattern Dir[libexec/"bin/<prefix>*"], so a
+    command whose name matches no prefix is installed and unreachable.
+    """
+
     globs = re.findall(r'Dir\[libexec/"bin/([^"]*)\*"\]', body)
     if not globs:
-        problems.append('the formula has no bin.install_symlink Dir[libexec/"bin/…*"] line')
-    else:
-        for name in sorted(scripts):
-            if not any(name.startswith(g) for g in globs):
-                problems.append(f"the command {name!r} matches none of the patterns "
-                                f"{globs} — after installation it will not be on PATH")
+        return ['the formula has no bin.install_symlink Dir[libexec/"bin/…*"] line']
+    return [f"the command {name!r} matches none of the patterns {globs} — after "
+            f"installation it will not be on PATH"
+            for name in sorted(scripts)
+            if not any(name.startswith(g) for g in globs)]
 
-    # 3. The subcommands the formula calls in test do and suggests in caveats.
-    known = _subcommands()
+
+def rule_subcommands(body: str, known: set[str]) -> list[str]:
+    """3. The subcommands the formula calls in `test do` and suggests in caveats."""
+
     used = set(re.findall(r"\bouroboros ([a-z][a-z-]+)\b", body))
     used |= set(re.findall(r'bin/"ouroboros",\s*"([a-z][a-z-]+)"', body))
     if not used:
-        problems.append("the formula calls no subcommand at all — the pattern is "
-                        "out of date")
-    for name in sorted(used - known):
-        problems.append(f"the formula calls the subcommand {name!r}, which does not "
-                        f"exist; the ones that do: {sorted(known)}")
+        return ["the formula calls no subcommand at all — the pattern is out of date"]
+    return [f"the formula calls the subcommand {name!r}, which does not exist; "
+            f"the ones that do: {sorted(known)}"
+            for name in sorted(used - known)]
 
-    # 4. The command name in the MCP server configuration the caveats print.
+
+def rule_mcp_command(body: str, scripts: set[str]) -> list[str]:
+    """4. The command name in the MCP server configuration the caveats print."""
+
     commands = set(re.findall(r'"command":\s*"([A-Za-z0-9._-]+)"', body))
     if not commands:
-        problems.append("the caveats hold no MCP configuration with a command field")
-    for name in sorted(commands - scripts):
-        problems.append(f"the MCP configuration names {name!r}, which the package "
-                        f"does not have")
+        return ["the caveats hold no MCP configuration with a command field"]
+    return [f"the MCP configuration names {name!r}, which the package does not have"
+            for name in sorted(commands - scripts)]
 
-    # 5. The tag in the archive URL is the package version.
-    version = _pyproject()["project"]["version"]
+
+def rule_archive_tag(body: str, version: str) -> list[str]:
+    """5. The tag in the archive URL is the package version."""
+
     tags = set(re.findall(r"/tags/v([0-9][0-9A-Za-z.]*)\.tar\.gz", body))
     if not tags:
-        problems.append("the formula has no archive URL with a version tag")
-    elif tags != {version}:
-        problems.append(f"the formula pulls version {sorted(tags)}, while the package "
-                        f"is now {version}")
+        return ["the formula has no archive URL with a version tag"]
+    if tags != {version}:
+        return [f"the formula pulls version {sorted(tags)}, while the package "
+                f"is now {version}"]
+    return []
 
-    # 6. The asdf plugin exposes exactly the package commands. Its list is
-    #    explicit: the environment also receives the dependencies' commands
-    #    (httpx, uvicorn, dotenv) and asdf would make a shim for every one.
-    text = ASDF_INSTALL.read_text(encoding="utf-8")
+
+def rule_asdf_listing(text: str, scripts: set[str]) -> list[str]:
+    """6. The asdf plugin exposes exactly the package commands.
+
+    Its list is explicit because the environment also receives the dependencies'
+    commands (httpx, uvicorn, dotenv) and asdf would make a shim for every one.
+    """
+
     listing = re.search(r"for name in ([^;\n]+); do", text)
     if not listing:
-        problems.append("packaging/asdf/bin/install has no list of names to expose")
-    else:
-        listed = set(listing.group(1).split())
-        if listed != scripts:
-            problems.append(f"the plugin exposes {sorted(listed)}, while the package "
-                            f"installs {sorted(scripts)}")
+        return ["packaging/asdf/bin/install has no list of names to expose"]
+    listed = set(listing.group(1).split())
+    if listed != scripts:
+        return [f"the plugin exposes {sorted(listed)}, while the package "
+                f"installs {sorted(scripts)}"]
+    return []
 
-    # 7. asdf expects bin/ at the repository root: three files, present and executable.
+
+def rule_asdf_shims(root: Path) -> list[str]:
+    """7. asdf expects bin/ at the repository root: three files, present and executable.
+
+    The only rule that reads the tree, because the thing it checks IS the tree:
+    `asdf plugin add` clones the repository and runs these three by path.
+    """
+
+    problems: list[str] = []
     for name in ("download", "install", "list-all"):
-        shim = ROOT / "bin" / name
-        real = ROOT / "packaging" / "asdf" / "bin" / name
+        shim = root / "bin" / name
+        real = root / "packaging" / "asdf" / "bin" / name
         for path in (shim, real):
             if not path.is_file():
-                problems.append(f"no such file: {path.relative_to(ROOT)}")
+                problems.append(f"no such file: {path.relative_to(root)}")
             elif not path.stat().st_mode & 0o111:
-                problems.append(f"{path.relative_to(ROOT)} is not executable — asdf "
+                problems.append(f"{path.relative_to(root)} is not executable — asdf "
                                 f"will not call it")
-        if shim.is_file() and f"packaging/asdf/bin/{name}" not in shim.read_text(encoding="utf-8"):
+        if shim.is_file() and f"packaging/asdf/bin/{name}" not in shim.read_text(
+                encoding="utf-8"):
             problems.append(f"bin/{name} does not hand the work to "
                             f"packaging/asdf/bin/{name}")
+    return problems
+
+
+def main() -> int:
+    scripts = _scripts()
+    known = _subcommands()
+    version: str = _pyproject()["project"]["version"]
+    body = _formula_body()
+    asdf = ASDF_INSTALL.read_text(encoding="utf-8")
+
+    problems = [
+        *rule_commands_installed(body, scripts),
+        *rule_commands_exposed(body, scripts),
+        *rule_subcommands(body, known),
+        *rule_mcp_command(body, scripts),
+        *rule_archive_tag(body, version),
+        *rule_asdf_listing(asdf, scripts),
+        *rule_asdf_shims(ROOT),
+    ]
 
     if problems:
         print("The names in the packaging parted ways with the package:\n")

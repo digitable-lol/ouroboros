@@ -73,7 +73,7 @@ def test_end_to_end_compile_and_run(tmp_path):
         "  def addmul(a, b, c \\\\ 10), do: a * b + c\n"
         "  defp helper(x), do: x + 1\n"
         "  def use_helper(x), do: helper(x)\n"
-        "  def boom(n) when n < 0, do: raise(\"neg\")\n"
+        '  def boom(n) when n < 0, do: raise("neg")\n'
         "  def boom(n), do: n\n"
         "end\n"
     )

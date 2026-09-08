@@ -57,7 +57,7 @@ HEAD = """Ты разбираешь чужую программу. Ниже её
 
 
 def lines_of(trace: str) -> list[str]:
-    return [l for l in trace.splitlines() if l.strip()]
+    return [line for line in trace.splitlines() if line.strip()]
 
 
 def cut_bounds(lines: list[str], limit: int) -> tuple[int, int]:
@@ -94,7 +94,7 @@ def cut(trace: str, limit: int) -> tuple[str, int]:
     if dropped <= 0:
         return "\n".join(lines), 0
     middle = f"... здесь вырезано {dropped} строк ..."
-    return "\n".join(lines[:i] + [middle] + lines[j + 1:]), dropped
+    return "\n".join([*lines[:i], middle, *lines[j + 1:]]), dropped
 
 
 def prompt(case: dict, question: dict, arm: str) -> str:
@@ -127,7 +127,7 @@ def call(text: str, seed: int) -> tuple[str, float]:
                     "num_predict": 300},
     }, ensure_ascii=False)
     started = time.perf_counter()
-    done = subprocess.run(shlex.split(CMD), input=body, capture_output=True, text=True)
+    done = subprocess.run(shlex.split(CMD), input=body, capture_output=True, text=True, check=False)
     spent = time.perf_counter() - started
     if done.returncode != 0:
         raise RuntimeError(f"модель не ответила: {done.stderr[-500:]}")

@@ -81,8 +81,8 @@ ALLOWED = {
 }
 
 #: The language switch: the first line of a page after the header.
-EN_SWITCH = re.compile(r"^\*\*English\*\* · \[Русский\]\(([^)]+)\)\s*$", re.M)
-RU_SWITCH = re.compile(r"^\[English\]\(([^)]+)\) · \*\*Русский\*\*\s*$", re.M)
+EN_SWITCH = re.compile(r"^\*\*English\*\* · \[Русский\]\(([^)]+)\)\s*$", re.MULTILINE)
+RU_SWITCH = re.compile(r"^\[English\]\(([^)]+)\) · \*\*Русский\*\*\s*$", re.MULTILINE)
 
 #: The ledger: pages that have no English edition yet. It can only shrink — the
 #: guard demands that a line be struck out as soon as the page is translated or
@@ -99,7 +99,7 @@ PENDING: dict[str, str] = {
     "bin/README.md": "three release scripts; belongs to packaging, not documentation",
     "packaging/asdf/README.md": "belongs to packaging",
     "scripts/measure/trace-help/README.md":
-        "the log of the \"does a trace help\" experiment, 582 lines — a record of\n"
+        'the log of the "does a trace help" experiment, 582 lines — a record of\n'
         "runs rather than a page",
     "scripts/measure/trace-help/scale-up-master-prompt.md":
         "the prompt for that same experiment",

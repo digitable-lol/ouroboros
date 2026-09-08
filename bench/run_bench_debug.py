@@ -135,7 +135,8 @@ def judge(workdir: Path) -> dict:
 
 def detect_tool_use(workdir: Path) -> bool:
     debug = workdir / "debug.info"
-    return debug.is_file() and "ШАБЛОН_НАЧАЛО" in debug.read_text(encoding="utf-8", errors="replace")
+    return debug.is_file() and "ШАБЛОН_НАЧАЛО" in debug.read_text(
+        encoding="utf-8", errors="replace")
 
 
 def one_run(arm: str, idx: int, model: str) -> dict:
@@ -146,7 +147,8 @@ def one_run(arm: str, idx: int, model: str) -> dict:
     (run_dir / "cmd.txt").write_text("\n".join(cmd), encoding="utf-8")
 
     t0 = time.monotonic()
-    proc = subprocess.run(cmd, cwd=str(workdir), capture_output=True, text=True, timeout=1800)
+    proc = subprocess.run(cmd, cwd=str(workdir), capture_output=True, text=True,
+                          timeout=1800, check=False)
     wall_s = time.monotonic() - t0
     (run_dir / "stdout.json").write_text(proc.stdout, encoding="utf-8")
     if proc.stderr:
@@ -184,7 +186,8 @@ def main() -> None:
                               ("success", "sample_ok", "hidden_ok", "used_ouroboros",
                                "num_turns", "output_tokens", "debug_info_chars", "duration_ms")},
                              ensure_ascii=False), flush=True)
-            (RUNS / args.out).write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+            (RUNS / args.out).write_text(
+                json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
     print("\nWrote", RUNS / args.out)
 
 

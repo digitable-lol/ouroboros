@@ -88,70 +88,102 @@ def anchor_lines(root: Path) -> tuple[dict[str, dict[int, str]], list[str]]:
     return found, problems
 
 
+Anchors = dict[str, dict[int, str]]
+
+
+def _where(valid: dict[int, str]) -> str:
+    """The anchors of one file, as the refusal prints them: `12 ('needle')`."""
+
+    return ", ".join(f"{n} ({needle!r})" for n, needle in sorted(valid.items()))
+
+
+def citation_problems(rel_doc: str, text: str, anchors: Anchors) -> tuple[list[str], int]:
+    """`path.py:12` and `#L12` in one page: do they land on an anchor?
+
+    Returns the complaints and how many citations were looked at.
+    """
+
+    problems: list[str] = []
+    checked = 0
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for pattern in (REF, URL):
+            for m in pattern.finditer(line):
+                rel, cited = m.group(1), int(m.group(2))
+                checked += 1
+                valid = anchors.get(rel, {})
+                if not valid:
+                    problems.append(
+                        f"{rel_doc}:{lineno} cites {rel}:{cited}, but no anchor is "
+                        f"declared for {rel} in scripts/check_doc_links.py"
+                    )
+                elif cited not in valid:
+                    problems.append(
+                        f"{rel_doc}:{lineno} cites {rel}:{cited}, and there is no "
+                        f"anchor on that line now. Anchors in this file: {_where(valid)}"
+                    )
+    return problems, checked
+
+
+def traceback_problems(rel_doc: str, text: str, anchors: Anchors) -> tuple[list[str], int]:
+    """A traceback pasted into a page verbatim carries the helper's line number."""
+
+    problems: list[str] = []
+    checked = 0
+    rel = COPIED_AS["ouroboros_runtime.py"]
+    valid = anchors.get(rel, {})
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for m in TRACEBACK.finditer(line):
+            cited = int(m.group(1))
+            checked += 1
+            if cited not in valid:
+                problems.append(
+                    f"{rel_doc}:{lineno}: the pasted traceback says "
+                    f"ouroboros_runtime.py line {cited}, while the anchors of "
+                    f"{rel} are now on lines: {_where(valid)}"
+                )
+    return problems, checked
+
+
+def text_and_link_agree(rel_doc: str, text: str) -> list[str]:
+    """The number in the prose and the number in the link beside it must match.
+
+    Editing one of the two and not the other is the ordinary slip.
+    """
+
+    problems: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        text_refs = {(m.group(1), m.group(2), m.group(3)) for m in REF.finditer(line)}
+        url_refs = {(m.group(1), m.group(2), m.group(3)) for m in URL.finditer(line)}
+        # Whatever the link pattern finds, the text pattern finds too; only the
+        # remainder is compared, or every line would look different.
+        if url_refs and not url_refs <= text_refs:
+            problems.append(
+                f"{rel_doc}:{lineno}: the number in the text and the number in the "
+                f"link disagree — {sorted(text_refs)} against {sorted(url_refs)}"
+            )
+    return problems
+
+
+def pages(root: Path) -> list[Path]:
+    """Every Markdown page of the tree, skipping what was vendored in."""
+
+    return [d for d in sorted(root.glob("**/*.md"))
+            if ".venv" not in d.parts and "node_modules" not in d.parts]
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     anchors, problems = anchor_lines(root)
 
-    docs = sorted(root.glob("**/*.md"))
-    docs = [d for d in docs if ".venv" not in d.parts and "node_modules" not in d.parts]
-
     checked = 0
-    for doc in docs:
+    for doc in pages(root):
+        rel_doc = str(doc.relative_to(root))
         text = doc.read_text(encoding="utf-8")
-        for lineno, line in enumerate(text.splitlines(), 1):
-            for pattern in (REF, URL):
-                for m in pattern.finditer(line):
-                    rel, start = m.group(1), int(m.group(2))
-                    checked += 1
-                    valid = anchors.get(rel, {})
-                    if not valid:
-                        problems.append(
-                            f"{doc.relative_to(root)}:{lineno} cites {rel}:{start}, "
-                            f"but no anchor is declared for {rel} in "
-                            "scripts/check_doc_links.py"
-                        )
-                    elif start not in valid:
-                        where = ", ".join(
-                            f"{n} ({needle!r})" for n, needle in sorted(valid.items())
-                        )
-                        problems.append(
-                            f"{doc.relative_to(root)}:{lineno} cites {rel}:{start}, "
-                            f"and there is no anchor on that line now. Anchors in "
-                            f"this file: {where}"
-                        )
-
-    # A traceback pasted into a page verbatim: the helper's line number.
-    for doc in docs:
-        for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
-            for m in TRACEBACK.finditer(line):
-                rel = COPIED_AS["ouroboros_runtime.py"]
-                start = int(m.group(1))
-                checked += 1
-                valid = anchors.get(rel, {})
-                if start not in valid:
-                    where = ", ".join(
-                        f"{n} ({needle!r})" for n, needle in sorted(valid.items())
-                    )
-                    problems.append(
-                        f"{doc.relative_to(root)}:{lineno}: the pasted traceback says "
-                        f"ouroboros_runtime.py line {start}, while the anchors of "
-                        f"{rel} are now on lines: {where}"
-                    )
-
-    # The number in the text and the number in the link must agree — an ordinary
-    # slip when editing one of the two.
-    for doc in docs:
-        for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
-            text_refs = {(m.group(1), m.group(2), m.group(3)) for m in REF.finditer(line)}
-            url_refs = {(m.group(1), m.group(2), m.group(3)) for m in URL.finditer(line)}
-            # Whatever the link pattern finds, the text pattern finds too; only
-            # the remainder is compared, or every line would look different.
-            if url_refs and not url_refs <= text_refs:
-                problems.append(
-                    f"{doc.relative_to(root)}:{lineno}: the number in the text and "
-                    f"the number in the link disagree — {sorted(text_refs)} against "
-                    f"{sorted(url_refs)}"
-                )
+        for found, n in (citation_problems(rel_doc, text, anchors),
+                         traceback_problems(rel_doc, text, anchors)):
+            problems += found
+            checked += n
+        problems += text_and_link_agree(rel_doc, text)
 
     # The same problem is caught both by the text and by the link — report it
     # once, keeping the order in which it was found.

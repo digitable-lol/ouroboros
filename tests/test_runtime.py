@@ -11,7 +11,7 @@ import re
 
 import pytest
 
-import ouroboros.runtime as runtime
+from ouroboros import runtime
 from ouroboros.trace import load
 
 
@@ -411,7 +411,9 @@ def test_the_name_wins_when_nothing_else_can_be_cut(debug_info):
          f"    @log\n"
          f"    def m(self):\n"
          f"        return 1\n", scope)
-    scope[name]().m()
+    made = scope[name]
+    assert callable(made)
+    made().m()
 
     entry = _lines(debug_info)[0]
     assert entry["fn"].startswith(name)              # kept whole, ceiling or no
