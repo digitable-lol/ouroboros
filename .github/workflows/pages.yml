@@ -1,0 +1,95 @@
+# Публикация лендинга (site/) на GitHub Pages.
+#
+# ⚠ ЧТОБЫ ЭТО ЗАРАБОТАЛО, НУЖНО ОДНО ДЕЙСТВИЕ РУКАМИ. Сейчас Pages этого
+# хранилища настроен на «Deploy from a branch», ветка `main`, каталог `/docs` —
+# то есть сайт собирает Jekyll из документации. Пока настройка такая, шаг
+# `deploy-pages` ниже отказывает: работе не разрешено публиковать.
+#
+# Включается в Settings → Pages → Build and deployment → Source: GitHub Actions.
+# ЭТО РЕШЕНИЕ, А НЕ ФОРМАЛЬНОСТЬ: у Pages один корень, и переключение снимает с
+# него нынешний Jekyll-сайт документации. Лендинг встанет на его место
+# (https://digitable-lol.github.io/ouroboros/), а страницы из docs/ по своим
+# прежним адресам отвечать перестанут. Развести их — отдельная работа: либо
+# собирать docs/ этой же работой и класть в подкаталог, либо оставить лендинг
+# неопубликованным. Поэтому здесь ничего не переключается самой работой.
+#
+# Сборке не нужно ничего, кроме python3: у site/build.py зависимостей нет ни
+# одной, а схемы нарисованы заранее и лежат в дереве как SVG. Ни npm, ни Ruby,
+# ни сети.
+
+name: Лендинг на Pages
+
+on:
+  push:
+    branches: [main]
+    # Только то, из чего лендинг собирается. Числа в подвале и на страницах
+    # берутся из pyproject.toml, LICENSE и docs/state.json — их правка тоже
+    # меняет опубликованное.
+    paths:
+      - "site/**"
+      - "pyproject.toml"
+      - "LICENSE"
+      - "docs/state.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Публикуем по одной за раз и не обрываем идущую: недособранный сайт хуже, чем
+# сайт минутой старее.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Отдельным шагом до сборки: если ссылка ведёт в никуда, снимок вывода не
+      # снят или схему правили после отрисовки — видно по имени шага, а не среди
+      # вывода сборки. Отказывает, а не предупреждает.
+      - name: Проверить ссылки, снимки и свежесть схем
+        run: python3 site/build.py --check
+
+      - name: Собрать
+        run: python3 site/build.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4
+
+  # Сделано — это когда видно снаружи. Выкладка на стороне GitHub может пройти,
+  # а страница при этом отдавать не то: схемы — отдельные файлы, и потерянная
+  # схема не ломает страницу, она оставляет на ней пустое место. Поэтому здесь
+  # спрашивается сам сайт по HTTP, и каждая картинка скачивается.
+  live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Спросить живой сайт
+        run: python3 site/check-live.py --retries 10 --wait 30
