@@ -6,25 +6,27 @@ The package is organised in three layers:
   logging wrappers using a *locate-then-splice* strategy (native AST is used
   only to locate node ranges; the original source text is never reprinted, so
   comments and formatting survive untouched).
-* ``ouroboros.sandbox`` — the draft/clean (``черновик``/``чистовик``) workspace:
+* ``ouroboros.sandbox`` — the draft/clean (``draft/``/``clean/``) workspace:
   ``create`` / CRUD-with-wrap / ``execute`` / ``finish``.
 * ``ouroboros.mcp`` — an MCP stdio server exposing the engine to AI agents.
 """
 
 from importlib.metadata import PackageNotFoundError, version as _installed_version
 
-#: Версия пакета. Берётся из метаданных установки, а НЕ вписывается сюда числом.
+#: The package version. Read from the installation's metadata, NOT typed in here
+#: as a literal.
 #:
-#: Вписанная числом, она однажды осталась ``0.1.0`` и пережила так четыре выпуска:
-#: строку никто не читал, поэтому никто и не заметил, что она врёт. Число заводится
-#: в одном месте — ``[project] version`` в ``pyproject.toml``; при установке оно
-#: попадает в метаданные дистрибутива, откуда и читается. Разойтись им теперь негде.
+#: Typed in as a literal, it once stayed at ``0.1.0`` across four releases: the
+#: string was never read, so nobody noticed it was lying. The number is entered
+#: in one place — ``[project] version`` in ``pyproject.toml`` — and installing
+#: puts it into the distribution's metadata, which is where this reads it from.
+#: There is no longer anywhere for the two to drift apart.
 #:
-#: Дерево без установки (импорт прямо из склонированного хранилища) метаданных не
-#: имеет. Тогда версия неизвестна, и это сказано прямо, а не подменено правдоподобным
-#: числом. Чтобы литерал не вернулся сюда снова, за этим следит
-#: ``scripts/check_release_published.py``, правило «версия в пакете».
+#: A tree that is not installed (imported straight from a clone) has no such
+#: metadata. Then the version is unknown, and that is said plainly rather than
+#: papered over with a plausible number. ``scripts/check_release_published.py``
+#: watches for a literal coming back here — the "version in the package" rule.
 try:
     __version__ = _installed_version("ouroboros-logger")
-except PackageNotFoundError:  # pragma: no cover — дерево без установки
+except PackageNotFoundError:  # pragma: no cover — a tree that is not installed
     __version__ = "0+unknown"

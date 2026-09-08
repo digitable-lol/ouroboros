@@ -16,11 +16,11 @@ scripts/probe/build-reference.sh
 
 | | |
 |---|---|
-| сервер | `ouroboros-logger` версия `1.27.2` |
+| сервер | `ouroboros-logger` версия `0.5.0` |
 | правила разговора | `2025-11-25` |
 | чем запускается | `ouroboros-mcp (pyproject [project.scripts])` |
 | средств объявлено | **17** |
-| снято | 2026-08-29T08:29:50 |
+| снято | 2026-09-08T18:20:24 |
 
 Средств, объявленных но не вызванных при съёмке, нет: настоящий ответ есть на каждое.
 
@@ -342,7 +342,11 @@ thread, and regex.
 
 ### `create_project` — Create draft project
 
-Create a draft (черновик) git project under the given base path.
+Create a draft (`draft/`) git project under the given base path.
+
+A base left over from a build that used the previous directory names is
+adopted as it is, rather than a fresh draft being made beside it; either
+way the answer says which layout it found.
 
 **да:** повторный вызов даёт тот же итог; **нет:** только читает, перезаписывает то, что было, трогает что-то за пределами своих доводов
 
@@ -368,8 +372,8 @@ Create a draft (черновик) git project under the given base path.
 {
   "ok": true,
   "base": "<work>/site",
-  "draft": "<work>/site/черновик",
-  "clean": "<work>/site/чистовик"
+  "draft": "<work>/site/draft",
+  "clean": "<work>/site/clean"
 }
 ```
 
@@ -524,7 +528,7 @@ Run a command in the draft; runtime info is funneled to debug.info.
   "returncode": 0,
   "stdout": "36\n",
   "stderr": "",
-  "debug_info": "<work>/site/черновик/debug.info"
+  "debug_info": "<work>/site/draft/debug.info"
 }
 ```
 
@@ -532,7 +536,7 @@ Run a command in the draft; runtime info is funneled to debug.info.
 
 ### `finish` — Copy draft into the output tree
 
-Copy the draft (черновик) into the output tree (чистовик).
+Copy the draft (`draft/`) into the output tree (`clean/`).
 
 The copy KEEPS the logging instrumentation — there is no un-instrument
 step, and this is not one. write_file wraps code before saving it, so no
@@ -563,7 +567,7 @@ tool caches). Wipes the output tree first, then rebuilds it.
 ```json
 {
   "ok": true,
-  "clean": "<work>/site/чистовик",
+  "clean": "<work>/site/clean",
   "synced": [
     ".gitignore",
     "main.py",

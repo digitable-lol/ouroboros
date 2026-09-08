@@ -33,12 +33,12 @@ ouroboros create /srv/tmp/probe
 ```
 
 ```json
-{"ok": true, "base": "/srv/tmp/probe", "draft": "/srv/tmp/probe/черновик", "clean": "/srv/tmp/probe/чистовик"}
+{"ok": true, "base": "/srv/tmp/probe", "draft": "/srv/tmp/probe/draft", "clean": "/srv/tmp/probe/clean"}
 ```
 
 The path is yours to pick; inside it the tool sets up the draft directory
-`черновик/` with a change history and prepares a place for the clean copy
-`чистовик/`. From there files go into the draft through `ouroboros write` and are
+`draft/` with a change history and prepares a place for the clean copy
+`clean/`. From there files go into the draft through `ouroboros write` and are
 run through `ouroboros execute`. The original stays untouched.
 
 ## Step 1. Choose what to instrument

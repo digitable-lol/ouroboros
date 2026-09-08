@@ -1,7 +1,7 @@
-"""``finish`` — copy the draft (``черновик``) into the output tree (``чистовик``).
+"""``finish`` — copy the draft (``draft/``) into the output tree (``clean/``).
 
 **What this does NOT do: it does not remove the instrumentation.** The copy in
-``чистовик`` is instrumented exactly like the draft, and that is deliberate.
+``clean/`` is instrumented exactly like the draft, and that is deliberate.
 There is no un-instrumented text anywhere to restore:
 :func:`ouroboros.sandbox.crud.write_file` wraps the buffer *before* the bytes
 reach disk, so neither the draft nor its git history has ever held the author's

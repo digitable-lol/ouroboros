@@ -77,7 +77,7 @@ title: Чтобы ИИ понимал, как код исполняется
 У каждого инструмента проставлено, что он делает с файлами: читающие помечены
 как безопасные, `wrap_file` и `finish` — как переписывающие, `execute` — как
 запускающий произвольную команду. Клиент видит это до первого вызова
-([`ouroboros/mcp/server.py:645`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L645)).
+([`ouroboros/mcp/server.py:665`](https://github.com/digitable-lol/ouroboros/blob/main/ouroboros/mcp/server.py#L665)).
 
 **Таблицы выше — краткий пересказ. Полный справочник снят с живого сервера:**
 [Справочник средств MCP](mcp-tools.ru.md) — на каждое из семнадцати средств

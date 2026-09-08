@@ -22,7 +22,10 @@ from ouroboros.sandbox import (
 from ouroboros.sandbox.project import (
     CLEAN_DIRNAME,
     DRAFT_DIRNAME,
+    LEGACY_CLEAN_DIRNAME,
+    LEGACY_DRAFT_DIRNAME,
     RUNTIME_FILENAME,
+    legacy_notice,
 )
 from ouroboros.sandbox.sync import _exclusion_reason
 
@@ -92,6 +95,103 @@ def test_create_rejects_existing_then_exist_ok(tmp_path):
     # exist_ok re-opens instead of failing
     reopened = Project.create(tmp_path / "site", exist_ok=True)
     assert reopened.draft.exists()
+
+
+# ---- projects made before the directories were renamed --------------------- #
+#
+# The draft and the clean tree used to be called `черновик` and `чистовик`. A
+# project made then is on somebody's disk with its git history inside it, so the
+# rename is only half done until the tool can be pointed at one. The failure
+# being guarded against is not a crash — it is silence: a `create` that makes an
+# empty `draft/` beside the old work, says "ok", and leaves the author to notice
+# on their own that yesterday's commits are no longer anywhere the tool looks.
+
+
+def _legacy_project(base: Path) -> Path:
+    """A base holding a draft under the pre-rename name, git history and all."""
+
+    proj = Project.create(base)
+    write_file(proj, "m.py", "def f(n):\n    return n\n")
+    (base / DRAFT_DIRNAME).rename(base / LEGACY_DRAFT_DIRNAME)
+    return base / LEGACY_DRAFT_DIRNAME
+
+
+def test_a_draft_under_the_old_name_is_adopted_not_bypassed(tmp_path):
+    """`create` on such a base opens the work that is there; it makes nothing new."""
+
+    base = tmp_path / "site"
+    legacy = _legacy_project(base)
+
+    proj = Project.create(base, exist_ok=True)
+
+    assert proj.draft == legacy
+    assert proj.uses_legacy_layout
+    assert proj.clean.name == LEGACY_CLEAN_DIRNAME
+    # The history is the same history, and no second draft appeared beside it.
+    assert proj.git_log() == ["ouroboros: write m.py (+1 wrapped)",
+                              "ouroboros: init draft"]
+    assert not (base / DRAFT_DIRNAME).exists()
+    assert sorted(p.name for p in base.iterdir()) == [LEGACY_DRAFT_DIRNAME]
+
+
+def test_an_adopted_old_draft_keeps_working_end_to_end(tmp_path):
+    """Adoption is not just path arithmetic: write, execute and finish all land
+    in the old directories rather than quietly starting a second project."""
+
+    base = tmp_path / "site"
+    legacy = _legacy_project(base)
+    proj = Project.open(base)
+
+    write_file(proj, "main.py", "def f(n):\n    return n * 2\n\nprint(f(21))\n")
+    result = execute(proj, [sys.executable, "main.py"], timeout=60.0)
+    assert result.stdout.strip() == "42"
+    assert (legacy / "main.py").is_file()
+
+    finish(proj)
+    assert (base / LEGACY_CLEAN_DIRNAME / "main.py").is_file()
+    assert not (base / CLEAN_DIRNAME).exists()
+
+
+def test_the_adopted_layout_is_said_out_loud_not_assumed(tmp_path):
+    """Adopting quietly would be its own trap: the author never learns the
+    directories are the old ones, so the notice names them and says how to move."""
+
+    base = tmp_path / "site"
+    _legacy_project(base)
+
+    note = legacy_notice(Project.open(base))
+
+    assert note is not None
+    assert LEGACY_DRAFT_DIRNAME in note and DRAFT_DIRNAME in note
+    assert "mv" in note
+
+
+def test_an_old_draft_beside_a_current_one_is_named_not_ignored(tmp_path):
+    """Both directories present is a half-finished move. The current names win —
+    guessing otherwise would be the silence this is all about — and the leftover
+    is named, so it cannot sit there forgotten."""
+
+    base = tmp_path / "site"
+    proj = Project.create(base)
+    (base / LEGACY_DRAFT_DIRNAME).mkdir()
+    (base / LEGACY_DRAFT_DIRNAME / "yesterday.py").write_text("x = 1\n")
+
+    reopened = Project.open(base)
+    assert reopened.draft == proj.draft
+    assert not reopened.uses_legacy_layout
+
+    note = legacy_notice(reopened)
+    assert note is not None
+    assert LEGACY_DRAFT_DIRNAME in note
+    # And the leftover is left exactly as it was.
+    assert (base / LEGACY_DRAFT_DIRNAME / "yesterday.py").is_file()
+
+
+def test_a_plain_project_is_told_nothing(tmp_path):
+    """A notice printed when nothing is wrong teaches people to stop reading
+    notices, so there must not be one here."""
+
+    assert legacy_notice(Project.create(tmp_path / "site")) is None
 
 
 def test_write_python_wraps_and_commits(project):
