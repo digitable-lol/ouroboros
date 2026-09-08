@@ -108,6 +108,9 @@ class CppTransformer(ClangTransformer):
         """
         return fn.is_constexpr
 
+    # ARG002: `minimal` is the interface's — it is the C-only stackless probe,
+    # and C++ answers by not having one. Dropping the parameter would make this
+    # override a different method from the one it overrides.
     def instrument(self, fn: ClangFunction, *, minimal: bool = False) -> list[Edit[bytes]]:  # noqa: ARG002
         qname = fn.qualified_name
         names = [p.name for p in fn.params if p.name]

@@ -12,6 +12,7 @@ this one is in.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -511,3 +512,105 @@ def test_a_print_equal_to_the_committed_one_yields_no_differences(tmp_path,
         (committed / name).write_text("same\n", encoding="utf-8")
     monkeypatch.setattr(emit_mod, "TARGET", committed)
     assert emit_mod.differences(fresh) == []
+
+
+def test_the_stamp_names_the_source_its_digest_and_the_compiler(tmp_path):
+    source = tmp_path / "trace_brain.flang"
+    source.write_text("правило\n", encoding="utf-8")
+    stamp = emit_mod.stamp_for(source)
+    assert stamp.startswith("source trace_brain.flang\n")
+    assert hashlib.sha256(source.read_bytes()).hexdigest() in stamp
+    assert f"compiler flang {emit_mod.EXPECTED_VERSION}" in stamp
+
+
+def test_a_print_with_no_stamp_says_nothing_holds_it_to_a_source(tmp_path,
+                                                                 monkeypatch):
+    monkeypatch.setattr(emit_mod, "STAMP", tmp_path / "printed-from.txt")
+    assert "not committed at all" in emit_mod.stale_stamp()[0]
+
+
+def test_a_source_edited_after_the_print_is_named(tmp_path, monkeypatch):
+    """The finding this stamp exists for: the print is of some earlier text."""
+
+    source = tmp_path / "trace_brain.flang"
+    source.write_text("правило\n", encoding="utf-8")
+    stamp = tmp_path / "printed-from.txt"
+    stamp.write_text(emit_mod.stamp_for(source), encoding="utf-8")
+    monkeypatch.setattr(emit_mod, "STAMP", stamp)
+    assert emit_mod.stale_stamp(source) == []
+
+    source.write_text("правило\nещё одно\n", encoding="utf-8")
+    assert "changed since it was printed" in emit_mod.stale_stamp(source)[0]
+
+
+def test_a_print_made_by_another_compiler_is_a_different_finding(tmp_path,
+                                                                 monkeypatch):
+    source = tmp_path / "trace_brain.flang"
+    source.write_text("правило\n", encoding="utf-8")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    stamp = tmp_path / "printed-from.txt"
+    stamp.write_text(f"source {source.name}\nsha256 {digest}\ncompiler flang 0.7.3\n",
+                     encoding="utf-8")
+    monkeypatch.setattr(emit_mod, "STAMP", stamp)
+    problems = emit_mod.stale_stamp(source)
+    assert "made by flang 0.7.3" in problems[0]
+
+    stamp.write_text(f"source {source.name}\nsha256 {digest}\n", encoding="utf-8")
+    assert "a compiler this file does not name" in emit_mod.stale_stamp(source)[0]
+
+
+def test_the_stamp_check_checks_itself(capsys):
+    assert emit_mod.self_test() == 0
+    assert "refuses a source it did not print from" in capsys.readouterr().out
+
+
+def test_the_stamp_self_test_refuses_when_the_check_stops_refusing(monkeypatch,
+                                                                   capsys):
+    monkeypatch.setattr(emit_mod, "stale_stamp", lambda source=None: [])
+    assert emit_mod.self_test() == 1
+    out = capsys.readouterr().out
+    assert "was called current" in out
+    assert "does not refuse what it must refuse" in out
+
+
+def test_the_stamp_self_test_refuses_when_the_tree_is_called_stale(monkeypatch,
+                                                                   capsys):
+    monkeypatch.setattr(emit_mod, "stale_stamp", lambda source=None: ["always"])
+    assert emit_mod.self_test() == 1
+    assert "the tree's own source was called stale" in capsys.readouterr().out
+
+
+def test_the_stamp_self_test_runs_from_the_command_line(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["emit_brain.py", "--self-test"])
+    assert emit_mod.main() == 0
+    assert "refuses a source it did not print from" in capsys.readouterr().out
+
+
+def test_a_stale_stamp_stops_the_check_before_the_compiler(monkeypatch, capsys):
+    """A missing compiler must not leave the digest question unasked."""
+
+    monkeypatch.setattr(emit_mod, "stale_stamp", lambda source=None: ["it moved"])
+    monkeypatch.setattr(emit_mod, "flang_binary", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["emit_brain.py", "--check"])
+    assert emit_mod.main() == 1
+    out = capsys.readouterr().out
+    assert "it moved" in out
+    assert "run: uv run python scripts/emit_brain.py" in out
+
+
+def test_printing_for_real_writes_the_stamp_too(monkeypatch, tmp_path, capsys):
+    _compiler(monkeypatch, tmp_path / "out")
+    target = tmp_path / "committed"
+    target.mkdir()
+    source = tmp_path / "trace_brain.flang"
+    source.write_text("правило\n", encoding="utf-8")
+    monkeypatch.setattr(emit_mod, "TARGET", target)
+    monkeypatch.setattr(emit_mod, "SOURCE", source)
+    monkeypatch.setattr(emit_mod, "STAMP", tmp_path / "printed-from.txt")
+    monkeypatch.setattr(emit_mod, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["emit_brain.py"])
+    assert emit_mod.main() == 0
+    out = capsys.readouterr().out
+    assert "stamped printed-from.txt" in out
+    assert (tmp_path / "printed-from.txt").read_text(encoding="utf-8") == \
+        emit_mod.stamp_for(source)

@@ -1,26 +1,36 @@
 #!/usr/bin/env bash
 # Ouroboros code-quality gate.
 #
-# STANDING RULE: any edit to the MCP / engine code under ouroboros/, however
+# STANDING RULE: any edit to the code under ouroboros/ or scripts/, however
 # minor, must pass all three gates below before it is considered done. The
 # Elixir lesson — "gone-green != warning-free" — applies: do NOT suppress a
-# finding (no blanket `noqa` / `type: ignore`); fix the real defect. There are
-# now no per-module relaxations at all: the last one, the `clang.*` mypy
-# override, went away when libclang moved out of the process — the backends no
-# longer pass untyped cursors around, they read JSON.
+# finding (no blanket `noqa` / `type: ignore`); fix the real defect. Where a rule
+# is switched off, the reason stands beside it in pyproject.toml and names what
+# the rule would cost — there is no relaxation without one.
 #
 # Usage: scripts/qa.sh          (run from the repo root)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "== ruff (lint, ouroboros + tests) =="
-uv run ruff check ouroboros tests
+# Every Python file in the tree, not two directories of it. The guards under
+# scripts/, the site builder and the benchmark harness were outside the linter
+# until now, and an unnoticed complaint had been sitting in one of them.
+echo "== ruff (lint, the whole tree) =="
+uv run ruff check .
 
-echo "== mypy (strict, ouroboros) =="
-uv run mypy ouroboros
+# `ouroboros` and `scripts` at full strictness; the bodies of the tests are
+# checked too (see [[tool.mypy.overrides]] in pyproject.toml) — that is what
+# catches an assertion that dereferences something which may be None, i.e. a
+# test that would error rather than assert.
+echo "== mypy (strict: ouroboros, scripts, site; bodies: tests) =="
+uv run mypy ouroboros scripts site tests
 
-echo "== pytest =="
+# Coverage is measured here, on this run, not by hand once in a while: --cov and
+# the 100 % threshold live in pyproject.toml, so a branch nothing visits makes
+# THIS run red and names the file and the line. It used to be possible to add a
+# branch after a measurement and leave "100 %" standing on the pages.
+echo "== pytest (with coverage, threshold 100 %) =="
 uv run pytest
 
 # The documentation cites the source down to the line. Such numbers go stale

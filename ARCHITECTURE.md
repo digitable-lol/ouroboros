@@ -189,7 +189,8 @@ and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
 Suite: <!--state:tests-->1074<!--/state--> tests,
 <!--state:coverage_percent-->100<!--/state-->% coverage (statements **and**
-branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
+branches), measured on every run: `--cov` and the threshold live in
+`pyproject.toml`, so a branch nothing visits makes that run red and names it. Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
 (all by compile+run where applicable). MCP tools declared by the server:
 <!--state:mcp_tools-->17<!--/state-->.
 
@@ -212,8 +213,10 @@ no amount of work on the untested part could have produced it.
 That ceiling has since been passed, because the parts it was computed over were
 tested rather than argued about. Every measured file is at 100% of statements
 and branches: `clangtools/`, `sandbox/`, `mcp/server.py`, `cli.py`, `trace.py`,
-`runtime.py`, `brain/`, and every backend under `languages/` together with its
-support modules.
+`runtime.py`, `brain/`, every backend under `languages/` together with its
+support modules — and the guards under `scripts/`, which were outside the
+measurement until their refusal branches turned out to be code nothing had ever
+executed.
 
 What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
 statement-and-branch units out of <!--state:total_units-->3845<!--/state-->.

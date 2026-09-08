@@ -85,8 +85,8 @@ class _Clangd:
         self._reader.start()
 
     def _drain(self) -> None:
-
-        # assert only narrows `IO[bytes] | None` for the type checker.
+        # S101: the pipe was created in __init__ (stdout=PIPE); the assert only
+        # narrows `IO[bytes] | None` for the type checker.
         assert self._proc.stdout is not None  # noqa: S101
         while True:
             msg = _read_message(self._proc.stdout)
