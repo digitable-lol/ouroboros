@@ -595,7 +595,7 @@ dev = [
     { name = "pyinstaller", specifier = ">=6.21.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "ruff", specifier = ">=0.9" },
+    { name = "ruff", specifier = ">=0.15,<0.16" },
 ]
 
 [[package]]

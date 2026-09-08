@@ -128,6 +128,8 @@ def judge(workdir: Path) -> dict:
         res["sample_ok"] = out_s == sample_expected
         _, out_h = run_report(pipeline, FIXTURES / "hidden.txt")
         res["hidden_ok"] = out_h == hidden_expected
+    # BLE001: this is the judge. Whatever the agent's program does — any
+    # exception at all — is a result to record, not a reason to stop the run.
     except Exception as e:  # noqa: BLE001
         res["judge_error"] = str(e)
     return res
