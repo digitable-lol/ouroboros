@@ -17,8 +17,12 @@ With no arguments it compares instead: the marks are checked against
 languages) are recounted right now. On a mismatch it refuses and says what the
 number has become.
 
-The comparison costs seconds and therefore hangs in `scripts/qa.sh`. The full
-measurement takes minutes and is therefore run by hand, when the numbers change.
+The comparison costs seconds and therefore hangs in `scripts/qa.sh`. It also
+reads `.coverage.json` when the test run has just written one — `pytest` measures
+coverage on every run now — so a branch that stopped being visited makes the
+recorded number disagree with the measured one on the very same run. Before that,
+the coverage number was taken by hand, and between two takings the tree was free
+to grow an unvisited branch. It did.
 
 Run::
 
@@ -131,8 +135,11 @@ def languages() -> int:
 def collected_tests() -> int:
     """How many tests are collected — without running them, which is quick."""
 
+    # `--no-cov`: pytest measures coverage on every run (see [tool.pytest] in
+    # pyproject.toml), and a collection with nothing executed would report 22 %
+    # and fail the threshold — an answer about nothing.
     proc = subprocess.run(
-        ["uv", "run", "pytest", "--collect-only"],
+        ["uv", "run", "pytest", "--collect-only", "--no-cov"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     # pytest prints the collection total in two different ways: usually as the
@@ -198,6 +205,7 @@ def check(state: dict[str, Any]) -> list[str]:
             f"the reference lists {tools} tools, docs/state.json says "
             f"{state.get('mcp_tools')} — run --measure"
         )
+    problems += coverage_drift(state)
 
     for name in PAGES:
         text = (ROOT / name).read_text(encoding="utf-8")
@@ -211,6 +219,33 @@ def check(state: dict[str, Any]) -> list[str]:
                     f"{state[key]!r}"
                 )
     return problems
+
+
+def coverage_drift(state: dict[str, Any]) -> list[str]:
+    """The recorded coverage against the run that has just been measured.
+
+    `pytest` writes `.coverage.json` on every run, so when the gate is run in the
+    usual order — tests first, this check after — the file beside us is the
+    measurement of the tree as it stands. If it is not there (this check run on
+    its own), there is nothing to compare against and nothing is claimed.
+    """
+
+    report = ROOT / ".coverage.json"
+    if not report.exists():
+        return []
+    totals = json.loads(report.read_text(encoding="utf-8"))["totals"]
+    measured = {
+        "uncovered_units": totals["missing_lines"] + totals["missing_branches"],
+        "total_units": totals["num_statements"] + totals["num_branches"],
+        "coverage_percent": int(totals["percent_covered"]),
+        "coverage_exact": round(totals["percent_covered"], 2),
+    }
+    return [
+        f"{key}: the run just measured {now!r}, docs/state.json records "
+        f"{state.get(key)!r} — run --measure"
+        for key, now in measured.items()
+        if state.get(key) != now
+    ]
 
 
 def main() -> int:
@@ -243,5 +278,5 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — the entry point, not a rule
     sys.exit(main())

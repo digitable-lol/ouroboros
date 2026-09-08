@@ -38,22 +38,47 @@ ESCAPE = re.compile(r"\\.")
 #: purpose: it is written into Russian text, and it is data, not a message.
 OPT_OUT = "смешанные-алфавиты: нарочно"
 
-#: Where we look. Sources and pages; vendored and generated trees are left alone.
-ROOTS = ("docs", "scripts", "ouroboros", "tests")
+#: Where we look: the whole tree. It used to be four directories plus three files
+#: named one by one, and `README.ru.md` — the longest Russian page there is, so
+#: the likeliest place for a layout slip — was in neither list. A guard that
+#: looks away from the riskiest file is worth less than its green line suggests.
 EXTS = {".md", ".py", ".sh", ".toml"}
-SKIP_PARTS = {".venv", "node_modules", "__pycache__", "_js", "_flang", ".probe-work"}
+
+#: Directory names that are never ours: vendored packages, caches, working trees.
+SKIP_PARTS = {".git", ".venv", "node_modules", "__pycache__", "_js", "_flang",
+              ".probe-work", ".trace-help-work"}
+
+#: Paths that hold input data or a machine's output rather than our text: the
+#: measurement's specimen programs, the recorded benchmark runs, the captured
+#: output shown on the site, the recorded answers of the trace-help experiment.
+SKIP_PREFIXES = (
+    "bench/runs", "bench/runs_debug", "bench/task", "bench/task_debug",
+    "scripts/measure/samples", "scripts/measure/trace-help/agents",
+    "scripts/measure/trace-help/programs", "site/examples/captured", "site/out",
+)
 
 
-def main() -> int:
-    root = Path(__file__).resolve().parent.parent
-    targets = [root / "README.md", root / "ARCHITECTURE.md", root / "SPEC.md"]
-    for r in ROOTS:
-        targets += [p for p in (root / r).rglob("*") if p.suffix in EXTS]
+def targets(root: Path) -> list[Path]:
+    """Every file of the tree the rule applies to, in a stable order."""
+
+    found = []
+    for path in sorted(root.rglob("*")):
+        if path.suffix not in EXTS or not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        if SKIP_PARTS & set(path.parts) or rel.startswith(SKIP_PREFIXES):
+            continue
+        found.append(path)
+    return found
+
+
+def main(root: Path | None = None) -> int:
+    """`root` is a parameter so a test can point the guard at a tree of its own."""
+
+    root = root or Path(__file__).resolve().parent.parent
 
     bad: list[str] = []
-    for path in sorted(set(targets)):
-        if not path.is_file() or SKIP_PARTS & set(path.parts):
-            continue
+    for path in targets(root):
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if OPT_OUT in line:
                 continue
@@ -74,5 +99,5 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — the entry point, not a rule
     sys.exit(main())
