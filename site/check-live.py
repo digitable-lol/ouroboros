@@ -398,6 +398,13 @@ def main(argv: list[str]) -> int:
     print("The published site does not match what it should be:\n", file=sys.stderr)
     for problem in wrong:
         print(f"  * {problem}", file=sys.stderr)
+    if any("not the landing" in problem for problem in wrong):
+        print("\nA root that is not the landing usually means one thing: the source "
+              "of Pages is still \"Deploy from a branch\", so the built-in Jekyll "
+              "build of docs/ is publishing over this one. Settings \u2192 Pages "
+              "\u2192 Build and deployment \u2192 Source: GitHub Actions. The whole "
+              "order, and what to check after it, is in site/README.md.",
+              file=sys.stderr)
     return 1
 
 
