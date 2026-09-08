@@ -39,6 +39,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from . import __version__
 from .languages import (
     CorruptedSourceError,
     TreeConfigError,
@@ -64,6 +65,12 @@ from .sandbox import Project, execute as sandbox_execute, write_file as sandbox_
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ouroboros", description="Ouroboros-Logger Executor")
+    # Инструмент ставят тремя способами — uv, Homebrew, asdf, — и они ставят РАЗНОЕ,
+    # если что-то из трёх отстало. Вопрос «а что у меня стоит» должен иметь ответ у
+    # самой команды, а не только в чужих списках пакетов. Число берётся из метаданных
+    # установки (см. ouroboros/__init__.py): это версия того, что действительно
+    # установлено, а не строка, вписанная когда-то в исходник.
+    p.add_argument("--version", action="version", version=f"ouroboros {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
     wf = sub.add_parser("wrap-file", help="instrument a file in place")
