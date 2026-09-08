@@ -81,12 +81,17 @@ def from_flang(value: rt.Value) -> Any:
     Numbers come back as ``float``: flang has no integers, and rounding one to
     ``int`` here would hide that from every caller. The callers that need an
     index do the rounding themselves, where it is visible.
+
+    This runs once per field of every answer — some hundreds of thousands of
+    times over one trace — so the scalar case is settled first and by one
+    comparison.
     """
 
     tag = value.tag
-    if tag == rt.TAG_NOTHING:
-        return None
-    if tag in (rt.TAG_NUMBER, rt.TAG_FLAG, rt.TAG_STRING):
+    if tag <= rt.TAG_STRING:
+        # Every scalar carries its Python value as the payload, and the absent
+        # value carries ``None`` — so one comparison answers for all four, in
+        # the order the runtime itself declares them (``rt.is_scalar``).
         return value.data
     if tag == rt.TAG_LIST:
         return [from_flang(item) for item in rt.list_items(value)]
@@ -101,7 +106,10 @@ def from_flang(value: rt.Value) -> Any:
 def _text(source: Mapping[str, Any], key: str) -> rt.Value:
     """A field of a decoded event as a flang string, missing meaning empty."""
 
-    return rt.text(str(source.get(key, "")))
+    found = source.get(key, "")
+    # ``str`` of a string is the string, and the producer writes strings here:
+    # spending a call on the common case would show up 200,000 times a trace.
+    return rt.text(found if type(found) is str else str(found))
 
 
 class Brain:

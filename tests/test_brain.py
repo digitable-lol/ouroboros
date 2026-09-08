@@ -11,6 +11,10 @@ Three jobs here, and only the first is ordinary unit testing.
 3. The stub the type checker reads for the printed runtime, against the printed
    runtime itself — a partial stub that quietly stops matching would make
    ``mypy --strict`` agree with a module that no longer has those names.
+4. The stamp that says which source the committed print was made from. It is
+   the only check on the print that runs without a compiler, so it is the only
+   one that runs everywhere, and it is what catches an edit the print never
+   sees.
 """
 
 from __future__ import annotations
@@ -306,3 +310,50 @@ def test_the_printed_runtime_still_has_everything_the_stub_declares():
     assert declared, "the stub declares nothing — the pattern above stopped matching"
     missing = sorted(name for name in declared if not hasattr(rt, name))
     assert not missing, f"the printed runtime no longer has: {missing}"
+
+
+# ── the stamp that ties the print to its source ───────────────────────────────
+
+
+def _guard():
+    """``scripts/emit_brain.py`` as a module. Not on the import path: it is a
+    script, and importing it from a test is the only reason it would need to be
+    a package."""
+
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "scripts" / "emit_brain.py"
+    spec = importlib.util.spec_from_file_location("emit_brain", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_committed_print_says_which_source_it_was_made_from():
+    """The digest beside the print, against the source as it stands.
+
+    ``--check`` also prints again and compares byte for byte, but only where the
+    pinned compiler is installed — which is nowhere in CI. This half needs no
+    compiler, so it is the half that always answers."""
+
+    assert _guard().stale_stamp() == []
+
+
+def test_a_source_the_print_was_not_made_from_is_refused(tmp_path):
+    """The negative control, kept as a test rather than as a memory.
+
+    A ``note`` never reaches the print: the compiler drops it, the printed bytes
+    do not move, and comparing prints therefore says the tree is current when
+    the source has changed. That was true here and went unnoticed. The digest is
+    what notices, and this is the case that proves it still can."""
+
+    guard = _guard()
+    moved = tmp_path / guard.SOURCE.name
+    moved.write_bytes(guard.SOURCE.read_bytes()
+                      + b'\nnote "a term that never reaches the print"\n')
+    findings = guard.stale_stamp(moved)
+    assert findings, "a changed source was called current"
+    assert guard.SOURCE.name in findings[0]
+    assert guard.STAMP.name in findings[0]
