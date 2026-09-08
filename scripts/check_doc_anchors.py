@@ -1,34 +1,35 @@
-"""Проверяет страницы документации: ссылки между ними и шапку каждой.
+"""Checks the documentation pages: the links between them and each page's header.
 
-Зачем. `scripts/check_doc_links.py` сторожит ссылки на СТРОКИ ИСХОДНИКА. За
-ссылками между самими страницами не следил никто, а ломаются они тем же тихим
-способом: раздел переименовали — ссылка на него осталась и продолжает выглядеть
-исправной. При сборке страниц Jekyll на такое не ругается, читатель просто
-попадает в начало страницы вместо нужного места.
+Why. `scripts/check_doc_links.py` guards links into SOURCE LINES. Nobody watched
+the links between the pages themselves, and they break the same quiet way: a
+section is renamed, the link to it stays behind and goes on looking correct.
+Jekyll does not complain while building the site; the reader simply lands at the
+top of the page instead of the place that was meant.
 
-Что проверяется:
+What is checked:
 
-* ссылка на файл (`limits.md`, `../SPEC.md`) — файл существует;
-* ссылка с меткой (`limits.md#где-обмазка-меняет-поведение-программы`) — в том
-  файле есть заголовок, дающий такую метку;
-* шапка страницы (то, что между двумя `---` в начале) — разбирается как YAML.
-  Ловится самая частая беда: значение без кавычек, внутри которого стоит
-  двоеточие с пробелом. Для страницы это значит «заголовок пропал», для файла
-  навыка — что навык не загрузится вовсе, и ни там, ни там ошибки не видно;
-* `docs/_config.yml` — по тому же правилу. Файл другой, беда та же, и мимо она
-  прошла именно потому, что проверка стояла только на шапках: 29 августа
-  незакавыченное `description:` с двоеточием остановило сборку страниц на сутки,
-  и всё это время сайт молча отдавал предыдущий слепок.
+* a link to a file (`limits.md`, `../SPEC.md`) — the file exists;
+* a link with an anchor (`limits.md#where-instrumentation-changes-behaviour`) —
+  that file has a heading which yields such an anchor;
+* the page header (whatever sits between the two leading `---`) — it parses as
+  YAML. The most common breakage is caught: an unquoted value with a colon and a
+  space inside it. For a page that means "the title vanished"; for a skill file
+  it means the skill does not load at all, and in neither case is there an error
+  to see;
+* `docs/_config.yml` — by the same rule. Different file, same breakage, and it
+  slipped through precisely because the check only covered page headers: on
+  29 August an unquoted `description:` with a colon stopped the site build for a
+  full day, and all that time the site silently served the previous snapshot.
 
-Метка вычисляется тем же кодом, каким её проставляет сборка страниц: `site/build.py`
-зовёт отсюда `anchor_for`. Заголовок переводится в строчные буквы, обратные кавычки
-и выделение снимаются, знаки препинания выбрасываются, пробелы становятся дефисами,
-повторяющаяся метка получает номер (`-1`, `-2`).
+The anchor is computed by the very code that assigns it when the site is built:
+`site/build.py` imports `anchor_for` from here. The heading is lowercased,
+backticks and emphasis are stripped, punctuation is dropped, spaces become
+hyphens, and a repeated anchor gets a number (`-1`, `-2`).
 
-Чего проверка НЕ делает: не ходит по внешним ссылкам (`http://`, `https://`) —
-для этого нужна сеть, а гейт должен работать без неё.
+What the check does NOT do: it does not follow external links (`http://`,
+`https://`) — that would need the network, and the gate must work without one.
 
-Запуск: uv run python scripts/check_doc_anchors.py   (из корня хранилища)
+Run: uv run python scripts/check_doc_anchors.py   (from the repository root)
 """
 from __future__ import annotations
 
@@ -38,34 +39,35 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-#: Что считаем документацией.
+#: What counts as documentation.
 GLOBS = ("docs/**/*.md", "*.md", "skill/*.md")
 
-#: `[текст](цель)` — цель без пробелов.
+#: `[text](target)` — a target with no spaces in it.
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
-#: Заголовок Markdown.
+#: A Markdown heading.
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 
-#: Строка вида `ключ: значение` в шапке страницы или в настройке сборки.
+#: A `key: value` line in a page header or in the build configuration.
 FRONT_FIELD = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*): (.*)$")
 
-#: Настройка, по которой GitHub собирает сайт. Ломается так же тихо, как шапка.
+#: The configuration GitHub builds the site by. Breaks as quietly as a header.
 CONFIG = ROOT / "docs" / "_config.yml"
 
 
 def anchor_for(text: str, taken: set[str]) -> str:
-    """Метка, которую заголовок `text` получит на странице.
+    """The anchor that the heading `text` will get on the page.
 
-    Правило одно на всё хранилище: этой же функцией метки проставляет
-    `site/build.py`, когда собирает страницы документации для сайта. Пока метки
-    ставил kramdown, правило приходилось повторять здесь по памяти о его
-    поведении; теперь страницы собираем мы, и повторять нечего — сверка и
-    сборка зовут один код. Разойтись им больше нечем.
+    One rule for the whole repository: `site/build.py` assigns anchors with this
+    same function when it builds the documentation pages for the site. While
+    kramdown assigned them, the rule had to be restated here from memory of its
+    behaviour; now that we build the pages ourselves there is nothing to restate —
+    the check and the build call one piece of code. They have no way left to
+    drift apart.
 
-    Заголовок переводится в строчные буквы, обратные кавычки и выделение
-    снимаются, знаки препинания выбрасываются, пробелы становятся дефисами.
-    Повторяющаяся метка получает номер (`-1`, `-2`) — `taken` для того и нужен.
+    The heading is lowercased, backticks and emphasis are stripped, punctuation
+    is dropped, spaces become hyphens. A repeated anchor gets a number (`-1`,
+    `-2`) — that is what `taken` is for.
     """
 
     text = re.sub(r"`([^`]*)`", r"\1", text)
@@ -81,7 +83,7 @@ def anchor_for(text: str, taken: set[str]) -> str:
 
 
 def anchors(path: Path) -> set[str]:
-    """Метки, которые страница сделает из своих заголовков."""
+    """The anchors this page will make out of its own headings."""
 
     out: set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -92,16 +94,16 @@ def anchors(path: Path) -> set[str]:
 
 
 def front_matter_problems(path: Path) -> list[str]:
-    """Беды в шапке страницы, которые молча ломают разбор YAML.
+    """Problems in a page header that silently break YAML parsing.
 
-    Проверяется одна, зато самая частая: значение без кавычек, внутри которого
-    стоит двоеточие с пробелом. YAML читает такое как вложенное отображение и
-    отказывается разбирать всю шапку. Для страницы это значит «нет заголовка»,
-    а для файла навыка — что навык не загрузится вовсе, и ни там, ни там ошибки
-    не видно: ровно на этом сломалась шапка skill/SKILL.md.
+    One is checked, and it is the most common one: an unquoted value with a colon
+    and a space inside it. YAML reads that as a nested mapping and refuses to
+    parse the whole header. For a page that means "no title"; for a skill file it
+    means the skill does not load at all, and in neither case is there an error to
+    see — that is exactly how the header of skill/SKILL.md broke.
 
-    Своей проверкой, а не через YAML: тянуть постороннюю библиотеку ради одной
-    строки не стоит, а эта беда ловится правилом в три строки.
+    Checked by hand rather than through YAML: pulling in an outside library for
+    one line is not worth it, and this breakage is caught by a three-line rule.
     """
 
     text = path.read_text(encoding="utf-8")
@@ -109,33 +111,34 @@ def front_matter_problems(path: Path) -> list[str]:
         return []
     parts = text.split("---\n", 2)
     if len(parts) < 3:
-        return [f"{path}: шапка открыта, но не закрыта"]
+        return [f"{path}: the header is opened but never closed"]
 
-    return unquoted_colon_problems(path, parts[1], first_lineno=2, what="шапку")
+    return unquoted_colon_problems(path, parts[1], first_lineno=2,
+                                   what="page header")
 
 
 def config_problems() -> list[str]:
-    """Та же беда в `docs/_config.yml` — настройке, по которой собирается сайт.
+    """The same breakage in `docs/_config.yml` — the site build configuration.
 
-    Правило то же, что и для шапки страницы, а файл другой, и ровно поэтому
-    беда прошла мимо: проверка шапок уже стояла, когда 29 августа незакавыченное
-    `description:` с двоеточием остановило сборку страниц на сутки. Здесь у
-    поломки цена выше: не «у страницы пропал заголовок», а весь сайт замирает на
-    предыдущем слепке и продолжает отдавать вчерашний день без единой жалобы.
+    Same rule as for a page header, different file, and that is exactly why the
+    breakage slipped through: the header check was already in place on 29 August
+    when an unquoted `description:` with a colon stopped the site build for a full
+    day. Here the price is higher: not "a page lost its title" but the whole site
+    frozen on the previous snapshot, serving yesterday without a single complaint.
     """
 
     if not CONFIG.exists():
         return []
     return unquoted_colon_problems(CONFIG, CONFIG.read_text(encoding="utf-8"),
-                                   first_lineno=1, what="настройку сборки")
+                                   first_lineno=1, what="build configuration")
 
 
 def unquoted_colon_problems(path: Path, text: str, first_lineno: int, what: str) -> list[str]:
-    """Значения без кавычек, внутри которых стоит двоеточие с пробелом.
+    """Unquoted values with a colon and a space inside them.
 
-    YAML читает такое как вложенное отображение и отказывается разбирать файл
-    целиком. Своей проверкой, а не через YAML: тянуть постороннюю библиотеку
-    ради одного правила не стоит, а эта беда ловится тремя строками.
+    YAML reads that as a nested mapping and refuses to parse the whole file.
+    Checked by hand rather than through YAML: pulling in an outside library for
+    one rule is not worth it, and this breakage is caught in three lines.
     """
 
     problems: list[str] = []
@@ -145,12 +148,12 @@ def unquoted_colon_problems(path: Path, text: str, first_lineno: int, what: str)
             continue
         key, value = m.group(1), m.group(2).strip()
         if not value or value[0] in "\"'[{|>":
-            continue  # в кавычках, список, отображение или блок — разберётся
+            continue  # quoted, a list, a mapping or a block — it will parse
         if ": " in value:
             problems.append(
-                f"{path}:{lineno}: значение поля {key!r} не в кавычках и содержит "
-                f"двоеточие с пробелом — YAML такую {what} не разберёт; возьмите "
-                "значение в двойные кавычки"
+                f"{path}:{lineno}: the value of {key!r} is unquoted and contains a "
+                f"colon followed by a space — YAML will not parse this {what}; put "
+                "the value in double quotes"
             )
     return problems
 
@@ -187,26 +190,27 @@ def main() -> int:
             if path_part:
                 dest = (page.parent / path_part).resolve()
                 if not dest.exists():
-                    bad.append(f"  - {rel}: нет файла {path_part}")
+                    bad.append(f"  - {rel}: no such file: {path_part}")
                     continue
             else:
-                dest = page  # ссылка внутрь той же страницы
+                dest = page  # a link into the same page
 
             if fragment and dest.suffix == ".md":
                 if dest not in cache:
                     cache[dest] = anchors(dest)
                 if fragment not in cache[dest]:
                     where = dest.relative_to(ROOT)
-                    bad.append(f"  - {rel}: в {where} нет заголовка с меткой #{fragment}")
+                    bad.append(f"  - {rel}: {where} has no heading with anchor #{fragment}")
 
     if bad:
-        print("Беды в страницах документации:\n", file=sys.stderr)
+        print("Problems in the documentation pages:\n", file=sys.stderr)
         print("\n".join(bad), file=sys.stderr)
-        print(f"\nПроверено ссылок: {checked}. Бед: {len(bad)}.", file=sys.stderr)
+        print(f"\nLinks checked: {checked}. Problems: {len(bad)}. Point each link at "
+              f"a heading that exists, or add the heading it names.", file=sys.stderr)
         return 1
 
-    print(f"Страницы документации: настройка сборки и шапки разбираются, "
-          f"ссылок проверено {checked} — все ведут в место.")
+    print(f"Documentation pages: the build configuration and the headers parse, "
+          f"{checked} links checked — every one lands somewhere.")
     return 0
 
 

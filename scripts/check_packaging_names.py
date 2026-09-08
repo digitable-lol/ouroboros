@@ -1,19 +1,20 @@
-"""Сверяет имена в рецепте Homebrew и в плагине asdf с тем, что кладёт пакет.
+"""Checks the names in the Homebrew formula and the asdf plugin against the package.
 
-Зачем. В формуле Homebrew однажды стояла строка
+Why. The Homebrew formula once carried the line
 
     assert_path_exists bin/"ouroboros-mcp-router"
 
-Такого имени у пакета не было никогда. Строка выглядела как проверка, но ничего
-не проверяла: до неё не доходило дело, а глазами она читается как правдоподобная.
-Имена команд заводятся ровно в одном месте — в `[project.scripts]` файла
-`pyproject.toml`, подкоманды — в разборщике `ouroboros/cli.py`. Всё остальное,
-что называет имя, обязано с ними сходиться, и сверяет это машина.
+The package never had a command by that name. The line looked like a check and
+checked nothing: execution never reached it, and to the eye it reads as entirely
+plausible. Command names are declared in exactly one place — `[project.scripts]`
+in `pyproject.toml` — and subcommands in the parser in `ouroboros/cli.py`.
+Everything else that names a command has to agree with those, and it is a machine
+that verifies it.
 
-Чего здесь нет. Самой установки: она требует Homebrew, asdf и сети и проверяется
-прогоном, а не этой проверкой (см. `docs/install.md`). Здесь только сверка имён —
-то есть ровно та ошибка, которая переживает любой прогон, пока до неё не дойдёт
-очередь.
+What is not here. The installation itself: it needs Homebrew, asdf and the
+network, and it is verified by actually running it, not by this check (see
+`docs/install.md`). Here there are only the names — that is, precisely the kind of
+mistake that survives any run until execution finally reaches it.
 
     uv run python scripts/check_packaging_names.py
 """
@@ -37,12 +38,12 @@ def _pyproject() -> dict:
 
 
 def _scripts() -> set[str]:
-    """Имена команд, которые пакет действительно кладёт в bin/ при установке."""
+    """The command names the package actually installs into bin/."""
     return set(_pyproject()["project"]["scripts"])
 
 
 def _subcommands() -> set[str]:
-    """Подкоманды, которые действительно понимает `ouroboros`."""
+    """The subcommands `ouroboros` actually understands."""
     from ouroboros import cli
 
     names: set[str] = set()
@@ -54,103 +55,113 @@ def _subcommands() -> set[str]:
 
 
 def _formula_body() -> str:
-    """Тело рецепта без строк-примечаний.
+    """The body of the formula with the comment lines removed.
 
-    Примечания выброшены нарочно: в них рецепт рассказывает и о том, чего у
-    пакета нет, — например о том самом выдуманном имени. Строка внутри caveats,
-    начинающаяся с решётки, тоже была бы выброшена; таких сейчас нет, а если
-    появятся — проверка их пропустит, но не соврёт.
+    The comments are dropped on purpose: in them the formula also talks about
+    things the package does not have — the invented name above, for one. A line
+    inside caveats that starts with a hash would be dropped as well; there are
+    none right now, and if any appear the check will skip them, but it will not
+    lie.
     """
     lines = FORMULA.read_text(encoding="utf-8").splitlines()
     return "\n".join(line for line in lines if not line.lstrip().startswith("#"))
 
 
 def main() -> int:
-    beda: list[str] = []
+    problems: list[str] = []
     scripts = _scripts()
     body = _formula_body()
 
-    # 1. Всё, к чему рецепт обращается как к вынесенной команде.
-    #    bin/"ouroboros" — но не opt_bin/"python3.12" и не libexec/"bin/python".
-    for obrazec in (r'(?<![A-Za-z_])bin/"([^"]+)"', r'#\{bin\}/([A-Za-z0-9._-]+)'):
-        found = set(re.findall(obrazec, body))
+    # 1. Everything the formula refers to as an installed command.
+    #    bin/"ouroboros" — but not opt_bin/"python3.12", not libexec/"bin/python".
+    for pattern in (r'(?<![A-Za-z_])bin/"([^"]+)"', r'#\{bin\}/([A-Za-z0-9._-]+)'):
+        found = set(re.findall(pattern, body))
         if not found:
-            beda.append(f"в рецепте не нашлось ни одного имени по образцу {obrazec!r} — "
-                        "образец устарел, проверка перестала что-либо проверять")
+            problems.append(f"the formula has no name matching {pattern!r} — the "
+                            "pattern is out of date and the check has stopped "
+                            "checking anything")
             continue
         for name in sorted(found - scripts):
-            beda.append(f"рецепт зовёт команду {name!r}, а пакет её не кладёт; "
-                        f"пакет кладёт только {sorted(scripts)}")
+            problems.append(f"the formula calls the command {name!r}, which the "
+                            f"package does not install; it installs only "
+                            f"{sorted(scripts)}")
 
-    # 2. Наружу должна выноситься каждая команда пакета: рецепт выносит их
-    #    образцом Dir[libexec/"bin/<начало>*"].
+    # 2. Every command of the package must be exposed: the formula exposes them
+    #    with the pattern Dir[libexec/"bin/<prefix>*"].
     globs = re.findall(r'Dir\[libexec/"bin/([^"]*)\*"\]', body)
     if not globs:
-        beda.append('в рецепте нет строки bin.install_symlink Dir[libexec/"bin/…*"]')
+        problems.append('the formula has no bin.install_symlink Dir[libexec/"bin/…*"] line')
     else:
         for name in sorted(scripts):
             if not any(name.startswith(g) for g in globs):
-                beda.append(f"команда {name!r} не попадает ни под один образец {globs} — "
-                            "после установки её не будет на PATH")
+                problems.append(f"the command {name!r} matches none of the patterns "
+                                f"{globs} — after installation it will not be on PATH")
 
-    # 3. Подкоманды, которые рецепт зовёт в test do и советует в caveats.
+    # 3. The subcommands the formula calls in test do and suggests in caveats.
     known = _subcommands()
     used = set(re.findall(r"\bouroboros ([a-z][a-z-]+)\b", body))
     used |= set(re.findall(r'bin/"ouroboros",\s*"([a-z][a-z-]+)"', body))
     if not used:
-        beda.append("в рецепте не нашлось ни одного вызова подкоманды — образец устарел")
+        problems.append("the formula calls no subcommand at all — the pattern is "
+                        "out of date")
     for name in sorted(used - known):
-        beda.append(f"рецепт зовёт подкоманду {name!r}, которой нет; есть {sorted(known)}")
+        problems.append(f"the formula calls the subcommand {name!r}, which does not "
+                        f"exist; the ones that do: {sorted(known)}")
 
-    # 4. Имя команды в настройке сервера MCP, которую печатают caveats.
+    # 4. The command name in the MCP server configuration the caveats print.
     commands = set(re.findall(r'"command":\s*"([A-Za-z0-9._-]+)"', body))
     if not commands:
-        beda.append("в caveats нет настройки MCP с полем command")
+        problems.append("the caveats hold no MCP configuration with a command field")
     for name in sorted(commands - scripts):
-        beda.append(f"в настройке MCP имя {name!r}, которого у пакета нет")
+        problems.append(f"the MCP configuration names {name!r}, which the package "
+                        f"does not have")
 
-    # 5. Тег в адресе архива — это версия пакета.
+    # 5. The tag in the archive URL is the package version.
     version = _pyproject()["project"]["version"]
     tags = set(re.findall(r"/tags/v([0-9][0-9A-Za-z.]*)\.tar\.gz", body))
     if not tags:
-        beda.append("в рецепте не нашлось адреса архива с тегом версии")
+        problems.append("the formula has no archive URL with a version tag")
     elif tags != {version}:
-        beda.append(f"рецепт тянет версии {sorted(tags)}, а пакет сейчас {version}")
+        problems.append(f"the formula pulls version {sorted(tags)}, while the package "
+                        f"is now {version}")
 
-    # 6. Плагин asdf выносит наружу ровно команды пакета. Список в нём явный:
-    #    вместе с пакетом в окружение приезжают команды зависимостей (httpx,
-    #    uvicorn, dotenv), и asdf сделал бы обёртку на каждую.
+    # 6. The asdf plugin exposes exactly the package commands. Its list is
+    #    explicit: the environment also receives the dependencies' commands
+    #    (httpx, uvicorn, dotenv) and asdf would make a shim for every one.
     text = ASDF_INSTALL.read_text(encoding="utf-8")
-    spisok = re.search(r"for name in ([^;\n]+); do", text)
-    if not spisok:
-        beda.append("в packaging/asdf/bin/install нет списка выносимых имён")
+    listing = re.search(r"for name in ([^;\n]+); do", text)
+    if not listing:
+        problems.append("packaging/asdf/bin/install has no list of names to expose")
     else:
-        listed = set(spisok.group(1).split())
+        listed = set(listing.group(1).split())
         if listed != scripts:
-            beda.append(f"плагин выносит {sorted(listed)}, а пакет кладёт {sorted(scripts)}")
+            problems.append(f"the plugin exposes {sorted(listed)}, while the package "
+                            f"installs {sorted(scripts)}")
 
-    # 7. asdf ждёт bin/ в корне хранилища: три файла на месте и исполняемые.
+    # 7. asdf expects bin/ at the repository root: three files, present and executable.
     for name in ("download", "install", "list-all"):
         shim = ROOT / "bin" / name
         real = ROOT / "packaging" / "asdf" / "bin" / name
         for path in (shim, real):
             if not path.is_file():
-                beda.append(f"нет файла {path.relative_to(ROOT)}")
+                problems.append(f"no such file: {path.relative_to(ROOT)}")
             elif not path.stat().st_mode & 0o111:
-                beda.append(f"{path.relative_to(ROOT)} не исполняемый — asdf его не позовёт")
+                problems.append(f"{path.relative_to(ROOT)} is not executable — asdf "
+                                f"will not call it")
         if shim.is_file() and f"packaging/asdf/bin/{name}" not in shim.read_text(encoding="utf-8"):
-            beda.append(f"bin/{name} не передаёт работу в packaging/asdf/bin/{name}")
+            problems.append(f"bin/{name} does not hand the work to "
+                            f"packaging/asdf/bin/{name}")
 
-    if beda:
-        print("Имена в упаковке разошлись с пакетом:\n")
-        for b in beda:
+    if problems:
+        print("The names in the packaging parted ways with the package:\n")
+        for b in problems:
             print(f"  - {b}")
-        print("\nИмена команд заводятся в pyproject.toml ([project.scripts]), "
-              "подкоманды — в ouroboros/cli.py.")
+        print("\nCommand names are declared in pyproject.toml ([project.scripts]), "
+              "subcommands in ouroboros/cli.py.")
         return 1
 
-    print(f"Имена в упаковке сходятся с пакетом: команды {sorted(scripts)}, "
-          f"подкоманд {len(known)}, версия {version}.")
+    print(f"The packaging names agree with the package: commands {sorted(scripts)}, "
+          f"{len(known)} subcommands, version {version}.")
     return 0
 
 

@@ -1,20 +1,21 @@
-"""Печатает таблицу «что попадает в поля записи» из настоящего прогона всех языков.
+"""Prints the "what lands in the record fields" table from a real run of every language.
 
-Зачем. Эта таблица в `docs/languages.md` однажды уже стала ложью — и не от
-правки самой страницы, а от чужой правки в обработчиках языков. До неё C, C++ и
-Elixir писали в поле `a` строку `a=2, b=3`; правка привела всех к значениям
-без имён, проверки это закрепили, а страница продолжала обещать имена. Ни одна
-проверка такого не ловит: страница и код не связаны ничем, кроме внимательности.
+Why. This table in `docs/languages.md` has already become a lie once — and not
+from an edit to the page itself, but from someone's edit to the language
+backends. Before it, C, C++ and Elixir wrote the string `a=2, b=3` into field
+`a`; the edit brought them all to values without names, the tests locked that in,
+and the page went on promising names. No check catches that: the page and the
+code are joined by nothing but somebody's attention.
 
-Как здесь. Таблица не пишется, а печатается — из того же прогона, которым живёт
-`tests/test_schema_parity.py`: настоящий обработчик, настоящий компилятор,
-настоящий `debug.info`. Между пометками в странице текст принадлежит машине.
+How it works here. The table is not written, it is printed — from the very run
+that `tests/test_schema_parity.py` lives on: a real backend, a real compiler, a
+real `debug.info`. Between the marks in the page the text belongs to the machine.
 
-    uv run python scripts/schema_facts.py --measure   # прогнать и переписать
-    uv run python scripts/schema_facts.py             # сверить
+    uv run python scripts/schema_facts.py --measure   # run and rewrite
+    uv run python scripts/schema_facts.py             # compare
 
-Замер идёт минуты (собираются C, C++, Elixir и Go) и потому вызывается руками.
-Сверка стоит секунды и висит в `scripts/qa.sh`.
+The measurement takes minutes (C, C++, Elixir and Go get compiled) and is
+therefore run by hand. The comparison costs seconds and hangs in `scripts/qa.sh`.
 """
 from __future__ import annotations
 
@@ -29,9 +30,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 FACTS = ROOT / "docs" / "schema-facts.json"
-#: Обе редакции страницы: имя без суффикса — английская, с `.ru` — русская. Таблицу
-#: печатает машина, поэтому подписи столбцов у каждой редакции свои и хранятся
-#: здесь, а не в странице: иначе перевод страницы молча разошёлся бы со снятым.
+#: Both editions of the page: a name with no suffix is the English one, `.ru` is
+#: the Russian one. The machine prints the table, so each edition's column labels
+#: live here rather than in the page — otherwise a translation of the page would
+#: quietly part ways with what was measured. The Russian labels below are data:
+#: they must match the Russian page word for word.
 PAGES = {
     ROOT / "docs" / "languages.md": {
         "head": "| language | field `a` (positional) | field `k` (keyword) |",
@@ -51,14 +54,14 @@ MARK = re.compile(
     r"(<!--schema-facts-->)(.*?)(<!--/schema-facts-->)", re.DOTALL
 )
 
-#: Как называть языки в таблице.
+#: How to name the languages in the table.
 TITLES = {"python": "Python", "javascript": "JavaScript",
           "c": "C", "cpp": "C++", "elixir": "Elixir",
           "go": "Go", "java": "Java", "csharp": "C#"}
 
 
 def measure() -> dict[str, Any]:
-    """Гоняет один и тот же вызов на всех языках и смотрит, что записалось."""
+    """Runs the same call in every language and looks at what got recorded."""
 
     from test_schema_parity import _ADD, _LANGS, _records, _skip_unless_available
 
@@ -66,9 +69,9 @@ def measure() -> dict[str, Any]:
     for lang in _LANGS:
         try:
             _skip_unless_available(lang)
-        except Exception as e:  # pytest.skip.Exception и подобные
+        except Exception as e:  # pytest.skip.Exception and the like
             out[lang] = {"unavailable": str(e)[:120]}
-            print(f"  {lang}: пропущен — {e}")
+            print(f"  {lang}: skipped — {e}")
             continue
         with tempfile.TemporaryDirectory(dir="/srv/tmp") as td:
             recs = _records(lang, Path(td))
@@ -101,12 +104,12 @@ def apply(facts: dict[str, Any]) -> bool:
     for page, words in PAGES.items():
         text = page.read_text(encoding="utf-8")
         if not MARK.search(text):
-            raise SystemExit(f"в {page.name} нет пометок <!--schema-facts-->")
+            raise SystemExit(f"{page.name} has no <!--schema-facts--> marks")
         table = render(facts, words)
 
-        # `table=table` связывает таблицу СЕЙЧАС, а не при вызове: без этого
-        # замыкание смотрело бы на переменную цикла и во вторую страницу попала
-        # бы таблица последней редакции.
+        # `table=table` binds the table NOW, not at call time: without it the
+        # closure would look at the loop variable and the second page would get
+        # the table of the last edition.
         def swap(m: re.Match[str], table: str = table) -> str:
             return m.group(1) + table + m.group(3)
 
@@ -119,32 +122,33 @@ def apply(facts: dict[str, Any]) -> bool:
 
 def main() -> int:
     if "--measure" in sys.argv:
-        print("== гоняю один вызов на всех языках ==")
+        print("== running one call in every language ==")
         facts = measure()
         FACTS.write_text(json.dumps(facts, ensure_ascii=False, indent=2) + "\n",
                          encoding="utf-8")
         changed = apply(facts)
-        print(f"записано в {FACTS.relative_to(ROOT)}")
-        print("страница обновлена" if changed else "страница уже совпадала")
+        print(f"written to {FACTS.relative_to(ROOT)}")
+        print("pages updated" if changed else "pages already matched")
         return 0
 
     if not FACTS.exists():
-        print(f"нет {FACTS.relative_to(ROOT)} — прогоните с --measure")
+        print(f"no {FACTS.relative_to(ROOT)} — run with --measure")
         return 1
     facts = json.loads(FACTS.read_text(encoding="utf-8"))
     for page, words in PAGES.items():
         want = render(facts, words)
         got = MARK.search(page.read_text(encoding="utf-8"))
         if got is None:
-            print(f"в {page.name} нет пометок <!--schema-facts-->")
+            print(f"{page.name} has no <!--schema-facts--> marks")
             return 1
         if got.group(2) != want:
-            print(f"Таблица полей записи в {page.name} разошлась со снятым:\n")
-            print("  в странице:\n" + got.group(2).rstrip())
-            print("\n  снято прогоном:\n" + want.rstrip())
-            print("\nПочинка: uv run python scripts/schema_facts.py --measure")
+            print(f"The record-field table in {page.name} parted ways with the "
+                  f"measurement:\n")
+            print("  in the page:\n" + got.group(2).rstrip())
+            print("\n  measured by the run:\n" + want.rstrip())
+            print("\nThe fix: uv run python scripts/schema_facts.py --measure")
             return 1
-    print(f"Таблица полей записи совпадает со снятым прогоном в {len(PAGES)} редакциях.")
+    print(f"The record-field table matches the measured run in {len(PAGES)} editions.")
     return 0
 
 

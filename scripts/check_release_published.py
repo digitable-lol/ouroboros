@@ -1,63 +1,70 @@
-"""Сверяет выпуск с тем, что человек получает снаружи — из крана и из asdf.
+"""Checks the release against what a person gets from outside — from the tap and from asdf.
 
-Зачем. У соседнего проекта, flang, хранилище формул отстало от выпусков 0.7.4—0.7.9:
-файл `packaging/homebrew/flang.rb` в дереве правили, а копию в `digitable-lol/homebrew-tap`
-выложить забывали. Всё это время `brew install` молча ставил 0.7.3 и ни на что не
-ругался — потому что с точки зрения `brew` всё было в порядке: формула, на которую он
-смотрит, исправна. Отстала она, а не сломалась. Ни одна проверка в дереве такого не
-видит: они все смотрят в дерево, а человек ставит не из дерева.
+Why. In the neighbouring project, flang, the tap fell behind releases 0.7.4-0.7.9: the
+file `packaging/homebrew/flang.rb` in the tree kept being edited, and the copy in
+`digitable-lol/homebrew-tap` kept not being pushed. All that time `brew install` silently
+installed 0.7.3 and complained about nothing — because from `brew`'s point of view all was
+well: the formula it looks at is sound. It had fallen behind, not broken. No check inside
+the tree sees that: they all look at the tree, and a person does not install from the tree.
 
-Отсюда правило, то же самое, что у `scripts/check_pages_live.py`: **сделано — это когда
-видно снаружи**. Эта проверка спрашивает не дерево, а выложенное:
+Hence the rule, the same one as in `scripts/check_pages_live.py`: **done is when it is
+visible from outside**. This check asks the published thing, not the tree:
 
-* архив выпуска — по тому самому адресу, который написан в формуле;
-* формулу — из `digitable-lol/homebrew-tap`, откуда её берёт `brew`;
-* теги хранилища — тем же способом, каким их читает `packaging/asdf/bin/list-all`.
+* the release archive — at the very address written in the formula;
+* the formula — from `digitable-lol/homebrew-tap`, where `brew` takes it from;
+* the repository tags — the same way `packaging/asdf/bin/list-all` reads them.
 
-Что проверяется (каждое правило названо; в отказе печатается ровно то, что разошлось):
+What is checked (each rule has a name; a refusal prints exactly what disagreed):
 
-  1. `версия в пакете`      — `ouroboros.__version__` берётся из метаданных установки, а
-                              не вписан числом. Вписанный числом, он четыре выпуска подряд
-                              оставался `0.1.0`: строку никто не читал, поэтому никто и не
-                              заметил, что она врёт. Правило ругается и на СОВПАДАЮЩЕЕ
-                              число: расхождение — следствие, а причина — второе место,
-                              где версия живёт.
-  2. `отпечаток не чужой`   — объявленный `sha256` не объявлялся в истории формулы ни
-                              для какой ДРУГОЙ версии. Два разных архива побайтово равны
-                              не бывают, значит повтор — доказательство, что отпечаток не
-                              пересчитали. Улика лежит в git, задним числом её не подделать.
-                              Ровно так у flang в v0.4.8 подняли версию и адрес, а `sha256`
-                              остался от v0.4.7.
-  3. `биты исполнимости`    — у `bin/*` и `packaging/asdf/bin/*` в git стоит режим 100755.
-                              `asdf plugin add` КЛОНИРУЕТ хранилище, то есть берёт режимы
-                              из git, а не с чьей-то рабочей копии; без бита `asdf` не
-                              запустит плагин вовсе.
-  4. `тег выпуска есть`     — версия пакета есть среди тегов хранилища. Нет тега — нет ни
-                              архива для `brew`, ни версии в `asdf list all`.
-  5. `отпечаток сверен`     — `sha256` формулы совпадает с отпечатком архива, который
-                              лежит по её же адресу. Скачивается и считается здесь.
-  6. `кран выложен`         — формула в `digitable-lol/homebrew-tap` побайтово равна
-                              `packaging/homebrew/ouroboros.rb`. Она там КОПИЯ, других
-                              отношений между этими файлами нет.
-  7. `кран не отстал`       — версия в адресе выложенной формулы равна версии пакета.
-                              Это и есть мина flang, названная отдельно от правила 6:
-                              по шестому видно, что копии разошлись, а по седьмому — что
-                              расхождение стоит человеку протухшей установки.
+  1. `version in the package`  — `ouroboros.__version__` comes from the installation
+                                 metadata rather than being written in as a literal.
+                                 Written in as a literal, it stayed `0.1.0` for four
+                                 releases running: nobody read the line, so nobody noticed
+                                 it was lying. The rule complains even when the literal
+                                 AGREES: the disagreement is the symptom, the cause is the
+                                 second place the version lives in.
+  2. `checksum not reused`     — the declared `sha256` was never declared in the history of
+                                 the formula for any OTHER version. Two different archives
+                                 are never byte-for-byte equal, so a repeat is proof that
+                                 the checksum was not recomputed. The evidence sits in git
+                                 and cannot be forged after the fact. That is exactly how
+                                 flang v0.4.8 raised the version and the URL while the
+                                 `sha256` stayed behind from v0.4.7.
+  3. `executable bits`         — `bin/*` and `packaging/asdf/bin/*` have mode 100755 in
+                                 git. `asdf plugin add` CLONES the repository, i.e. takes
+                                 the modes from git rather than from somebody's working
+                                 copy; without the bit `asdf` will not run the plugin at
+                                 all.
+  4. `release tag exists`      — the package version is among the repository tags. No tag
+                                 means no archive for `brew` and no version in
+                                 `asdf list all`.
+  5. `checksum verified`       — the formula's `sha256` equals the checksum of the archive
+                                 that lies at the formula's own address. It is downloaded
+                                 and hashed right here.
+  6. `tap published`           — the formula in `digitable-lol/homebrew-tap` is
+                                 byte-for-byte equal to `packaging/homebrew/ouroboros.rb`.
+                                 It is a COPY there; there is no other relation between
+                                 these two files.
+  7. `tap not stale`           — the version in the published formula's URL equals the
+                                 package version. This is the flang landmine itself, named
+                                 apart from rule 6: the sixth shows that the copies have
+                                 drifted, the seventh that the drift costs a person a stale
+                                 installation.
 
-Коды возврата: 0 — снаружи то же, что в дереве; 1 — разошлось; 2 — не достучались
-(проверка НЕ состоялась, и это не то же самое, что «всё хорошо»).
+Exit codes: 0 — outside matches the tree; 1 — they disagree; 2 — unreachable (the check did
+NOT happen, and that is not the same as "all is well").
 
-Запуск::
+Run::
 
-    uv run python scripts/check_release_published.py              # спросить снаружи
-    uv run python scripts/check_release_published.py --offline    # только то, что видно в дереве
-    uv run python scripts/check_release_published.py --self-test  # проверить саму проверку
+    uv run python scripts/check_release_published.py              # ask the outside
+    uv run python scripts/check_release_published.py --offline    # only what the tree shows
+    uv run python scripts/check_release_published.py --self-test  # check the check itself
 
-`--self-test` нужен потому, что проверка, которая ничего не ловит, выглядит ровно как
-проверка, которая всё прошла. Он скармливает каждому правилу заведомо испорченные улики
-и требует, чтобы правило покраснело; и он же скармливает всем правилам исправные улики и
-требует, чтобы все промолчали. Правило, которое молчит на порче, — сломано, и `--self-test`
-отказывает так же, как отказала бы сама проверка.
+`--self-test` exists because a check that catches nothing looks exactly like a check that
+found nothing wrong. It feeds every rule knowingly broken evidence and demands that the
+rule go red; and it feeds every rule sound evidence and demands that they all stay silent.
+A rule that stays silent on breakage is broken, and `--self-test` refuses just as the check
+itself would have.
 """
 from __future__ import annotations
 
@@ -80,15 +87,16 @@ ROOT = Path(__file__).resolve().parent.parent
 
 FORMULA = ROOT / "packaging" / "homebrew" / "ouroboros.rb"
 
-#: Хранилище формул, из которого `brew` берёт формулу. Файл в дереве — источник,
-#: этот — копия; `brew` смотрит только на копию.
+#: The tap `brew` takes the formula from. The file in the tree is the source, this
+#: one is the copy; `brew` looks only at the copy.
 TAP_REPO = "digitable-lol/homebrew-tap"
 TAP_PATH = "Formula/ouroboros.rb"
 
-#: Хранилище самого пакета: его теги — это версии, его архивы ставит и `brew`, и `asdf`.
+#: The package's own repository: its tags are the versions, and both `brew` and
+#: `asdf` install its archives.
 REPO_URL = "https://github.com/digitable-lol/ouroboros.git"
 
-#: Файлы, которые `asdf` зовёт после клонирования; без бита исполнимости не зовёт никак.
+#: The files `asdf` calls after cloning; without the executable bit it calls none.
 ASDF_SCRIPTS = (
     "bin/download",
     "bin/install",
@@ -98,54 +106,55 @@ ASDF_SCRIPTS = (
     "packaging/asdf/bin/list-all",
 )
 
-#: `url "…/archive/refs/tags/v1.2.3.tar.gz"` — версия внутри адреса.
+#: `url "…/archive/refs/tags/v1.2.3.tar.gz"` — the version inside the URL.
 URL_TAG = re.compile(r"/archive/refs/tags/v([0-9][0-9A-Za-z.]*)\.tar\.gz")
 
-#: `sha256 "…"` в начале строки (отступ формулы — пробелы), а не слово в примечании.
+#: `sha256 "…"` at the start of a line (the formula indents with spaces), not the
+#: word inside a comment.
 SHA_LINE = re.compile(r"^\s*sha256\s+\"([0-9a-f]{64})\"", re.MULTILINE)
 
-#: `url "…"` в начале строки.
+#: `url "…"` at the start of a line.
 URL_LINE = re.compile(r"^\s*url\s+\"([^\"]+)\"", re.MULTILINE)
 
 TIMEOUT = 60
 
 
 # --------------------------------------------------------------------------- #
-# улики
+# evidence
 # --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
 class Evidence:
-    """Всё, на что смотрят правила. Отделено от сбора нарочно.
+    """Everything the rules look at. Deliberately separated from the collecting.
 
-    Правило не ходит ни в сеть, ни в git: оно получает готовые улики и отвечает
-    списком жалоб. Поэтому `--self-test` может подсунуть ему испорченные улики и
-    убедиться, что оно на них краснеет, — не трогая ни сети, ни хранилища.
+    A rule goes neither to the network nor to git: it receives finished evidence
+    and answers with a list of complaints. That is what lets `--self-test` hand it
+    broken evidence and confirm that it goes red on it, without touching the
+    network or the repository.
 
-    Поля, которые остались `None`, означают «не спросили или не достучались».
-    Правило на таком поле МОЛЧИТ, а `main` возвращает 2: не проверено — это не
-    «всё хорошо».
+    A field left as `None` means "not asked, or not reachable". On such a field a
+    rule STAYS SILENT and `main` returns 2: not checked is not "all is well".
     """
 
-    #: `version` из `pyproject.toml` — единственное место, где заводится версия.
+    #: `version` from `pyproject.toml` — the one place a version is declared.
     version: str
-    #: Откуда `ouroboros.__version__` берёт число: ("metadata"|"literal"|"none", значение).
+    #: Where `ouroboros.__version__` gets its number: ("metadata"|"literal"|"none", value).
     version_source: tuple[str, str]
-    #: Байты `packaging/homebrew/ouroboros.rb` в дереве.
+    #: The bytes of `packaging/homebrew/ouroboros.rb` in the tree.
     formula: bytes
-    #: Версия и отпечаток, вычитанные из формулы дерева.
+    #: The version and the checksum read out of the tree's formula.
     formula_tag: str
     formula_sha: str
-    #: Отпечаток -> версии, для которых он объявлялся в истории формулы.
+    #: Checksum -> the versions it was declared for in the formula's history.
     sha_history: dict[str, set[str]] = field(default_factory=dict)
-    #: Путь -> режим в индексе git (`100755` / `100644`).
+    #: Path -> mode in the git index (`100755` / `100644`).
     git_modes: dict[str, str] = field(default_factory=dict)
-    #: Теги хранилища без ведущей `v`.
+    #: The repository tags, without the leading `v`.
     tags: list[str] | None = None
-    #: Отпечаток архива, скачанного по адресу из формулы.
+    #: The checksum of the archive downloaded from the formula's URL.
     archive_sha: str | None = None
-    #: Байты формулы, выложенной в хранилище формул.
+    #: The bytes of the formula published in the tap.
     published: bytes | None = None
 
 
@@ -153,17 +162,18 @@ Rule = Callable[[Evidence], list[str]]
 
 
 # --------------------------------------------------------------------------- #
-# правила
+# rules
 # --------------------------------------------------------------------------- #
 
 
 def rule_package_version(e: Evidence) -> list[str]:
-    """1. Пакет знает свою версию, и она не вписана числом второй раз.
+    """1. The package knows its version, and it is not written in as a literal twice.
 
-    Правило ругается и тогда, когда вписанное число СОВПАДАЕТ с нынешним. Это
-    нарочно: расхождение — следствие, а причина — то, что число живёт в двух местах
-    и сходится только чьим-то вниманием. Здесь оно и разошлось: `__version__`
-    оставался `0.1.0` четыре выпуска подряд, потому что его никто не читал.
+    The rule complains even when the literal AGREES with the current version. That
+    is deliberate: the disagreement is the symptom, the cause is that the number
+    lives in two places and is kept in step by nothing but somebody's attention.
+    That is where it went wrong: `__version__` stayed `0.1.0` for four releases
+    running, because nobody read it.
     """
 
     kind, value = e.version_source
@@ -171,79 +181,84 @@ def rule_package_version(e: Evidence) -> list[str]:
         return []
     if kind == "none":
         return [
-            "ouroboros/__init__.py не объявляет __version__ — установленный пакет не "
-            "умеет назвать свою версию, и человек не может узнать, что у него стоит"
+            "ouroboros/__init__.py declares no __version__ — the installed package "
+            "cannot name its own version, and a person cannot find out what they have"
         ]
     if value != e.version:
         return [
-            f"пакет вписан числом {value!r}, а выпускается {e.version!r} — "
-            "ouroboros/__init__.py разошёлся с pyproject.toml"
+            f"the package is written in as {value!r} while {e.version!r} is being "
+            "released — ouroboros/__init__.py parted ways with pyproject.toml"
         ]
     return [
-        f"версия вписана в ouroboros/__init__.py числом ({value}). Сейчас оно совпадает "
-        "с pyproject.toml, но держится это только вниманием, и однажды уже не удержалось. "
-        "Читайте её из метаданных установки: importlib.metadata.version(\"ouroboros-logger\")"
+        f"the version is written into ouroboros/__init__.py as a literal ({value}). It "
+        "agrees with pyproject.toml right now, but nothing holds it there except "
+        "attention, and once it already failed to hold. Read it from the installation "
+        "metadata instead: importlib.metadata.version(\"ouroboros-logger\")"
     ]
 
 
 def rule_sha_not_reused(e: Evidence) -> list[str]:
-    """2. Объявленный отпечаток не объявлялся ни для какой другой версии."""
+    """2. The declared checksum was never declared for any other version."""
 
     others = sorted(e.sha_history.get(e.formula_sha, set()) - {e.formula_tag})
     if not others:
         return []
     return [
-        f"sha256 {e.formula_sha[:16]}… объявлен для версии {e.formula_tag}, а в истории "
-        f"формулы он уже объявлялся для {others} — значит его не пересчитали: два разных "
-        "архива побайтово равны не бывают"
+        f"sha256 {e.formula_sha[:16]}… is declared for version {e.formula_tag}, and in "
+        f"the formula's history it was already declared for {others} — so it was not "
+        "recomputed: two different archives are never byte-for-byte equal. Run "
+        "`shasum -a 256` on the archive at the URL in the formula and write that in"
     ]
 
 
 def rule_exec_bits(e: Evidence) -> list[str]:
-    """3. `asdf` клонирует хранилище, поэтому бит исполнимости берётся из git."""
+    """3. `asdf` clones the repository, so the executable bit comes from git."""
 
     bad = []
     for path in ASDF_SCRIPTS:
         mode = e.git_modes.get(path)
         if mode is None:
-            bad.append(f"{path}: файла нет в git, а asdf ждёт его в клоне")
+            bad.append(f"{path}: not in git, while asdf expects it in the clone")
         elif mode != "100755":
             bad.append(
-                f"{path}: режим в git {mode}, а нужен 100755 — asdf клонирует хранилище "
-                "и берёт режим оттуда, так что плагин не запустится"
+                f"{path}: mode {mode} in git, 100755 is needed — asdf clones the "
+                "repository and takes the mode from there, so the plugin will not run. "
+                "Fix with: git update-index --chmod=+x " + path
             )
     return bad
 
 
 def rule_tag_exists(e: Evidence) -> list[str]:
-    """4. Версия пакета есть среди тегов: иначе ставить нечего."""
+    """4. The package version is among the tags: otherwise there is nothing to install."""
 
     if e.tags is None:
         return []
     if e.version in e.tags:
         return []
     return [
-        f"версии {e.version} нет среди тегов хранилища (есть {e.tags[-5:]}) — значит нет "
-        f"ни архива для brew, ни строки {e.version} в `asdf list all ouroboros`. "
-        "Либо выпуск ещё не сделан (нужен тег), либо версия в pyproject.toml забежала вперёд"
+        f"version {e.version} is not among the repository tags (there are {e.tags[-5:]}) "
+        f"— which means there is no archive for brew and no {e.version} line in "
+        f"`asdf list all ouroboros`. Either the release has not been made yet (a tag is "
+        "needed), or the version in pyproject.toml has run ahead"
     ]
 
 
 def rule_archive_matches(e: Evidence) -> list[str]:
-    """5. Отпечаток в формуле — от того архива, на который она показывает."""
+    """5. The formula's checksum belongs to the archive the formula points at."""
 
     if e.archive_sha is None:
         return []
     if e.archive_sha == e.formula_sha:
         return []
     return [
-        f"sha256 в формуле {e.formula_sha}, а у архива по её же адресу {e.archive_sha} — "
-        "brew откажет на проверке отпечатка; впишите второй"
+        f"sha256 in the formula is {e.formula_sha}, while the archive at the formula's "
+        f"own URL has {e.archive_sha} — brew will refuse at the checksum check; write "
+        "the second one in"
     ]
 
 
 def rule_tap_published(e: Evidence) -> list[str]:
-    """6. Выложенная формула — побайтовая копия той, что в дереве."""
+    """6. The published formula is a byte-for-byte copy of the one in the tree."""
 
     if e.published is None:
         return []
@@ -253,61 +268,66 @@ def rule_tap_published(e: Evidence) -> list[str]:
     theirs = hashlib.sha256(e.published).hexdigest()[:16]
     lines_mine = e.formula.decode("utf-8", "replace").splitlines()
     lines_theirs = e.published.decode("utf-8", "replace").splitlines()
-    where = "длиной"
+    where = "in length"
     for n, (a, b) in enumerate(zip(lines_mine, lines_theirs, strict=False), start=1):
         if a != b:
-            where = f"начиная со строки {n}: в дереве {a.strip()!r}, в кране {b.strip()!r}"
+            where = (f"from line {n} on: the tree has {a.strip()!r}, "
+                     f"the tap has {b.strip()!r}")
             break
     return [
-        f"формула в {TAP_REPO} разошлась с деревом ({mine}… против {theirs}…), {where}. "
-        f"Она там копия: скопируйте {FORMULA.relative_to(ROOT)} в {TAP_PATH} и отправьте"
+        f"the formula in {TAP_REPO} parted ways with the tree ({mine}… against "
+        f"{theirs}…), {where}. It is a copy there: copy "
+        f"{FORMULA.relative_to(ROOT)} over {TAP_PATH} and push"
     ]
 
 
 def rule_tap_not_stale(e: Evidence) -> list[str]:
-    """7. Та самая мина: кран отстал, и `brew install` молча ставит старое."""
+    """7. The landmine itself: the tap is behind and `brew install` silently
+    installs the old thing."""
 
     if e.published is None:
         return []
     tags = URL_TAG.findall(e.published.decode("utf-8", "replace"))
     if not tags:
         return [
-            f"в выложенной формуле ({TAP_REPO}) не нашлось адреса архива с тегом версии — "
-            "проверка не может сказать, что именно ставит brew"
+            f"the published formula ({TAP_REPO}) has no archive URL with a version tag "
+            "— the check cannot say what exactly brew installs"
         ]
     if set(tags) == {e.version}:
         return []
     return [
-        f"brew ставит {sorted(set(tags))}, а нынешний выпуск {e.version}: хранилище формул "
-        f"{TAP_REPO} отстало. Молча — brew не считает это ошибкой, формула-то исправна. "
-        "Ровно так flang раздавал 0.7.3 при выпущенных 0.7.4—0.7.9"
+        f"brew installs {sorted(set(tags))} while the current release is {e.version}: the "
+        f"tap {TAP_REPO} is behind. Silently — brew does not consider this an error, the "
+        f"formula being sound. That is exactly how flang kept handing out 0.7.3 while "
+        f"0.7.4-0.7.9 were released. Copy {FORMULA.relative_to(ROOT)} over {TAP_PATH} "
+        f"and push"
     ]
 
 
-#: Правила по порядку. Первые три обходятся деревом, остальные спрашивают снаружи.
+#: The rules in order. The first three make do with the tree, the rest ask outside.
 OFFLINE_RULES: tuple[tuple[str, Rule], ...] = (
-    ("версия в пакете", rule_package_version),
-    ("отпечаток не чужой", rule_sha_not_reused),
-    ("биты исполнимости", rule_exec_bits),
+    ("version in the package", rule_package_version),
+    ("checksum not reused", rule_sha_not_reused),
+    ("executable bits", rule_exec_bits),
 )
 
 ONLINE_RULES: tuple[tuple[str, Rule], ...] = (
-    ("тег выпуска есть", rule_tag_exists),
-    ("отпечаток сверен", rule_archive_matches),
-    ("кран выложен", rule_tap_published),
-    ("кран не отстал", rule_tap_not_stale),
+    ("release tag exists", rule_tag_exists),
+    ("checksum verified", rule_archive_matches),
+    ("tap published", rule_tap_published),
+    ("tap not stale", rule_tap_not_stale),
 )
 
 ALL_RULES = OFFLINE_RULES + ONLINE_RULES
 
 
 # --------------------------------------------------------------------------- #
-# сбор улик: дерево
+# collecting the evidence: the tree
 # --------------------------------------------------------------------------- #
 
 
 def _git(*args: str) -> str:
-    """git в дереве проекта. Чужая настройка не должна на это влиять."""
+    """git inside the project tree. Nobody else's configuration may affect this."""
 
     env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
     return subprocess.run(
@@ -323,10 +343,11 @@ def pyproject_version() -> str:
 
 
 def version_source() -> tuple[str, str]:
-    """Как пакет узнаёт свою версию: из метаданных, из вписанного числа или никак.
+    """How the package learns its version: from metadata, from a literal, or not at all.
 
-    Читается исходник, а не импорт: импортировать пришлось бы УСТАНОВЛЕННЫЙ пакет,
-    а проверяется тот, что в дереве, — правка в дереве до установки ещё не доехала.
+    The source is read rather than imported: importing would reach the INSTALLED
+    package, while the one under check is in the tree — an edit in the tree has not
+    reached the installation yet.
     """
 
     text = (ROOT / "ouroboros" / "__init__.py").read_text(encoding="utf-8")
@@ -342,22 +363,25 @@ def version_source() -> tuple[str, str]:
 
 
 def formula_fields(text: str) -> tuple[str, str, str]:
-    """Адрес, версия в нём и отпечаток — из тела формулы, минуя примечания."""
+    """The URL, the version inside it and the checksum — from the formula body,
+    skipping the comments."""
 
     urls = URL_LINE.findall(text)
     shas = SHA_LINE.findall(text)
     if not urls:
-        raise SystemExit(f"{FORMULA}: нет объявления url — образец проверки устарел")
+        raise SystemExit(f"{FORMULA}: no url declaration — the check's pattern is "
+                         f"out of date")
     if not shas:
-        raise SystemExit(f"{FORMULA}: нет объявления sha256 — образец проверки устарел")
+        raise SystemExit(f"{FORMULA}: no sha256 declaration — the check's pattern is "
+                         f"out of date")
     tags = URL_TAG.findall(urls[0])
     if not tags:
-        raise SystemExit(f"{FORMULA}: в адресе {urls[0]!r} нет тега версии")
+        raise SystemExit(f"{FORMULA}: the URL {urls[0]!r} carries no version tag")
     return urls[0], tags[0], shas[0]
 
 
 def sha_history() -> dict[str, set[str]]:
-    """Какой отпечаток для какой версии объявлялся, по истории самой формулы."""
+    """Which checksum was declared for which version, from the formula's own history."""
 
     history: dict[str, set[str]] = {}
     rel = str(FORMULA.relative_to(ROOT))
@@ -395,12 +419,12 @@ def git_modes() -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------- #
-# сбор улик: то, что видно снаружи
+# collecting the evidence: what is visible from outside
 # --------------------------------------------------------------------------- #
 
 
 class Unreachable(Exception):
-    """До выложенного не достучались. Не «всё хорошо» и не «разошлось»."""
+    """The published thing could not be reached. Neither "all is well" nor "they differ"."""
 
 
 def fetch(url: str, accept: str | None = None) -> bytes:
@@ -417,14 +441,14 @@ def fetch(url: str, accept: str | None = None) -> bytes:
             return body
     except urllib.error.HTTPError as e:
         if e.code in (403, 429):
-            raise Unreachable(f"{url}: {e.code} — GitHub ограничил частоту запросов") from e
-        raise Unreachable(f"{url}: ответ {e.code}") from e
+            raise Unreachable(f"{url}: {e.code} — GitHub is rate-limiting us") from e
+        raise Unreachable(f"{url}: answered {e.code}") from e
     except (urllib.error.URLError, OSError) as e:
         raise Unreachable(f"{url}: {e}") from e
 
 
 def remote_tags() -> list[str]:
-    """Теги хранилища — тем же способом, каким их читает плагин asdf."""
+    """The repository tags — the same way the asdf plugin reads them."""
 
     env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
     try:
@@ -443,27 +467,28 @@ def remote_tags() -> list[str]:
 
 
 def archive_sha(url: str) -> str:
-    """Отпечаток архива, который человек на самом деле скачает."""
+    """The checksum of the archive a person will actually download."""
 
     return hashlib.sha256(fetch(url)).hexdigest()
 
 
 def published_formula() -> bytes:
-    """Формула из хранилища формул — через API, а не raw.
+    """The formula from the tap — through the API, not through raw.
 
-    `raw.githubusercontent.com` отдаёт кэш до пяти минут, и сразу после отправки
-    проверка бы врала в обе стороны. API отвечает нынешним деревом.
+    `raw.githubusercontent.com` serves a cache for up to five minutes, so right
+    after a push the check would lie in both directions. The API answers with the
+    current tree.
     """
 
     url = f"https://api.github.com/repos/{TAP_REPO}/contents/{TAP_PATH}?ref=main"
     payload = json.loads(fetch(url, accept="application/vnd.github+json").decode("utf-8"))
     if payload.get("encoding") != "base64":
-        raise Unreachable(f"{url}: неожиданная упаковка {payload.get('encoding')!r}")
+        raise Unreachable(f"{url}: unexpected encoding {payload.get('encoding')!r}")
     return base64.b64decode(payload["content"])
 
 
 def collect(online: bool) -> tuple[Evidence, list[str]]:
-    """Улики и список того, что спросить не удалось."""
+    """The evidence, plus a list of what could not be asked."""
 
     version = pyproject_version()
     formula_bytes = FORMULA.read_bytes()
@@ -484,25 +509,25 @@ def collect(online: bool) -> tuple[Evidence, list[str]]:
     try:
         evidence = replace(evidence, tags=remote_tags())
     except Unreachable as e:
-        missed.append(f"теги хранилища: {e}")
+        missed.append(f"repository tags: {e}")
     try:
         evidence = replace(evidence, archive_sha=archive_sha(url))
     except Unreachable as e:
-        missed.append(f"архив выпуска: {e}")
+        missed.append(f"release archive: {e}")
     try:
         evidence = replace(evidence, published=published_formula())
     except Unreachable as e:
-        missed.append(f"формула из {TAP_REPO}: {e}")
+        missed.append(f"the formula from {TAP_REPO}: {e}")
     return evidence, missed
 
 
 # --------------------------------------------------------------------------- #
-# проверка самой проверки
+# checking the check itself
 # --------------------------------------------------------------------------- #
 
 
 def sound_evidence() -> Evidence:
-    """Заведомо исправные улики: на них обязаны молчать все правила."""
+    """Knowingly sound evidence: every rule must stay silent on it."""
 
     formula = (
         b'class Ouroboros < Formula\n'
@@ -525,40 +550,41 @@ def sound_evidence() -> Evidence:
 
 
 def spoiled() -> list[tuple[str, Evidence, set[str]]]:
-    """По порче на правило: что испортили, улики и КТО обязан на это ругаться.
+    """One breakage per rule: what was broken, the evidence, and WHO must complain.
 
-    Ожидаемых правил обычно одно. Отставший кран — исключение, и оно настоящее: он
-    и разошёлся с деревом побайтово, и раздаёт не ту версию. Оба правила говорят о
-    нём правду, поэтому оба здесь и перечислены. Если бы список был «ровно одно
-    правило», отрицательный контроль требовал бы от проверки соврать.
+    Usually exactly one rule is expected. The stale tap is the exception, and a
+    genuine one: it both differs from the tree byte for byte and hands out the
+    wrong version. Both rules tell the truth about it, so both are listed here. If
+    the list demanded "exactly one rule", the negative control would be demanding
+    that the check lie.
     """
 
     ok = sound_evidence()
     stale_formula = ok.formula.replace(b"v9.9.9.tar.gz", b"v9.9.8.tar.gz")
     return [
-        ("версия в пакете: вписана числом и разошлась",
-         replace(ok, version_source=("literal", "0.1.0")), {"версия в пакете"}),
-        ("версия в пакете: вписана числом, пока совпадает",
-         replace(ok, version_source=("literal", "9.9.9")), {"версия в пакете"}),
-        ("версия в пакете: пакет её не объявляет",
-         replace(ok, version_source=("none", "")), {"версия в пакете"}),
-        ("отпечаток не чужой", replace(ok, sha_history={"a" * 64: {"9.9.9", "9.9.8"}}),
-         {"отпечаток не чужой"}),
-        ("биты исполнимости", replace(ok, git_modes={**ok.git_modes, "bin/install": "100644"}),
-         {"биты исполнимости"}),
-        ("тег выпуска есть", replace(ok, tags=["9.9.7", "9.9.8"]),
-         {"тег выпуска есть"}),
-        ("отпечаток сверен", replace(ok, archive_sha="b" * 64),
-         {"отпечаток сверен"}),
-        ("кран выложен", replace(ok, published=ok.formula + "# лишняя строка\n".encode()),
-         {"кран выложен"}),
-        ("кран не отстал", replace(ok, published=stale_formula),
-         {"кран выложен", "кран не отстал"}),
+        ("version in the package: a literal, and it disagrees",
+         replace(ok, version_source=("literal", "0.1.0")), {"version in the package"}),
+        ("version in the package: a literal that agrees for now",
+         replace(ok, version_source=("literal", "9.9.9")), {"version in the package"}),
+        ("version in the package: the package does not declare it",
+         replace(ok, version_source=("none", "")), {"version in the package"}),
+        ("checksum not reused", replace(ok, sha_history={"a" * 64: {"9.9.9", "9.9.8"}}),
+         {"checksum not reused"}),
+        ("executable bits", replace(ok, git_modes={**ok.git_modes, "bin/install": "100644"}),
+         {"executable bits"}),
+        ("release tag exists", replace(ok, tags=["9.9.7", "9.9.8"]),
+         {"release tag exists"}),
+        ("checksum verified", replace(ok, archive_sha="b" * 64),
+         {"checksum verified"}),
+        ("tap published", replace(ok, published=ok.formula + b"# one extra line\n"),
+         {"tap published"}),
+        ("tap not stale", replace(ok, published=stale_formula),
+         {"tap published", "tap not stale"}),
     ]
 
 
 def self_test() -> int:
-    """Отрицательный контроль: каждое правило обязано покраснеть на своей порче."""
+    """The negative control: every rule must go red on its own breakage."""
 
     bad: list[str] = []
 
@@ -566,33 +592,33 @@ def self_test() -> int:
     for name, rule in ALL_RULES:
         complaints = rule(ok)
         if complaints:
-            bad.append(f"{name}: ругается на исправные улики — {complaints[0]}")
+            bad.append(f"{name}: complains about sound evidence — {complaints[0]}")
 
     for name, evidence, expected in spoiled():
         fired = {rule_name for rule_name, rule in ALL_RULES if rule(evidence)}
         for missing in sorted(expected - fired):
-            bad.append(f"порча «{name}»: правило «{missing}» НЕ заметило её — "
-                       "оно ничего не проверяет")
-        # Правило, которое ругается на чужую порчу, назовёт в отказе не ту причину,
-        # и человек пойдёт чинить не то.
+            bad.append(f"breakage \u2018{name}\u2019: the rule \u2018{missing}\u2019 "
+                       "did NOT notice it — it checks nothing")
+        # A rule that complains about somebody else's breakage names the wrong cause
+        # in the refusal, and a person goes off to fix the wrong thing.
         for extra in sorted(fired - expected):
-            bad.append(f"порча «{name}»: ругается «{extra}», а не должно — "
-                       "отказ назовёт не ту причину")
+            bad.append(f"breakage \u2018{name}\u2019: \u2018{extra}\u2019 complains "
+                       "and should not — the refusal would name the wrong cause")
 
-    # Не спросили — значит молчим, а не зеленеем: правила на пустых полях немы.
+    # Not asked means silent, not green: on empty fields the rules are mute.
     silent = replace(ok, tags=None, archive_sha=None, published=None)
     for name, rule in ONLINE_RULES:
         if rule(silent):
-            bad.append(f"{name}: судит по тому, чего не спрашивало")
+            bad.append(f"{name}: judges by what it never asked about")
 
     if bad:
-        print("Проверка сломана:\n", file=sys.stderr)
+        print("The check is broken:\n", file=sys.stderr)
         for b in bad:
             print(f"  - {b}", file=sys.stderr)
         return 1
 
-    print(f"Проверка проверена: правил {len(ALL_RULES)}, каждое краснеет на своей порче, "
-          f"молчит на чужой и на неспрошенном.")
+    print(f"The check is checked: {len(ALL_RULES)} rules, each goes red on its own "
+          f"breakage, stays silent on somebody else's and on what was never asked.")
     return 0
 
 
@@ -602,9 +628,9 @@ def self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--offline", action="store_true",
-                        help="только правила, которым хватает дерева")
+                        help="only the rules that make do with the tree")
     parser.add_argument("--self-test", action="store_true", dest="self_test",
-                        help="проверить сами правила на заведомой порче")
+                        help="check the rules themselves against known breakage")
     args = parser.parse_args()
 
     if args.self_test:
@@ -619,26 +645,27 @@ def main() -> int:
             bad.append(f"  [{name}] {complaint}")
 
     if bad:
-        print(f"Выпуск разошёлся с тем, что видно снаружи (версия пакета {evidence.version}):\n",
-              file=sys.stderr)
+        print(f"The release parted ways with what is visible from outside "
+              f"(package version {evidence.version}):\n", file=sys.stderr)
         print("\n".join(bad), file=sys.stderr)
         if missed:
-            print("\nА ещё не спросили:", file=sys.stderr)
+            print("\nAnd these were not asked either:", file=sys.stderr)
             for m in missed:
                 print(f"  - {m}", file=sys.stderr)
         return 1
 
     if missed:
-        print("Проверка НЕ состоялась — до выложенного не достучались:", file=sys.stderr)
+        print("The check did NOT happen — the published thing was unreachable:",
+              file=sys.stderr)
         for m in missed:
             print(f"  - {m}", file=sys.stderr)
-        print("Это не то же самое, что «снаружи всё в порядке».", file=sys.stderr)
+        print("That is not the same as 'everything outside is in order'.", file=sys.stderr)
         return 2
 
     checked = len(rules)
-    where = "в дереве" if args.offline else "снаружи"
-    print(f"Выпуск {evidence.version} сходится {where}: правил проверено {checked}, "
-          f"расхождений нет.")
+    where = "in the tree" if args.offline else "outside"
+    print(f"Release {evidence.version} agrees {where}: {checked} rules checked, "
+          f"no disagreements.")
     return 0
 
 

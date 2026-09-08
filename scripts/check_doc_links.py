@@ -1,27 +1,27 @@
-"""Проверяет, что ссылки из документации на строки исходника ведут туда, куда обещано.
+"""Checks that documentation links into the source point where they promise.
 
-Документация ссылается на исходник с точностью до строки — `ouroboros/…py:123` и
-такой же `#L123` в ссылке на GitHub. Такие номера тихо протухают: правка выше по
-файлу сдвигает всё, и ссылка продолжает выглядеть исправной, ведя на случайную
-строку. Ровно это и случилось, когда сервер MCP подрос на 63 строки: четыре
-ссылки в четырёх страницах стали указывать мимо, и ни одна проверка этого не
-заметила.
+The documentation cites the source down to the line — `ouroboros/….py:123`, and
+the same `#L123` in a link to GitHub. Those numbers go stale in silence: an edit
+higher up the file shifts everything, and the link keeps looking correct while
+leading to an arbitrary line. That is exactly what happened when the MCP server
+grew by 63 lines: four links on four pages started pointing past their target,
+and no check noticed.
 
-Как здесь устроена проверка. Ниже перечислены **опоры** — те места исходника, на
-которые документации вообще разрешено ссылаться, и опознаются они по куску
-текста самой строки, а не по номеру. Проверка находит текущий номер каждой
-опоры, а затем требует, чтобы каждая ссылка из документации указывала на номер
-какой-нибудь опоры. Сдвинулся исходник — проверка падает и печатает новые
-номера, которые надо проставить.
+How the check works. Listed below are the **anchors** — the places in the source
+that documentation is allowed to cite at all — and each is recognised by a piece
+of the line's own text, not by its number. The check finds the current line
+number of every anchor, then demands that every link in the documentation point
+at some anchor's number. Once the source shifts, the check fails and prints the
+new numbers to write in.
 
-Чего проверка не делает: она не знает, какую именно опору имела в виду
-конкретная страница, поэтому при расхождении показывает все подходящие. Этого
-достаточно, чтобы поломка не проехала молча, а починка занимала минуту.
+What the check does not do: it does not know which anchor a particular page
+meant, so on a mismatch it shows every anchor of that file. That is enough to
+keep a breakage from passing in silence and to keep the repair down to a minute.
 
-Добавили в документацию ссылку на новое место — допишите опору сюда, иначе
-проверка откажет: список опор намеренно закрытый.
+Added a link to a new place in the documentation? Add the anchor here too, or the
+check will refuse: the list of anchors is deliberately closed.
 
-Запуск: uv run python scripts/check_doc_links.py   (из корня хранилища)
+Run: uv run python scripts/check_doc_links.py   (from the repository root)
 """
 from __future__ import annotations
 
@@ -29,15 +29,15 @@ import re
 import sys
 from pathlib import Path
 
-#: (файл исходника, кусок строки-опоры). Кусок должен встречаться в файле ровно
-#: один раз — проверка это тоже требует, иначе опора не опора.
+#: (source file, a piece of the anchor line). The piece must occur in the file
+#: exactly once — the check demands that too, or an anchor is no anchor.
 ANCHORS: list[tuple[str, str]] = [
     ("ouroboros/runtime.py", "_repr = reprlib.Repr()"),
     ("ouroboros/runtime.py", 'return os.environ.get("OUROBOROS_DEBUG_INFO"'),
     ("ouroboros/runtime.py", "def _cpu() -> int:"),
     ("ouroboros/runtime.py", "t0 = time.perf_counter()"),
-    # Строка обёртки, которая видна в отслеживании стека обмазанной программы:
-    # страницы показывают настоящий вывод с её номером, и он протухает так же.
+    # The wrapper line that shows up in a traceback from an instrumented program:
+    # pages paste that real output with its line number, and it goes stale too.
     ("ouroboros/runtime.py", "result = fn(*args, **kwargs)"),
     ("ouroboros/languages/base.py", "class CorruptedSourceError(Exception):"),
     ("ouroboros/sandbox/sync.py", "never carried into the output tree"),
@@ -45,32 +45,33 @@ ANCHORS: list[tuple[str, str]] = [
     ("ouroboros/mcp/server.py", "def transport_from_env("),
 ]
 
-#: `ouroboros/путь.py:12` или `ouroboros/путь.py:12-34` в тексте страницы.
+#: `ouroboros/path.py:12` or `ouroboros/path.py:12-34` in the page text.
 REF = re.compile(r"(ouroboros/[A-Za-z0-9_/]*\.py):(\d+)(?:-(\d+))?")
 
-#: `…/blob/main/ouroboros/путь.py#L12` или `#L12-L34` в ссылке.
+#: `…/blob/main/ouroboros/path.py#L12` or `#L12-L34` inside a link.
 URL = re.compile(r"blob/main/(ouroboros/[A-Za-z0-9_/]*\.py)#L(\d+)(?:-L(\d+))?")
 
-#: Строка помощника в отслеживании стека, вставленном в страницу как есть:
-#: `File ".../ouroboros_runtime.py", line 228, in wrapper`. Номер тут протухает
-#: точно так же, но ни на текст, ни на ссылку не похож — и потому раньше не
-#: проверялся ничем. Ровно на этом README и разошёлся с делом: помощник подрос,
-#: обёртка уехала со 144-й строки на 228-ю, а в странице осталась 144-я.
+#: The runtime helper's line inside a traceback pasted into a page verbatim:
+#: `File ".../ouroboros_runtime.py", line 228, in wrapper`. That number goes
+#: stale in the very same way, but it looks like neither a text citation nor a
+#: link — which is why nothing used to check it. That is where README parted ways
+#: with reality: the helper grew, the wrapper moved from line 144 to line 228,
+#: and the page kept saying 144.
 TRACEBACK = re.compile(r'ouroboros_runtime\.py", line (\d+)')
 
-#: Какому файлу исходника отвечает имя помощника, скопированного в проект.
+#: Which source file the helper copied into a project corresponds to.
 COPIED_AS = {"ouroboros_runtime.py": "ouroboros/runtime.py"}
 
 
 def anchor_lines(root: Path) -> tuple[dict[str, dict[int, str]], list[str]]:
-    """Текущие номера опор: файл -> {номер: кусок}. Плюс список бед."""
+    """Current anchor line numbers: file -> {line: piece}. Plus a list of problems."""
 
     found: dict[str, dict[int, str]] = {}
     problems: list[str] = []
     for rel, needle in ANCHORS:
         path = root / rel
         if not path.exists():
-            problems.append(f"опора указывает на несуществующий файл: {rel}")
+            problems.append(f"anchor points at a file that does not exist: {rel}")
             continue
         hits = [
             i
@@ -79,8 +80,8 @@ def anchor_lines(root: Path) -> tuple[dict[str, dict[int, str]], list[str]]:
         ]
         if len(hits) != 1:
             problems.append(
-                f"опора {rel!r} / {needle!r} встречается {len(hits)} раз "
-                "(нужен ровно один) — поправьте кусок в ANCHORS"
+                f"anchor {rel!r} / {needle!r} occurs {len(hits)} times "
+                "(exactly one is needed) — fix the piece of text in ANCHORS"
             )
             continue
         found.setdefault(rel, {})[hits[0]] = needle
@@ -105,8 +106,8 @@ def main() -> int:
                     valid = anchors.get(rel, {})
                     if not valid:
                         problems.append(
-                            f"{doc.relative_to(root)}:{lineno} ссылается на {rel}:{start}, "
-                            f"но для {rel} не объявлено ни одной опоры в "
+                            f"{doc.relative_to(root)}:{lineno} cites {rel}:{start}, "
+                            f"but no anchor is declared for {rel} in "
                             "scripts/check_doc_links.py"
                         )
                     elif start not in valid:
@@ -114,11 +115,12 @@ def main() -> int:
                             f"{n} ({needle!r})" for n, needle in sorted(valid.items())
                         )
                         problems.append(
-                            f"{doc.relative_to(root)}:{lineno} ссылается на {rel}:{start}, "
-                            f"а там сейчас не опора. Опоры в этом файле: {where}"
+                            f"{doc.relative_to(root)}:{lineno} cites {rel}:{start}, "
+                            f"and there is no anchor on that line now. Anchors in "
+                            f"this file: {where}"
                         )
 
-    # Отслеживание стека, вставленное в страницу как есть: номер строки помощника.
+    # A traceback pasted into a page verbatim: the helper's line number.
     for doc in docs:
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
             for m in TRACEBACK.finditer(line):
@@ -131,36 +133,40 @@ def main() -> int:
                         f"{n} ({needle!r})" for n, needle in sorted(valid.items())
                     )
                     problems.append(
-                        f"{doc.relative_to(root)}:{lineno}: во вставленном отслеживании "
-                        f"стека стоит ouroboros_runtime.py строка {start}, а опоры "
-                        f"{rel} сейчас на строках: {where}"
+                        f"{doc.relative_to(root)}:{lineno}: the pasted traceback says "
+                        f"ouroboros_runtime.py line {start}, while the anchors of "
+                        f"{rel} are now on lines: {where}"
                     )
 
-    # Номер в тексте и номер в ссылке должны совпадать — обычная описка при правке.
+    # The number in the text and the number in the link must agree — an ordinary
+    # slip when editing one of the two.
     for doc in docs:
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
             text_refs = {(m.group(1), m.group(2), m.group(3)) for m in REF.finditer(line)}
             url_refs = {(m.group(1), m.group(2), m.group(3)) for m in URL.finditer(line)}
-            # То, что нашлось по ссылке, находится и по тексту; сравниваем
-            # только остаток, иначе разной выглядела бы каждая строка.
+            # Whatever the link pattern finds, the text pattern finds too; only
+            # the remainder is compared, or every line would look different.
             if url_refs and not url_refs <= text_refs:
                 problems.append(
-                    f"{doc.relative_to(root)}:{lineno}: номер в тексте и номер в "
-                    f"ссылке разошлись — {sorted(text_refs)} против {sorted(url_refs)}"
+                    f"{doc.relative_to(root)}:{lineno}: the number in the text and "
+                    f"the number in the link disagree — {sorted(text_refs)} against "
+                    f"{sorted(url_refs)}"
                 )
 
-    # Одна и та же беда ловится и по тексту, и по ссылке — показываем один раз,
-    # сохраняя порядок находок.
+    # The same problem is caught both by the text and by the link — report it
+    # once, keeping the order in which it was found.
     problems = list(dict.fromkeys(problems))
 
     if problems:
-        print("Ссылки документации на исходник разошлись с исходником:\n")
+        print("Documentation links into the source parted ways with the source:\n")
         for p in problems:
             print(f"  - {p}")
-        print(f"\nПроверено ссылок: {checked}. Бед: {len(problems)}.")
+        print(f"\nLinks checked: {checked}. Problems: {len(problems)}. Write in the "
+              f"line numbers printed above, or add the new place to ANCHORS in "
+              f"scripts/check_doc_links.py.")
         return 1
 
-    print(f"Ссылки документации на исходник: проверено {checked}, все ведут на опоры.")
+    print(f"Documentation links into the source: {checked} checked, all land on anchors.")
     return 0
 
 

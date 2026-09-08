@@ -1,51 +1,54 @@
-"""Сторож языка документации: английский — умолчание, русский — пара с суффиксом.
+"""Guards the language of the documentation: English by default, Russian as a suffixed pair.
 
-Правило дерева одно и читается по имени файла. `README.md` — английский,
-`README.ru.md` — русский. Суффикса нет — значит английский, и никакого «ну тут
-исторически по-русски» быть не может: имя файла обещает язык, и обещание
-проверяется машиной.
+The tree has one rule, and it is read off the file name. `README.md` is English,
+`README.ru.md` is Russian. No suffix means English, and there is no room for
+"well, this one is historically in Russian": the file name promises a language,
+and a machine holds it to the promise.
 
-Зачем машиной. Перевод дерева делается один раз, а разъезжается постепенно: в
-английскую страницу дописывают русский абзац, русскую пару забывают завести,
-переключатель языка ставят не на тот файл. Каждая такая беда по отдельности
-выглядит мелочью и не видна в обзоре правок — их у страницы сотни строк. Вместе
-они за месяц возвращают дерево туда, откуда оно ушло.
+Why a machine. A tree is translated once and drifts back gradually: a Russian
+paragraph is added to an English page, a Russian counterpart is never created, a
+language switch points at the wrong file. Each of those looks like a trifle on
+its own and is invisible in a review — a page is hundreds of lines. Together, in
+a month, they put the tree back where it started.
 
-Что проверяется:
+What is checked:
 
-1. **В файле без суффикса нет кириллицы.** Кроме закрытого списка слов, которые
-   стоят там намеренно: подпись переключателя и два имени каталогов, которые
-   инструмент носил до переименования (`черновик`, `чистовик` —
-   `LEGACY_DRAFT_DIRNAME`/`LEGACY_CLEAN_DIRNAME` в
-   `ouroboros/sandbox/project.py`). Это не проза, а строка, которую человек
-   видит у себя в файловой системе: старый проект инструмент до сих пор
-   подхватывает, и английская страница обязана мочь назвать каталог так, как он
-   называется. Именительный падеж и только он — «в черновике» и «из чистовика»
-   это уже проза, и сторож на ней краснеет.
-2. **У каждой страницы `*.ru.md` есть английская пара.** Русская редакция без
-   английской — это и есть «русский по умолчанию» с другой стороны.
-3. **Пара объявлена с обеих сторон.** Английская страница открывается строкой
-   `**English** · [Русский](имя.ru.md)`, русская — `[English](имя.md) · **Русский**`.
-   Ссылка обязана вести на существующий файл: переключатель в пустоту хуже, чем
-   его отсутствие.
-4. **Числа в описании на flang совпадают с `docs/state.json`.** Файл
-   `docs/ouroboros.flang` — русское описание инструмента, которое проверяет
-   компилятор flang. Про типы и завершение он судит сам; а вот что языков
-   восемь, средств MCP семнадцать и версия та самая — знает только дерево.
-5. **Ведомость недоделанного.** Страницы вне доли этой работы, которые пока
-   существуют только по-русски, перечислены ниже поимённо с причиной. Ведомость
-   умеет только сокращаться: если страница из неё стала английской или исчезла,
-   сторож требует вычеркнуть строку. Незаписанная русская страница — отказ.
+1. **No Cyrillic in a file without the suffix.** Except for a closed list of
+   words that stand there on purpose: the label of the language switch and the
+   two directory names the tool used before the rename (`черновик`, `чистовик` —
+   `LEGACY_DRAFT_DIRNAME`/`LEGACY_CLEAN_DIRNAME` in
+   `ouroboros/sandbox/project.py`). Those are not prose but a string a person
+   sees in their own file system: the tool still picks up an old project, and an
+   English page must be able to call the directory by the name it actually has.
+   The nominative case and nothing else — «в черновике» and «из чистовика» are
+   prose already, and the guard goes red on them.
+2. **Every `*.ru.md` page has an English counterpart.** A Russian edition without
+   an English one is exactly "Russian by default" seen from the other side.
+3. **The pair is declared from both sides.** An English page opens with the line
+   `**English** · [Русский](name.ru.md)`, a Russian one with
+   `[English](name.md) · **Русский**`. The link must lead to a file that exists:
+   a switch into the void is worse than no switch at all.
+4. **The numbers in the flang description match `docs/state.json`.** The file
+   `docs/ouroboros.flang` is the Russian description of the tool, checked by the
+   flang compiler. Types and termination it judges by itself; that there are
+   eight languages, seventeen MCP tools and that the version is the current one —
+   only the tree knows.
+5. **The ledger of what is not done.** Pages outside the scope of this work that
+   exist only in Russian for now are listed below by name, with a reason. The
+   ledger can only shrink: once a page in it becomes English or disappears, the
+   guard demands that the line be struck out. An unlisted Russian page is a
+   refusal.
 
-Запуск::
+Run::
 
     uv run python scripts/check_doc_language.py
     uv run python scripts/check_doc_language.py --self-test
 
-`--self-test` — отрицательный контроль. Проверка, которая никогда не краснела,
-ничего не значит: самопроверка подсовывает сторожу заведомо испорченные страницы
-(английская с русским абзацем, русская без пары, переключатель не на тот файл) и
-требует, чтобы он на каждой отказал, а на исправной — промолчал.
+`--self-test` is the negative control. A check that has never gone red means
+nothing: the self-test feeds the guard pages that are knowingly broken (English
+with a Russian paragraph, Russian without a counterpart, a switch pointing at the
+wrong file) and demands that it refuse on every one of them — and stay silent on
+a sound page.
 """
 from __future__ import annotations
 
@@ -56,51 +59,55 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-#: Где ищем страницы. Чужое (`node_modules`) и собранное не трогаем.
+#: Where the pages are looked for. Vendored (`node_modules`) and generated trees
+#: are left alone.
 ROOTS = (".", "docs", "bin", "design", "packaging", "skill", "scripts", "bench")
 SKIP_PARTS = {"node_modules", ".venv", "__pycache__", ".git", "runs", "runs_debug",
               "task", "task_debug", "fixtures", "fixtures_debug", "programs", "agents"}
 
 CYR = re.compile(r"[А-Яа-яЁё]+")
 
-#: Кириллица, которая стоит в английской странице намеренно. Список закрытый:
-#: каждое слово здесь — либо подпись ссылки на русскую пару, либо настоящее имя
-#: на диске. Прозы в нём нет и быть не может.
+#: Cyrillic that stands in an English page on purpose. The list is closed: every
+#: word here is either the label of the link to the Russian counterpart or a real
+#: name on disk. There is no prose in it, and there can be none. These words are
+#: the guard's DATA, not its output: they stay in Russian.
 ALLOWED = {
-    "Русский",              # подпись переключателя языка
-    # Имена каталогов до переименования. Инструмент их до сих пор читает с
-    # диска, поэтому английская страница вправе назвать каталог так, как он
-    # называется у человека в файловой системе. Падеж только именительный:
-    # склонённое слово — уже проза, а не имя, и здесь его нет намеренно.
+    "Русский",              # the label of the language switch
+    # The directory names from before the rename. The tool still reads them off
+    # the disk, so an English page is entitled to call a directory by the name it
+    # has in a person's file system. Nominative case only: an inflected word is
+    # prose rather than a name, and it is deliberately absent from this list.
     "черновик", "чистовик",
 }
 
-#: Переключатель языка: первая строка страницы после шапки.
+#: The language switch: the first line of a page after the header.
 EN_SWITCH = re.compile(r"^\*\*English\*\* · \[Русский\]\(([^)]+)\)\s*$", re.M)
 RU_SWITCH = re.compile(r"^\[English\]\(([^)]+)\) · \*\*Русский\*\*\s*$", re.M)
 
-#: Ведомость: страницы, у которых английской редакции ещё нет. Умеет только
-#: сокращаться — сторож требует вычеркнуть строку, как только страница
-#: переведена или удалена.
+#: The ledger: pages that have no English edition yet. It can only shrink — the
+#: guard demands that a line be struck out as soon as the page is translated or
+#: deleted.
 PENDING: dict[str, str] = {
     "skill/SKILL.md":
-        "навык для ИИ-агента, 555 строк; переводится вместе с навыком, а не с\n"
-        "документацией",
+        "a skill for an AI agent, 555 lines; it gets translated together with the\n"
+        "skill, not with the documentation",
     "design/brief.md":
-        "исходное задание заказчика — исторический документ, переписывать нельзя",
-    "design/example.md": "разбор способа обмазки по языкам, черновик к заданию",
-    "design/skill-draft.md": "черновик навыка, живёт при design/brief.md",
-    "bin/README.md": "три скрипта выпуска; доля упаковки, не документации",
-    "packaging/asdf/README.md": "доля упаковки",
+        "the customer's original brief — a historical document, not to be rewritten",
+    "design/example.md":
+        "a walk through instrumentation language by language, a draft for the brief",
+    "design/skill-draft.md": "a draft of the skill, lives next to design/brief.md",
+    "bin/README.md": "three release scripts; belongs to packaging, not documentation",
+    "packaging/asdf/README.md": "belongs to packaging",
     "scripts/measure/trace-help/README.md":
-        "журнал опыта «помогает ли трасса», 582 строки — запись прогонов, а не\n"
-        "страница",
-    "scripts/measure/trace-help/scale-up-master-prompt.md": "задание к тому же опыту",
+        "the log of the \"does a trace help\" experiment, 582 lines — a record of\n"
+        "runs rather than a page",
+    "scripts/measure/trace-help/scale-up-master-prompt.md":
+        "the prompt for that same experiment",
 }
 
 
 def pages() -> list[Path]:
-    """Все страницы дерева, кроме чужих и собранных."""
+    """Every page of the tree, except vendored and generated ones."""
 
     out: dict[Path, None] = {}
     for r in ROOTS:
@@ -116,17 +123,17 @@ def pages() -> list[Path]:
 
 
 def foreign_words(text: str) -> list[str]:
-    """Кириллические слова страницы, которых там быть не должно."""
+    """The Cyrillic words on a page that have no business being there."""
 
     return [w for w in CYR.findall(text) if w not in ALLOWED]
 
 
 def page_problems(rel: str, text: str, exists: set[str]) -> list[str]:
-    """Беды одной страницы. `exists` — какие пути в дереве есть.
+    """The problems of one page. `exists` — which paths the tree holds.
 
-    Отдельной функцией, а не внутри обхода, ровно затем, чтобы самопроверка
-    могла подать сюда выдуманную страницу и убедиться, что сторож на ней
-    краснеет.
+    A separate function rather than a piece of the walk, precisely so that the
+    self-test can hand it a made-up page and confirm that the guard goes red on
+    it.
     """
 
     problems: list[str] = []
@@ -138,17 +145,18 @@ def page_problems(rel: str, text: str, exists: set[str]) -> list[str]:
     if is_ru:
         if en not in exists:
             problems.append(
-                f"{rel}: русская редакция без английской. Имя без суффикса значит "
-                f"английский — заведите {en} или переименуйте страницу"
+                f"{rel}: a Russian edition with no English one. A name without the "
+                f"suffix means English — create {en} or rename this page"
             )
         m = RU_SWITCH.search(text)
         if m is None:
             problems.append(
-                f"{rel}: нет строки переключателя `[English]({name_en}) · **Русский**`"
+                f"{rel}: the switch line `[English]({name_en}) · **Русский**` is missing"
             )
         elif m.group(1) != name_en:
             problems.append(
-                f"{rel}: переключатель ведёт на {m.group(1)!r}, а пара — {name_en!r}"
+                f"{rel}: the switch points at {m.group(1)!r}, while the counterpart "
+                f"is {name_en!r}"
             )
         return problems
 
@@ -156,38 +164,40 @@ def page_problems(rel: str, text: str, exists: set[str]) -> list[str]:
     if words:
         shown = ", ".join(sorted(set(words))[:8])
         problems.append(
-            f"{rel}: кириллица в файле без суффикса ({len(words)} слов: {shown}). "
-            f"Русский текст живёт в {ru}, а не здесь"
+            f"{rel}: Cyrillic in a file without the suffix ({len(words)} words: "
+            f"{shown}). Russian text lives in {ru}, not here"
         )
 
     if ru in exists:
         m = EN_SWITCH.search(text)
         if m is None:
             problems.append(
-                f"{rel}: у страницы есть пара {ru}, а строки переключателя "
-                f"`**English** · [Русский]({name_ru})` нет"
+                f"{rel}: the page has the counterpart {ru}, but the switch line "
+                f"`**English** · [Русский]({name_ru})` is missing"
             )
         elif m.group(1) != name_ru:
             problems.append(
-                f"{rel}: переключатель ведёт на {m.group(1)!r}, а пара — {name_ru!r}"
+                f"{rel}: the switch points at {m.group(1)!r}, while the counterpart "
+                f"is {name_ru!r}"
             )
     return problems
 
 
 def flang_numbers() -> list[str]:
-    """Числа русского описания на flang против `docs/state.json`."""
+    """The numbers of the Russian flang description against `docs/state.json`."""
 
     spec = ROOT / "docs" / "ouroboros.flang"
     state_file = ROOT / "docs" / "state.json"
     if not spec.exists():
-        return [f"нет {spec.relative_to(ROOT)} — русского описания на flang"]
+        return [f"no {spec.relative_to(ROOT)} — the Russian description in flang"]
     if not state_file.exists():
-        return [f"нет {state_file.relative_to(ROOT)}"]
+        return [f"no {state_file.relative_to(ROOT)}"]
 
     text = spec.read_text(encoding="utf-8")
     state = json.loads(state_file.read_text(encoding="utf-8"))
 
-    #: имя функции в описании → ключ в state.json
+    #: function name in the description -> key in state.json. The names are the
+    #: guard's data: they are Russian because the description they look for is.
     claims = {"Языков": "languages", "Средств MCP": "mcp_tools", "Версия": "version"}
     problems: list[str] = []
     for fn, key in claims.items():
@@ -197,96 +207,97 @@ def flang_numbers() -> list[str]:
         )
         if block is None:
             problems.append(
-                f"docs/ouroboros.flang: нет функции «{fn}» — описание перестало "
-                f"утверждать {key}"
+                f"docs/ouroboros.flang: no function \u00ab{fn}\u00bb — the "
+                f"description has stopped claiming {key}"
             )
             continue
         m = re.search(r"ожидается\s+(\"[^\"]*\"|\S+)", block.group(0))
         if m is None:
             problems.append(
-                f"docs/ouroboros.flang: у «{fn}» нет примера с ожидаемым значением — "
-                "утверждение без примера компилятор не проверяет"
+                f"docs/ouroboros.flang: \u00ab{fn}\u00bb has no example with an "
+                "expected value — a claim without an example is not checked by the "
+                "compiler"
             )
             continue
         said = m.group(1).strip('"')
         want = str(state.get(key))
         if said != want:
             problems.append(
-                f"docs/ouroboros.flang: «{fn}» обещает {said!r}, а в docs/state.json "
-                f"{key} = {want!r}"
+                f"docs/ouroboros.flang: \u00ab{fn}\u00bb promises {said!r}, while "
+                f"docs/state.json has {key} = {want!r}"
             )
     return problems
 
 
 def ledger_problems(seen: dict[str, str]) -> list[str]:
-    """Ведомость недоделанного: она обязана сокращаться, а не жить вечно."""
+    """The ledger of what is not done: it must shrink, not live forever."""
 
     problems: list[str] = []
     for rel, why in sorted(PENDING.items()):
         if rel not in seen:
             problems.append(
-                f"{rel}: числится в ведомости PENDING, а такого файла нет — "
-                "вычеркните строку"
+                f"{rel}: listed in the PENDING ledger, and there is no such file — "
+                "strike the line out"
             )
             continue
         if not foreign_words(seen[rel]):
             problems.append(
-                f"{rel}: числится в ведомости PENDING ({why}), а русского в нём уже "
-                "нет — вычеркните строку"
+                f"{rel}: listed in the PENDING ledger ({why}), and there is no "
+                "Russian left in it — strike the line out"
             )
     return problems
 
 
 def selftest() -> int:
-    """Отрицательный контроль: сторож обязан краснеть на порче."""
+    """The negative control: the guard must go red on a broken page."""
 
     exists = {"a.md", "a.ru.md", "solo.ru.md"}
     cases: list[tuple[str, str, str, bool]] = [
         (
-            "английская страница с русским абзацем",
+            "English page with a Russian paragraph",
             "a.md",
             "**English** · [Русский](a.ru.md)\n\n# A\n\nЭто русский абзац.\n",
             True,
         ),
         (
-            "английская страница называет каталог прежним именем",
+            "English page calls a directory by its former name",
             "a.md",
             "**English** · [Русский](a.ru.md)\n\n# A\n\n"
             "A draft made before the rename is a directory named черновик.\n",
             False,
         ),
         (
-            "английская страница склоняет то же слово — это уже проза",
+            "English page inflects that same word — that is prose already",
             "a.md",
             "**English** · [Русский](a.ru.md)\n\n# A\n\nThe draft lives in черновике.\n",
             True,
         ),
         (
-            "русская страница без английской пары",
+            "Russian page with no English counterpart",
             "solo.ru.md",
             "[English](solo.md) · **Русский**\n\n# Соло\n",
             True,
         ),
         (
-            "английская страница без переключателя при живой паре",
+            "English page with no switch while the counterpart exists",
             "a.md",
             "# A\n\nPlain English page.\n",
             True,
         ),
         (
-            "переключатель ведёт не на ту пару",
+            "switch points at the wrong counterpart",
             "a.ru.md",
             "[English](other.md) · **Русский**\n\n# А\n",
             True,
         ),
         (
-            "исправная пара",
+            "a sound pair",
             "a.md",
             "**English** · [Русский](a.ru.md)\n\n# A\n\nPlain English page.\n",
             False,
         ),
         (
-            "исправная русская половина пары",
+            "a sound Russian half of a pair",
             "a.ru.md",
             "[English](a.md) · **Русский**\n\n# А\n\nРусская страница.\n",
             False,
@@ -300,34 +311,34 @@ def selftest() -> int:
         mark = "✓" if red == must_fail else "✗"
         if red != must_fail:
             bad += 1
-        want = "отказ" if must_fail else "молчание"
-        print(f"  {mark} {name}: ждали {want}, получили "
-              f"{'отказ' if red else 'молчание'}")
+        want = "a refusal" if must_fail else "silence"
+        print(f"  {mark} {name}: expected {want}, got "
+              f"{'a refusal' if red else 'silence'}")
         if red != must_fail and got:
             for g in got:
                 print(f"      {g}")
 
-    # Живой отрицательный контроль: берём настоящую английскую страницу дерева
-    # и портим её в памяти. Сторож обязан заметить.
+    # A live negative control: take a real English page of the tree and break it
+    # in memory. The guard has to notice.
     live = ROOT / "README.md"
     if live.exists():
         text = live.read_text(encoding="utf-8")
         spoiled = text + "\n\nЭтот абзац подсунут самопроверкой.\n"
         if not page_problems("README.md", spoiled, {"README.md", "README.ru.md"}):
-            print("  ✗ живой контроль: испорченный README.md прошёл проверку")
+            print("  ✗ live control: a broken README.md passed the check")
             bad += 1
         else:
-            print("  ✓ живой контроль: русский абзац в README.md пойман")
+            print("  ✓ live control: the Russian paragraph in README.md was caught")
         if page_problems("README.md", text, {"README.md", "README.ru.md"}):
-            print("  ✗ живой контроль: настоящий README.md не проходит проверку")
+            print("  ✗ live control: the real README.md does not pass the check")
             bad += 1
         else:
-            print("  ✓ живой контроль: настоящий README.md проходит")
+            print("  ✓ live control: the real README.md passes")
 
     if bad:
-        print(f"\nСамопроверка: {bad} случаев разошлись с ожиданием.")
+        print(f"\nSelf-test: {bad} cases disagreed with what was expected.")
         return 1
-    print(f"\nСамопроверка: {len(cases) + 2} случаев, все сошлись.")
+    print(f"\nSelf-test: {len(cases) + 2} cases, all agreed.")
     return 0
 
 
@@ -352,17 +363,18 @@ def main() -> int:
     problems += ledger_problems(seen)
 
     if problems:
-        print("Язык документации разошёлся с именами файлов:\n")
+        print("The language of the documentation parted ways with the file names:\n")
         for p in problems:
             print(f"  - {p}")
-        print("\nПравило: имя без суффикса — английский, `.ru.md` — русский.")
+        print("\nThe rule: a name without the suffix is English, `.ru.md` is Russian.")
         return 1
 
-    print(f"Страниц проверено: {len(seen) - len(PENDING)}, из них пар: {pairs}. "
-          f"Кириллицы в файлах без суффикса нет.")
+    print(f"Pages checked: {len(seen) - len(PENDING)}, of them pairs: {pairs}. "
+          f"No Cyrillic in files without the suffix.")
     if PENDING:
-        print(f"В ведомости PENDING ещё {len(PENDING)} страниц без английской "
-              f"редакции — они вне доли этой работы и названы поимённо в сторо́же.")
+        print(f"The PENDING ledger still holds {len(PENDING)} pages with no English "
+              f"edition — they are outside the scope of this work and are named one "
+              f"by one inside the guard.")
     return 0
 
 

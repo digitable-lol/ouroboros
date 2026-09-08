@@ -1,28 +1,29 @@
-"""Держит числа состояния в документации равными измеренным.
+"""Keeps the state numbers in the documentation equal to the measured ones.
 
-Зачем. Числа, вписанные руками, расходятся с делом молча. В этом дереве уже
-случилось дважды: `ARCHITECTURE.md` обещал 91 % покрытия — на 9,5 пункта выше
-потолка, который был недостижим даже при идеальных проверках, — и «~105 тестов»
-при 164 настоящих. Ни то, ни другое никто не пересчитал после того, как вписал.
-`README.md` тем временем говорил «167 из 167», когда проверок было уже 440.
+Why. Numbers written in by hand part ways with reality in silence. In this tree
+it has happened twice already: `ARCHITECTURE.md` promised 91 % coverage — 9.5
+points above a ceiling that was out of reach even with perfect tests — and
+"~105 tests" when there were 164. Neither was ever recounted after being written
+in. `README.md` meanwhile said "167 of 167" when the test count had reached 440.
 
-Как. В страницах стоят пометки вида::
+How. The pages carry marks of the form::
 
     <!--state:tests-->440<!--/state-->
 
-Внутри пометки текст принадлежит машине. `--measure` прогоняет проверки с
-подсчётом покрытия, кладёт измеренное в `docs/state.json` и переписывает
-пометки. Без доводов идёт сверка: пометки сравниваются с `docs/state.json`, а
-дешёвые числа (сколько проверок, сколько средств, какие языки) пересчитываются
-заново прямо сейчас. Разошлось — отказ с указанием, что стало.
+Inside a mark the text belongs to the machine. `--measure` runs the tests with
+coverage, puts the measurement into `docs/state.json` and rewrites the marks.
+With no arguments it compares instead: the marks are checked against
+`docs/state.json`, while the cheap numbers (how many tests, how many tools, which
+languages) are recounted right now. On a mismatch it refuses and says what the
+number has become.
 
-Сверка стоит секунды и потому висит в `scripts/qa.sh`. Полный замер идёт минуты
-и потому вызывается руками, когда числа меняются.
+The comparison costs seconds and therefore hangs in `scripts/qa.sh`. The full
+measurement takes minutes and is therefore run by hand, when the numbers change.
 
-Запуск::
+Run::
 
-    uv run python scripts/state_numbers.py            # сверить
-    uv run python scripts/state_numbers.py --measure   # замерить и переписать
+    uv run python scripts/state_numbers.py            # compare
+    uv run python scripts/state_numbers.py --measure   # measure and rewrite
 """
 from __future__ import annotations
 
@@ -35,13 +36,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 
-#: Куда кладётся измеренное. Лежит в дереве, потому что сверка должна работать
-#: без повторного прогона, а разница в `git diff` — показывать, что сдвинулось.
+#: Where the measurement is kept. It lives in the tree because the comparison
+#: must work without a second run, and because the difference in `git diff` shows
+#: what has moved.
 STATE_FILE = ROOT / "docs" / "state.json"
 
-#: Страницы, в которых стоят пометки. Обе редакции: имя без суффикса —
-#: английская, с `.ru` — русская. Русскую тоже переписывает машина, иначе она
-#: разошлась бы с английской ровно так же тихо, как обе расходились с делом.
+#: The pages that carry the marks. Both editions: a name with no suffix is the
+#: English one, `.ru` is the Russian one. The machine rewrites the Russian one
+#: too, or it would drift from the English one exactly as quietly as both used to
+#: drift from reality.
 PAGES = ["README.md", "README.ru.md", "ARCHITECTURE.md",
          "docs/index.md", "docs/index.ru.md",
          "docs/install.md", "docs/install.ru.md"]
@@ -50,31 +53,32 @@ MARK = re.compile(r"<!--state:([a-z_]+)-->(.*?)<!--/state-->", re.DOTALL)
 
 
 def measure() -> dict[str, Any]:
-    """Прогоняет проверки с подсчётом покрытия и собирает числа."""
+    """Runs the tests with coverage and collects the numbers."""
 
-    print("== прогоняю проверки с подсчётом покрытия (это небыстро) ==")
+    print("== running the tests with coverage (this is not quick) ==")
     proc = subprocess.run(
         ["uv", "run", "pytest", "--cov", "--cov-report=json:.coverage.json"],
         cwd=ROOT, capture_output=True, text=True,
     )
     sys.stdout.write(proc.stdout[-2000:])
     if proc.returncode != 0:
-        raise SystemExit("проверки не прошли — числа состояния не обновляю")
+        raise SystemExit("the tests did not pass — leaving the state numbers alone")
 
-    # Итог ищем по всему выводу: с включённым подсчётом покрытия последней
-    # строкой идёт сообщение о записи файла, а не «N passed».
+    # The total is looked for across the whole output: with coverage enabled the
+    # last line is the message about writing the report, not "N passed".
     found = re.findall(r"(\d+) passed", proc.stdout)
     if not found:
-        raise SystemExit(f"не разобрал итог прогона: {proc.stdout.strip()[-300:]!r}")
+        raise SystemExit(f"could not parse the test total: "
+                         f"{proc.stdout.strip()[-300:]!r}")
     tests = int(found[-1])
 
     with (ROOT / ".coverage.json").open(encoding="utf-8") as fh:
         cov = json.load(fh)
     totals = cov["totals"]
     percent = totals["percent_covered"]
-    # Незакрытые единицы — операторы плюс ветви. Это число стоит в разборе
-    # покрытия в ARCHITECTURE.md и уже разъезжалось: таблица говорила 56, когда
-    # на сведённом дереве было 58.
+    # Uncovered units are statements plus branches. This number appears in the
+    # coverage breakdown in ARCHITECTURE.md and has drifted before: the table said
+    # 56 when the merged tree had 58.
     uncovered = totals["missing_lines"] + totals["missing_branches"]
     units = totals["num_statements"] + totals["num_branches"]
 
@@ -83,9 +87,9 @@ def measure() -> dict[str, Any]:
         "tests": tests,
         "uncovered_units": uncovered,
         "total_units": units,
-        # ВНИЗ, а не к ближайшему: 99,51 % — это не «100 %». Число про покрытие,
-        # округлённое вверх, обещает то, чего нет, а именно с такими обещаниями
-        # этот файл и борется.
+        # DOWN, not to nearest: 99.51 % is not "100 %". A coverage number rounded
+        # up promises what is not there, and promises like that are exactly what
+        # this file exists to fight.
         "coverage_percent": int(percent),
         "coverage_exact": round(percent, 2),
         "mcp_tools": tool_count(),
@@ -95,21 +99,21 @@ def measure() -> dict[str, Any]:
 
 
 def version() -> str:
-    """Номер выпуска — из pyproject.toml, единственного места, где он настоящий.
+    """The release number — from pyproject.toml, the one place where it is real.
 
-    Он же стоял руками в восьми местах и уже разъезжался: страницы обещали 0.2.1
-    после того, как пакет стал другим.
+    It also used to stand by hand in eight places, and it has drifted: the pages
+    promised 0.2.1 after the package had already moved on.
     """
 
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     m = re.search(r'^version = "([^"]+)"', text, re.MULTILINE)
     if m is None:
-        raise SystemExit("в pyproject.toml не нашлось строки version")
+        raise SystemExit("no version line found in pyproject.toml")
     return m.group(1)
 
 
 def tool_count() -> int:
-    """Сколько средств объявляет сервер — из снятого живьём справочника."""
+    """How many tools the server declares — from the reference taken live."""
 
     path = ROOT / "docs" / "mcp-tools.json"
     with path.open(encoding="utf-8") as fh:
@@ -125,39 +129,40 @@ def languages() -> int:
 
 
 def collected_tests() -> int:
-    """Сколько проверок собирается — без их прогона, это быстро."""
+    """How many tests are collected — without running them, which is quick."""
 
     proc = subprocess.run(
         ["uv", "run", "pytest", "--collect-only"],
         cwd=ROOT, capture_output=True, text=True,
     )
-    # pytest печатает итог сбора двумя разными способами: обычно строкой
-    # «N tests collected», а при двойной тишине (в pyproject уже стоит `-q`,
-    # и второй `-q` приходит отсюда) — построчно по файлам, «путь: N».
+    # pytest prints the collection total in two different ways: usually as the
+    # line "N tests collected", and under double quiet (`-q` is already in
+    # pyproject and a second `-q` comes from here) per file, as "path: N".
     m = re.search(r"(\d+) tests? collected", proc.stdout)
     if m is not None:
         return int(m.group(1))
     per_file = re.findall(r"^\S+\.py: (\d+)$", proc.stdout, re.MULTILINE)
     if per_file:
         return sum(int(n) for n in per_file)
-    raise SystemExit(f"не разобрал сбор проверок: {proc.stdout.strip()[-300:]!r}")
+    raise SystemExit(f"could not parse the test collection: "
+                     f"{proc.stdout.strip()[-300:]!r}")
 
 
 def apply_marks(state: dict[str, Any]) -> list[str]:
-    """Переписывает пометки в страницах. Возвращает список изменённых."""
+    """Rewrites the marks in the pages. Returns the list of changed ones."""
 
     changed = []
     for name in PAGES:
         path = ROOT / name
         text = path.read_text(encoding="utf-8")
 
-        # `page=name` связывает имя страницы СЕЙЧАС, а не при вызове: без этого
-        # замыкание смотрело бы на переменную цикла, и в сообщении об ошибке
-        # стояла бы последняя страница, а не та, в которой беда.
+        # `page=name` binds the page name NOW, not at call time: without it the
+        # closure would look at the loop variable, and the error message would
+        # name the last page instead of the one with the problem.
         def swap(m: re.Match[str], page: str = name) -> str:
             key = m.group(1)
             if key not in state:
-                raise SystemExit(f"{page}: пометка {key!r} — такого числа не измеряют")
+                raise SystemExit(f"{page}: mark {key!r} — no such number is measured")
             return f"<!--state:{key}-->{state[key]}<!--/state-->"
 
         new = MARK.sub(swap, text)
@@ -168,28 +173,30 @@ def apply_marks(state: dict[str, Any]) -> list[str]:
 
 
 def check(state: dict[str, Any]) -> list[str]:
-    """Сверяет пометки с измеренным и с тем, что можно пересчитать сейчас."""
+    """Compares the marks with the measurement and with what can be recounted now."""
 
     problems: list[str] = []
 
-    # Дешёвое пересчитываем заново: если проверок стало больше, а замер старый,
-    # надо сказать именно это, а не сверять две одинаково устаревшие записи.
+    # The cheap numbers are recounted: if there are more tests now and the
+    # measurement is old, that is what has to be said, rather than comparing two
+    # equally stale records.
     now = collected_tests()
     if now != state.get("tests"):
         problems.append(
-            f"проверок сейчас {now}, а в docs/state.json записано "
-            f"{state.get('tests')} — прогоните --measure"
+            f"there are {now} tests now, while docs/state.json records "
+            f"{state.get('tests')} — run --measure"
         )
     now_version = version()
     if now_version != state.get("version"):
         problems.append(
-            f"в pyproject.toml версия {now_version}, а в docs/state.json "
-            f"{state.get('version')} — прогоните --measure"
+            f"pyproject.toml says version {now_version}, docs/state.json says "
+            f"{state.get('version')} — run --measure"
         )
     tools = tool_count()
     if tools != state.get("mcp_tools"):
         problems.append(
-            f"средств в справочнике {tools}, а в docs/state.json {state.get('mcp_tools')}"
+            f"the reference lists {tools} tools, docs/state.json says "
+            f"{state.get('mcp_tools')} — run --measure"
         )
 
     for name in PAGES:
@@ -197,10 +204,11 @@ def check(state: dict[str, Any]) -> list[str]:
         for m in MARK.finditer(text):
             key, shown = m.group(1), m.group(2)
             if key not in state:
-                problems.append(f"{name}: пометка {key!r} — такого числа не измеряют")
+                problems.append(f"{name}: mark {key!r} — no such number is measured")
             elif shown != str(state[key]):
                 problems.append(
-                    f"{name}: в пометке {key} стоит {shown!r}, измерено {state[key]!r}"
+                    f"{name}: mark {key} says {shown!r}, the measurement is "
+                    f"{state[key]!r}"
                 )
     return problems
 
@@ -212,26 +220,26 @@ def main() -> int:
             json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         changed = apply_marks(state)
-        print(f"\nизмерено: {json.dumps(state, ensure_ascii=False)}")
-        print(f"записано в {STATE_FILE.relative_to(ROOT)}")
-        print("страницы обновлены: " + (", ".join(changed) if changed else "нечего менять"))
+        print(f"\nmeasured: {json.dumps(state, ensure_ascii=False)}")
+        print(f"written to {STATE_FILE.relative_to(ROOT)}")
+        print("pages updated: " + (", ".join(changed) if changed else "nothing to change"))
         return 0
 
     if not STATE_FILE.exists():
-        print(f"нет {STATE_FILE.relative_to(ROOT)} — прогоните с --measure")
+        print(f"no {STATE_FILE.relative_to(ROOT)} — run with --measure")
         return 1
     with STATE_FILE.open(encoding="utf-8") as fh:
         state = json.load(fh)
 
     problems = check(state)
     if problems:
-        print("Числа состояния разошлись с измеренным:\n")
+        print("The state numbers parted ways with the measurement:\n")
         for p in problems:
             print(f"  - {p}")
-        print("\nПочинка: uv run python scripts/state_numbers.py --measure")
+        print("\nThe fix: uv run python scripts/state_numbers.py --measure")
         return 1
-    print(f"Числа состояния сходятся с измеренным ({state['tests']} проверок, "
-          f"покрытие {state['coverage_percent']} %).")
+    print(f"The state numbers agree with the measurement ({state['tests']} tests, "
+          f"coverage {state['coverage_percent']} %).")
     return 0
 
 
