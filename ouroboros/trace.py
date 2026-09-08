@@ -1,7 +1,8 @@
 """Parse and query Ouroboros trace files — **JSONL** (one JSON object per line),
-the structured storage the runtime sinks emit. Replaces the old multi-line ШАБЛОН
-text blocks: structured values, not freetext, so consumers parse instead of grep
-(and the kernel serial-capture double-encoding of Cyrillic markers is gone).
+the structured storage the runtime sinks emit. Replaces the old multi-line text
+blocks framed by Cyrillic markers: structured values, not freetext, so consumers
+parse instead of grep (and the kernel serial-capture double-encoding of those
+markers is gone).
 
 Two event lines per call, paired by ``id`` (a short key set; nothing decorative):
 

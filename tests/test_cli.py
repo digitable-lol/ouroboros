@@ -181,12 +181,12 @@ def test_compact_is_one_line_and_readable_is_not():
 
 
 def test_non_ascii_in_an_answer_is_printed_as_itself():
-    """The draft directory is named in Russian; escaping it makes the answer
-    unreadable for the person the answer is for."""
+    """Paths carry the author's own words, in the author's own alphabet; escaping
+    them to \\uXXXX makes the answer unreadable for the person it is for."""
 
-    text, _ = cli.report({"ok": True, "path": "черновик/m.py"}, cli.COMPACT)
+    text, _ = cli.report({"ok": True, "path": "разбор/draft/m.py"}, cli.COMPACT)
 
-    assert "черновик" in text
+    assert "разбор/draft/m.py" in text
 
 
 @pytest.mark.parametrize("argv,expected", [
@@ -407,7 +407,25 @@ def test_write_refuses_unparseable_content(tmp_path, capsys):
 
     assert rc == 1
     assert capsys.readouterr().err.strip()
-    assert not (tmp_path / "site" / "черновик" / "main.py").exists()
+    assert not (tmp_path / "site" / "draft" / "main.py").exists()
+
+
+def test_create_says_when_it_adopted_a_draft_under_the_old_name(tmp_path, capsys):
+    """The command line prints the tool's whole answer, so the notice reaches a
+    person the same way it reaches an agent — the point being that it reaches
+    them at all, rather than a second, empty draft appearing without a word."""
+
+    base = tmp_path / "site"
+    _run(["create", str(base)])
+    capsys.readouterr()
+    (base / "draft").rename(base / "черновик")
+
+    rc = _run(["create", str(base)])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "черновик" in out
+    assert "legacy_note" in out
 
 
 def test_execute_requires_command(tmp_path):

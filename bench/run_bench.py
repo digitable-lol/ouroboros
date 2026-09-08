@@ -111,8 +111,14 @@ def find_report(workdir: Path) -> Path | None:
         return None
 
     def rank(p: Path) -> tuple:
+        # The clean tree first, then the draft, then anywhere else; shallower
+        # wins within a rank. Both names of each are accepted, because a run
+        # recorded before the directories were renamed still has `чистовик` and
+        # `черновик` on disk and must keep ranking the same way.
         parts = p.parts
-        return (0 if "чистовик" in parts else 1 if "черновик" in parts else 2, len(parts))
+        clean = {"clean", "чистовик"} & set(parts)
+        draft = {"draft", "черновик"} & set(parts)
+        return (0 if clean else 1 if draft else 2, len(parts))
 
     return sorted(candidates, key=rank)[0]
 

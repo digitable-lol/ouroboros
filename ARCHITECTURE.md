@@ -10,9 +10,9 @@ later Elixir port is a re-implementation of the same shapes, not a redesign.
                                  │                     │
                     ┌────────────▼──────────┐   ┌──────▼───────────────┐
                     │  sandbox              │   │  languages           │
-                    │  draft(черновик)+git  │   │  locate-then-splice   │
+                    │  draft/ + git         │   │  locate-then-splice   │
                     │  CRUD / execute /     │◄──┤  transformers         │   ouroboros/sandbox,
-                    │  finish(→чистовик)    │   │  + corruption gate    │   ouroboros/languages
+                    │  finish(→ clean/)     │   │  + corruption gate    │   ouroboros/languages
                     └───────────┬───────────┘   └──────────┬───────────┘
                                 │                          │
                          debug.info  ◄────────────  ouroboros_runtime.py
@@ -34,12 +34,12 @@ later Elixir port is a re-implementation of the same shapes, not a redesign.
 
 2. **`ouroboros/sandbox`** — the draft/clean workspace. **No filesystem-watching
    daemon**; the CRUD operations *are* the write path.
-   - `create` → `<base>/черновик/` git repo + bundled runtime + `.gitignore`.
+   - `create` → `<base>/draft/` git repo + bundled runtime + `.gitignore`.
    - `write_file` → wrap-on-save, one commit per op (`--allow-empty` keeps the
      invariant on identical re-writes); unparseable code is rejected.
    - `execute` → subprocess with `OUROBOROS_DEBUG_INFO` pointed at the draft;
      runtime records + a framed stdout/stderr section land in `debug.info`.
-   - `finish` → mirror `черновик` → `чистовик`, minus `.git` and `debug.info`.
+   - `finish` → mirror `draft/` → `clean/`, minus `.git` and `debug.info`.
 
 3. **`ouroboros/mcp` + `ouroboros/cli`** — two front-ends over identical engine
    functions. Tools: `wrap_code_snippet`, `wrap_file` (brief-mandated) plus
@@ -176,7 +176,7 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->999<!--/state--> tests,
+Suite: <!--state:tests-->1011<!--/state--> tests,
 <!--state:coverage_percent-->100<!--/state-->% coverage (statements **and**
 branches, `pytest --cov`). Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
 (all by compile+run where applicable). MCP tools declared by the server:
@@ -205,7 +205,7 @@ and branches: `clangtools/`, `sandbox/`, `mcp/server.py`, `cli.py`, `trace.py`,
 modules.
 
 What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
-statement-and-branch units out of <!--state:total_units-->3683<!--/state-->.
+statement-and-branch units out of <!--state:total_units-->3727<!--/state-->.
 
 The last 15 closed in three different ways, and the ways are worth separating,
 because only one of them is "write a test".

@@ -309,7 +309,7 @@ ouroboros execute /srv/tmp/разбор -- python3 stats.py
 | каталог | что там |
 |---|---|
 | [`ouroboros/`](ouroboros/) | сам пакет: командная строка, сервер MCP, черновик, языки |
-| [`tests/`](tests/) | проверок: <!--state:tests-->999<!--/state--> |
+| [`tests/`](tests/) | проверок: <!--state:tests-->1011<!--/state--> |
 | [`bench/`](bench/) | стенд и его итоги |
 | [`packaging/`](packaging/) | один файл-программа, образ, формула Homebrew, плагин asdf |
 | [`docs/`](docs/) | страницы, они же опубликованы |
@@ -373,7 +373,7 @@ docs/ouroboros.flang: примеров 40, прошло 40, не прошло 0
 
 ## Состояние
 
-Версия <!--state:version-->0.5.0<!--/state-->. Проверки: <!--state:tests-->999<!--/state--> из <!--state:tests-->999<!--/state-->, покрытие с ветвями <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Установка
+Версия <!--state:version-->0.5.0<!--/state-->. Проверки: <!--state:tests-->1011<!--/state--> из <!--state:tests-->1011<!--/state-->, покрытие с ветвями <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Установка
 проверена целиком, а не «по виду правильно»: `uv tool install`;
 `brew install digitable-lol/tap/ouroboros` вместе с `brew test` — короткая строка
 подключает хранилище формул сама, проверено с пустого места: хранилище отцеплено,

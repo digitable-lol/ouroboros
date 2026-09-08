@@ -57,6 +57,7 @@ from ..sandbox import (
     read_file as sandbox_read_file,
     write_file as sandbox_write_file,
 )
+from ..sandbox.project import legacy_notice
 from ..trace import (
     aggregate as trace_aggregate,
     load as trace_load,
@@ -466,16 +467,30 @@ def tool_trace_stats(path: str, function: str | None = None,
 
 
 def tool_create_project(base: str) -> dict[str, Any]:
+    """Provision (or re-open) the draft under ``base``.
+
+    ``legacy_layout`` and ``legacy_note`` are in the answer because this command
+    is where a rename could have cost somebody their work: a base that already
+    holds a draft under the previous directory names is used as it is, and where
+    such a directory merely sits beside the current one, the answer names it.
+    The one thing that must never happen here is a quiet divergence — see
+    ``ouroboros/sandbox/project.py``."""
+
     try:
         proj = Project.create(base, exist_ok=True)
     except SandboxError as e:
         return {"ok": False, "error": str(e)}
-    return {
+    answer: dict[str, Any] = {
         "ok": True,
         "base": str(proj.base),
         "draft": str(proj.draft),
         "clean": str(proj.clean),
     }
+    note = legacy_notice(proj)
+    if note is not None:
+        answer["legacy_layout"] = proj.uses_legacy_layout
+        answer["legacy_note"] = note
+    return answer
 
 
 def tool_write_file(base: str, rel_path: str, content: str) -> dict[str, Any]:
@@ -528,7 +543,7 @@ def tool_execute(base: str, command: list[str], timeout: float | None = None) ->
 
 
 def tool_finish(base: str) -> dict[str, Any]:
-    """Copy the draft into the output tree (``чистовик``), instrumentation and all.
+    """Copy the draft into the output tree (``clean/``), instrumentation and all.
 
     ``instrumentation_removed`` is in the answer because the operation's name
     used to suggest the opposite. It is always False, and cannot be otherwise:
@@ -539,7 +554,7 @@ def tool_finish(base: str) -> dict[str, Any]:
         result = sandbox_finish(proj)
     except SandboxError as e:
         return {"ok": False, "error": str(e)}
-    return {
+    answer: dict[str, Any] = {
         "ok": True,
         "clean": str(proj.clean),
         "synced": result.synced,
@@ -555,6 +570,11 @@ def tool_finish(base: str) -> dict[str, Any]:
                 "in `skipped` with the reason. If something you wanted is in that "
                 "list, copy it across yourself.",
     }
+    note = legacy_notice(proj)
+    if note is not None:
+        answer["legacy_layout"] = proj.uses_legacy_layout
+        answer["legacy_note"] = note
+    return answer
 
 
 @_reports_bad_tree_config
@@ -650,17 +670,18 @@ def build_server() -> FastMCP:
 
     mcp = FastMCP("ouroboros-logger", instructions=_INSTRUCTIONS)
 
-    # На `initialize` сервер отвечает полем serverInfo.version, и агент читает его как
-    # версию ИНСТРУМЕНТА. FastMCP версию не принимает и оставляет её незаполненной, а
-    # нижний слой подставляет тогда версию пакета `mcp` — то есть сервер честно
-    # представлялся как "1.30.0", версия чужой библиотеки. Агент, которому важно, с чем
-    # он говорит (а этому инструменту важно: он про то, что было на самом деле),
-    # получал в ответ число не про нас.
+    # The server answers `initialize` with a serverInfo.version field, and an
+    # agent reads that as the version of the TOOL. FastMCP accepts no version and
+    # leaves the field unset, whereupon the layer below fills in the version of
+    # the `mcp` package — so the server was sincerely introducing itself as
+    # "1.30.0", the version of somebody else's library. An agent that cares what
+    # it is talking to (and this tool's whole point is what actually happened)
+    # was getting back a number that was not about us.
     #
-    # Проставляется через _mcp_server, потому что другого пути нет: FastMCP такого
-    # довода не имеет во всём разрешённом диапазоне (mcp>=1.2,<2). Поэтому — с
-    # проверкой наличия: если поле однажды переименуют, сервер не упадёт, а вернётся к
-    # прежнему поведению.
+    # Set through _mcp_server because there is no other way: FastMCP has no such
+    # argument anywhere in the permitted range (mcp>=1.2,<2). Hence the guard on
+    # the attribute existing: if the field is ever renamed, the server does not
+    # fall over, it falls back to the previous behaviour.
     if hasattr(mcp, "_mcp_server") and hasattr(mcp._mcp_server, "version"):
         mcp._mcp_server.version = __version__
 
@@ -751,7 +772,11 @@ def build_server() -> FastMCP:
                                     idempotentHint=True, openWorldHint=False),
     )
     def create_project(base: str) -> dict[str, Any]:
-        """Create a draft (черновик) git project under the given base path."""
+        """Create a draft (`draft/`) git project under the given base path.
+
+        A base left over from a build that used the previous directory names is
+        adopted as it is, rather than a fresh draft being made beside it; either
+        way the answer says which layout it found."""
         return tool_create_project(base)
 
     @mcp.tool(
@@ -794,8 +819,9 @@ def build_server() -> FastMCP:
 
     @mcp.tool(
         # NOT "clean up the code": this copies the draft, it does not take the
-        # instrumentation back off. The title says copy so the name `finish` and
-        # the folder name `чистовик` stop implying a step that does not exist.
+        # instrumentation back off. The title says copy so that neither the name
+        # `finish` nor the folder name `clean/` implies a step that does not
+        # exist.
         title="Copy draft into the output tree",
         # Rebuilds the output tree from the draft: it rmtree's the existing tree
         # first, so content there but not in the draft is lost (destructive);
@@ -804,7 +830,7 @@ def build_server() -> FastMCP:
                                     idempotentHint=True, openWorldHint=False),
     )
     def finish(base: str) -> dict[str, Any]:
-        """Copy the draft (черновик) into the output tree (чистовик).
+        """Copy the draft (`draft/`) into the output tree (`clean/`).
 
         The copy KEEPS the logging instrumentation — there is no un-instrument
         step, and this is not one. write_file wraps code before saving it, so no

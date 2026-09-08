@@ -16,11 +16,11 @@ scripts/probe/build-reference.sh
 
 | | |
 |---|---|
-| server | `ouroboros-logger` version `1.27.2` |
+| server | `ouroboros-logger` version `0.5.0` |
 | protocol | `2025-11-25` |
 | started by | `ouroboros-mcp (pyproject [project.scripts])` |
 | tools declared | **17** |
-| captured | 2026-08-29T08:29:50 |
+| captured | 2026-09-08T18:20:24 |
 
 No tool was declared and left uncalled: every one of them has a real answer.
 
@@ -342,7 +342,11 @@ Got (answer):
 
 ### `create_project` — Create draft project
 
-Create a draft (черновик) git project under the given base path.
+Create a draft (`draft/`) git project under the given base path.
+
+A base left over from a build that used the previous directory names is
+adopted as it is, rather than a fresh draft being made beside it; either
+way the answer says which layout it found.
 
 **yes:** calling again gives the same result; **no:** reads only, overwrites what was there, touches something beyond its own arguments
 
@@ -368,8 +372,8 @@ Got (answer):
 {
   "ok": true,
   "base": "<work>/site",
-  "draft": "<work>/site/черновик",
-  "clean": "<work>/site/чистовик"
+  "draft": "<work>/site/draft",
+  "clean": "<work>/site/clean"
 }
 ```
 
@@ -524,7 +528,7 @@ Got (answer):
   "returncode": 0,
   "stdout": "36\n",
   "stderr": "",
-  "debug_info": "<work>/site/черновик/debug.info"
+  "debug_info": "<work>/site/draft/debug.info"
 }
 ```
 
@@ -532,7 +536,7 @@ Got (answer):
 
 ### `finish` — Copy draft into the output tree
 
-Copy the draft (черновик) into the output tree (чистовик).
+Copy the draft (`draft/`) into the output tree (`clean/`).
 
 The copy KEEPS the logging instrumentation — there is no un-instrument
 step, and this is not one. write_file wraps code before saving it, so no
@@ -563,7 +567,7 @@ Got (answer):
 ```json
 {
   "ok": true,
-  "clean": "<work>/site/чистовик",
+  "clean": "<work>/site/clean",
   "synced": [
     ".gitignore",
     "main.py",

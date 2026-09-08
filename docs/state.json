@@ -1,8 +1,8 @@
 {
   "version": "0.5.0",
-  "tests": 999,
+  "tests": 1011,
   "uncovered_units": 0,
-  "total_units": 3683,
+  "total_units": 3727,
   "coverage_percent": 100,
   "coverage_exact": 100.0,
   "mcp_tools": 17,
