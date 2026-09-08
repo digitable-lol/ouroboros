@@ -373,7 +373,7 @@ There is nothing here to drift: lying in this file means failing to compile it.
 
 ## State
 
-Version <!--state:version-->0.5.0<!--/state-->. Tests: <!--state:tests-->1248<!--/state--> of <!--state:tests-->1248<!--/state-->, branch coverage <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Installation
+Version <!--state:version-->0.6.0<!--/state-->. Tests: <!--state:tests-->1248<!--/state--> of <!--state:tests-->1248<!--/state-->, branch coverage <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Installation
 is checked end to end, not eyeballed: `uv tool install`;
 `brew install digitable-lol/tap/ouroboros` together with `brew test` — the short
 line taps the formula repository itself, verified from nothing: tap removed, old
