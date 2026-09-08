@@ -263,6 +263,22 @@ tbody tr:hover { background: var(--rule-soft); }
 .diagram summary:hover { color: var(--accent); }
 .diagram details .code { margin-bottom: 0; }
 
+/* --------------------------------------------------- documentation pages -- */
+/* The documentation folds the real call and the real answer of each MCP tool
+ * away behind a `<details>` of its own — seventeen of them on one page, which
+ * is unreadable unfolded and unfindable if it does not look foldable. */
+
+.content > details {
+  margin: 1.2rem 0; padding: .7rem .95rem;
+  border: 1px solid var(--rule); border-radius: 10px; background: var(--card);
+}
+.content > details[open] { padding-bottom: .3rem; }
+.content > details > summary {
+  cursor: pointer; font-size: .88rem; color: var(--ink-soft); font-weight: 600;
+}
+.content > details > summary:hover { color: var(--accent); }
+.content > details > :last-child { margin-bottom: 0; }
+
 /* ---------------------------------------------------------------- footer -- */
 
 .bottom {
