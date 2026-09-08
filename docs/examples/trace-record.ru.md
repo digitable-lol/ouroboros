@@ -7,7 +7,7 @@ title: Запись трассы
 # Запись трассы
 
 Настоящий файл `debug.info` целиком, снятый с прогона из
-[README](https://github.com/digitable-lol/ouroboros#четыре-шага). Программа —
+[README](https://github.com/digitable-lol/ouroboros/blob/main/README.ru.md#четыре-шага). Программа —
 двадцать строк на Python, три функции, два вызова верхнего уровня: один удачный,
 второй с делением на ноль.
 
