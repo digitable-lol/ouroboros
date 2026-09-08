@@ -29,7 +29,23 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 FACTS = ROOT / "docs" / "schema-facts.json"
-PAGE = ROOT / "docs" / "languages.md"
+#: Обе редакции страницы: имя без суффикса — английская, с `.ru` — русская. Таблицу
+#: печатает машина, поэтому подписи столбцов у каждой редакции свои и хранятся
+#: здесь, а не в странице: иначе перевод страницы молча разошёлся бы со снятым.
+PAGES = {
+    ROOT / "docs" / "languages.md": {
+        "head": "| language | field `a` (positional) | field `k` (keyword) |",
+        "empty": "empty",
+        "unavailable": "not measured on this machine",
+        "unavailable_short": "not measured",
+    },
+    ROOT / "docs" / "languages.ru.md": {
+        "head": "| язык | поле `a` (по позиции) | поле `k` (именованные) |",
+        "empty": "пусто",
+        "unavailable": "не снято на этой машине",
+        "unavailable_short": "не снято",
+    },
+}
 
 MARK = re.compile(
     r"(<!--schema-facts-->)(.*?)(<!--/schema-facts-->)", re.DOTALL
@@ -66,29 +82,32 @@ def measure() -> dict[str, Any]:
     return out
 
 
-def render(facts: dict[str, Any]) -> str:
-    rows = ["| язык | поле `a` (по позиции) | поле `k` (именованные) |",
-            "|---|---|---|"]
+def render(facts: dict[str, Any], words: dict[str, str]) -> str:
+    rows = [words["head"], "|---|---|---|"]
     for lang, title in TITLES.items():
         f = facts.get(lang)
         if f is None or "unavailable" in (f or {}):
-            rows.append(f"| {title} | не снято на этой машине | не снято |")
+            rows.append(
+                f"| {title} | {words['unavailable']} | {words['unavailable_short']} |")
             continue
-        a = f"`{f['a']}`" if f["a"] else "пусто"
-        k = f"`{f['k']}`" if f["k"] else "пусто"
+        a = f"`{f['a']}`" if f["a"] else words["empty"]
+        k = f"`{f['k']}`" if f["k"] else words["empty"]
         rows.append(f"| {title} | {a} | {k} |")
     return "\n" + "\n".join(rows) + "\n"
 
 
-def apply(table: str) -> bool:
-    text = PAGE.read_text(encoding="utf-8")
-    if not MARK.search(text):
-        raise SystemExit(f"в {PAGE.name} нет пометок <!--schema-facts-->")
-    new = MARK.sub(lambda m: m.group(1) + table + m.group(3), text)
-    if new == text:
-        return False
-    PAGE.write_text(new, encoding="utf-8")
-    return True
+def apply(facts: dict[str, Any]) -> bool:
+    changed = False
+    for page, words in PAGES.items():
+        text = page.read_text(encoding="utf-8")
+        if not MARK.search(text):
+            raise SystemExit(f"в {page.name} нет пометок <!--schema-facts-->")
+        table = render(facts, words)
+        new = MARK.sub(lambda m: m.group(1) + table + m.group(3), text)
+        if new != text:
+            page.write_text(new, encoding="utf-8")
+            changed = True
+    return changed
 
 
 def main() -> int:
@@ -97,7 +116,7 @@ def main() -> int:
         facts = measure()
         FACTS.write_text(json.dumps(facts, ensure_ascii=False, indent=2) + "\n",
                          encoding="utf-8")
-        changed = apply(render(facts))
+        changed = apply(facts)
         print(f"записано в {FACTS.relative_to(ROOT)}")
         print("страница обновлена" if changed else "страница уже совпадала")
         return 0
@@ -106,18 +125,19 @@ def main() -> int:
         print(f"нет {FACTS.relative_to(ROOT)} — прогоните с --measure")
         return 1
     facts = json.loads(FACTS.read_text(encoding="utf-8"))
-    want = render(facts)
-    got = MARK.search(PAGE.read_text(encoding="utf-8"))
-    if got is None:
-        print(f"в {PAGE.name} нет пометок <!--schema-facts-->")
-        return 1
-    if got.group(2) != want:
-        print("Таблица полей записи разошлась со снятым:\n")
-        print("  в странице:\n" + got.group(2).rstrip())
-        print("\n  снято прогоном:\n" + want.rstrip())
-        print("\nПочинка: uv run python scripts/schema_facts.py --measure")
-        return 1
-    print("Таблица полей записи совпадает со снятым прогоном.")
+    for page, words in PAGES.items():
+        want = render(facts, words)
+        got = MARK.search(page.read_text(encoding="utf-8"))
+        if got is None:
+            print(f"в {page.name} нет пометок <!--schema-facts-->")
+            return 1
+        if got.group(2) != want:
+            print(f"Таблица полей записи в {page.name} разошлась со снятым:\n")
+            print("  в странице:\n" + got.group(2).rstrip())
+            print("\n  снято прогоном:\n" + want.rstrip())
+            print("\nПочинка: uv run python scripts/schema_facts.py --measure")
+            return 1
+    print(f"Таблица полей записи совпадает со снятым прогоном в {len(PAGES)} редакциях.")
     return 0
 
 
