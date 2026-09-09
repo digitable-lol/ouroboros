@@ -54,16 +54,29 @@ jobs:
       - name: English by default, Russian as a .ru pair
         run: python scripts/check_doc_language.py
 
-      # The compiler comes from our own tap, which carries the current release.
+      # The compiler our own tap hands people, built from the same archive and
+      # checked against the same sha256 the formula names — the formula is the
+      # single source of both. `brew` itself is not on this runner, so the
+      # formula is read rather than executed.
+      #
       # npm was the old road and it carries 0.7.0 and 0.7.3 only — old enough
-      # that the brain could not be checked here at all. The cost of taking the
-      # current one is named plainly: a release of the language can turn this
-      # gate red. That is the point — we want to hear it here rather than from a
-      # reader.
-      - name: install the flang compiler from our tap
+      # that the brain could not be checked here at all. The cost of following
+      # the tap rather than a pinned version is named plainly: a release of the
+      # language can turn this gate red. That is the point — we want to hear it
+      # here rather than from a reader.
+      - name: install the flang compiler our tap names
         run: |
-          brew install digitable-lol/tap/flang
-          flang --version | head -1
+          formula=$(curl -fsSL https://raw.githubusercontent.com/digitable-lol/homebrew-tap/main/Formula/flang.rb)
+          url=$(printf '%s\n' "$formula" | sed -n 's/^ *url "\(.*\)"/\1/p' | head -1)
+          sha=$(printf '%s\n' "$formula" | sed -n 's/^ *sha256 "\(.*\)"/\1/p' | head -1)
+          test -n "$url" && test -n "$sha"
+          curl -fsSL -o flang-src.tar.gz "$url"
+          echo "$sha  flang-src.tar.gz" | sha256sum -c -
+          mkdir -p flang-src && tar xzf flang-src.tar.gz -C flang-src
+          make -C flang-src -j"$(nproc)" >/dev/null
+          echo "$PWD/flang-src" >> "$GITHUB_PATH"
+          echo "FLANG_RUNTIME_DIR=$PWD/flang-src/runtime/python" >> "$GITHUB_ENV"
+          "$PWD/flang-src/flang" --version | head -1
 
       - name: the Russian description is checked by the compiler
         run: |

@@ -265,11 +265,15 @@ The compiler still judges such an edit — but only where a compiler is run, and
 a refusal, because a guard that has never gone red is indistinguishable from one
 that cannot. `qa.sh` runs it before the check itself.
 
-**Continuous integration runs the compiler on the brain.** It installs flang
-from our own Homebrew tap (`brew install digitable-lol/tap/flang`), which carries
-the current release, and then runs `check`, `test`, `--proof` and the print
-comparison. npm was the earlier road and it stops at 0.7.0 and 0.7.3 — old
-enough that none of this could run there.
+**Continuous integration runs the compiler on the brain.** It takes the
+compiler our own tap hands people: the workflow reads
+`digitable-lol/homebrew-tap`'s `Formula/flang.rb`, downloads the archive that
+formula names, checks it against the `sha256` that formula names, builds it, and
+then runs `check`, `test`, `--proof` and the print comparison. `brew` is not
+installed on the runner, so the formula is read rather than executed — but the
+archive and its checksum come from one source, and that source is the same one a
+person installing by hand goes through. npm was the earlier road and it stops at
+0.7.0 and 0.7.3 — old enough that none of this could run there.
 
 The cost of taking the current release rather than a pinned one is real and is
 taken deliberately: a release of the language can turn this gate red. That is
