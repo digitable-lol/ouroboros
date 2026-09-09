@@ -81,6 +81,13 @@ output is right there, comparing output is cheaper.
 
 The numbers and the analysis — [bench/RESULTS.md](https://github.com/digitable-lol/ouroboros/blob/main/bench/RESULTS.md).
 
+Where it does pay off is measured too, and that measurement is easy to miss
+because it sits on another page: [does call logging help you understand code you did not write](measurements.md#does-call-logging-help-you-understand-code-you-did-not-write)
+— four answerers, twelve programs, every question asked with and without the
+trace — and, with a control arm on a mid-pipeline bug,
+[bench/RESULTS_debug.md](https://github.com/digitable-lol/ouroboros/blob/main/bench/RESULTS_debug.md).
+Read both before deciding: one page alone gives half the picture.
+
 The rule is simple: **before you instrument, ask whether the output and the
 stack trace already pin the bug down.** If they do, do not spend the effort.
 
