@@ -54,17 +54,30 @@ jobs:
       - name: English by default, Russian as a .ru pair
         run: python scripts/check_doc_language.py
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      # The version is nailed down. The description is checked against 0.7.3 and
-      # against 0.7.10; a floating "latest" would turn somebody else's compiler
-      # release into our red guard.
-      - name: install the flang compiler
-        run: npm i -g @digitable-lol/flang@0.7.3
+      # The compiler comes from our own tap, which carries the current release.
+      # npm was the old road and it carries 0.7.0 and 0.7.3 only — old enough
+      # that the brain could not be checked here at all. The cost of taking the
+      # current one is named plainly: a release of the language can turn this
+      # gate red. That is the point — we want to hear it here rather than from a
+      # reader.
+      - name: install the flang compiler from our tap
+        run: |
+          brew install digitable-lol/tap/flang
+          flang --version | head -1
 
       - name: the Russian description is checked by the compiler
         run: |
           flang check docs/ouroboros.flang
           flang test docs/ouroboros.flang
+
+      # The rules the tool reads a trace by. Until the compiler could be
+      # installed here, this ran nowhere but on a developer's machine.
+      - name: the trace-reading brain is checked by the compiler
+        run: |
+          flang check ouroboros/brain/trace_brain.flang
+          flang test ouroboros/brain/trace_brain.flang
+          flang check ouroboros/brain/trace_brain.flang --proof
+
+      # And the print in the tree is what this compiler makes of that source.
+      - name: the committed print matches a fresh one
+        run: python scripts/emit_brain.py --check

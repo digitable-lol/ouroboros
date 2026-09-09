@@ -219,7 +219,7 @@ measurement until their refusal branches turned out to be code nothing had ever
 executed.
 
 What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
-statement-and-branch units out of <!--state:total_units-->5490<!--/state-->.
+statement-and-branch units out of <!--state:total_units-->5491<!--/state-->.
 
 The last 15 closed in three different ways, and the ways are worth separating,
 because only one of them is "write a test".
