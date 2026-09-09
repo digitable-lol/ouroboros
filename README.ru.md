@@ -358,7 +358,7 @@ scripts/qa.sh    # ruff, mypy, pytest
 всего дают ровно три общих.
 
 ```sh
-npm i -g @digitable-lol/flang
+brew install digitable-lol/tap/flang
 flang check docs/ouroboros.flang
 flang test  docs/ouroboros.flang
 ```

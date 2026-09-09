@@ -363,7 +363,7 @@ open calls than zero, and eight entry keys plus six exit keys minus eleven keys
 in total equals the three that appear in both lines.
 
 ```sh
-npm i -g @digitable-lol/flang
+brew install digitable-lol/tap/flang
 flang check docs/ouroboros.flang    # 28 functions, 28 with proven termination, 5 types
 flang test  docs/ouroboros.flang    # 40 examples, 40 passed
 ```

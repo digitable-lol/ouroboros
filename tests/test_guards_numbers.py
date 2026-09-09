@@ -384,7 +384,7 @@ def test_without_the_compiler_the_print_is_not_compared_and_says_so(monkeypatch,
 
 
 def test_a_compiler_of_another_version_does_not_compare_either(monkeypatch, capsys):
-    """npm carries 0.7.0 and 0.7.3; the print was made by another version."""
+    """The tap moved ahead of the pinned version the print was made by."""
 
     monkeypatch.setattr(emit_mod, "flang_binary", lambda: "/usr/bin/flang")
     monkeypatch.setattr(emit_mod, "flang_version", lambda _b: "0.7.3")

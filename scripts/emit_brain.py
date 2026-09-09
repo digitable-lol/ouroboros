@@ -78,10 +78,10 @@ STAMP = TARGET / "printed-from.txt"
 #: byte-for-byte artefact of it: another version prints the same rules
 #: differently — different helper names, a different runtime — and a comparison
 #: across versions would be noise. Raising this number means printing again and
-#: committing what comes out. Note that npm carries 0.7.0 and 0.7.3 only, so a
-#: machine with the published compiler cannot check this print at all; it says
-#: so rather than failing.
-EXPECTED_VERSION = "0.7.14"
+#: committing what comes out. The compiler is installed from our own Homebrew
+#: tap (`brew install digitable-lol/tap/flang`), which carries the current
+#: release — so the gate can check this print instead of skipping it.
+EXPECTED_VERSION = "0.7.15"
 
 #: The one rewrite, and its reason, in the module docstring above.
 IMPORT_FROM = "import flang_runtime as rt"
@@ -117,7 +117,8 @@ def flang_version(binary: str) -> str:
     """What ``flang --version`` says, as a bare version number."""
 
     proc = subprocess.run([binary, "--version"], capture_output=True, text=True, check=False)
-    return proc.stdout.strip().removeprefix("flang").strip()
+    first_line = proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+    return first_line.removeprefix("flang").strip()
 
 
 def print_brain(out_dir: Path) -> None:

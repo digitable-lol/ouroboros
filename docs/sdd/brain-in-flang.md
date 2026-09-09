@@ -249,7 +249,7 @@ Two questions, and they fail apart.
 **Does the print belong to this source?** The sha256 of `trace_brain.flang` is
 committed beside the print, in `_flang/printed-from.txt`, and compared against
 the source as it stands. This needs no compiler, so it is the half that runs
-everywhere — including CI, which has flang 0.7.0 and not 0.7.14.
+everywhere, including on a machine where the compiler is not installed at all.
 
 **Is the print what this compiler makes of that source?** `--check` prints into
 a temporary directory and compares byte for byte. This needs the pinned
@@ -265,12 +265,20 @@ The compiler still judges such an edit — but only where a compiler is run, and
 a refusal, because a guard that has never gone red is indistinguishable from one
 that cannot. `qa.sh` runs it before the check itself.
 
-**Continuous integration does not run the compiler on the brain yet.** The
-workflow that checks the Russian description installs flang from npm, which
-today carries 0.7.0 and 0.7.3; the brain is written against 0.7.14, which is not
-published. Until it is, the compiler gates run where a contributor has 0.7.14
-installed, and `qa.sh` says so out loud rather than reporting a pass it did not
-earn.
+**Continuous integration runs the compiler on the brain.** It installs flang
+from our own Homebrew tap (`brew install digitable-lol/tap/flang`), which carries
+the current release, and then runs `check`, `test`, `--proof` and the print
+comparison. npm was the earlier road and it stops at 0.7.0 and 0.7.3 — old
+enough that none of this could run there.
+
+The cost of taking the current release rather than a pinned one is real and is
+taken deliberately: a release of the language can turn this gate red. That is
+what it is for. `EXPECTED_VERSION` in `scripts/emit_brain.py` names the compiler
+the committed print was made by; when the tap moves ahead of it, the print
+comparison says so and skips rather than comparing prints made by different
+compilers. Raising that number means printing again and committing what comes
+out — which, from 0.7.14 to 0.7.15, changed the stamp and not one byte of the
+print.
 
 ## Limits found
 
