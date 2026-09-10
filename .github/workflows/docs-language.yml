@@ -92,5 +92,19 @@ jobs:
           flang check ouroboros/brain/trace_brain.flang --proof
 
       # And the print in the tree is what this compiler makes of that source.
+      #
+      # Two outcomes are not the same thing and are not treated the same. Code 1
+      # is a disagreement — the print and the source have parted ways, and that
+      # is ours to fix. Code 2 is "not compared": the tap has moved to a newer
+      # compiler than the one the committed print was made by. Failing on that
+      # would mean somebody else's release turns this trunk red, so it is said
+      # out loud and let through — and what it asks for is a re-print, not a
+      # rescue.
       - name: the committed print matches a fresh one
-        run: python scripts/emit_brain.py --check
+        run: |
+          rc=0
+          python scripts/emit_brain.py --check || rc=$?
+          if [ "$rc" = "1" ]; then exit 1; fi
+          if [ "$rc" = "2" ]; then
+            echo "::warning::the print was not compared — re-print with: python scripts/emit_brain.py"
+          fi
