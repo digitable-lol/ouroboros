@@ -81,7 +81,7 @@ STAMP = TARGET / "printed-from.txt"
 #: committing what comes out. The compiler is installed from our own Homebrew
 #: tap (`brew install digitable-lol/tap/flang`), which carries the current
 #: release — so the gate can check this print instead of skipping it.
-EXPECTED_VERSION = "0.7.15"
+EXPECTED_VERSION = "0.7.16"
 
 #: The one rewrite, and its reason, in the module docstring above.
 IMPORT_FROM = "import flang_runtime as rt"
