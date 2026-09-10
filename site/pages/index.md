@@ -237,6 +237,41 @@ values, durations and exceptions.
 The full machine those numbers came from is on the
 [limits page](limits.html#the-machine-these-numbers-came-from).
 
+## Does it help a model read code?
+
+Measured, and the measure was declared before the first run. Twelve programs in
+six languages, written the way other people's code looks — branching depends on
+the data, some functions never run, somewhere an exception appears. Five
+questions each about what happened in one particular run, every question asked
+twice: once with the source, the command and the output alone, once with the
+trace of that same run added. The control group gets everything needed to work
+the answer out unaided, or the comparison would be rigged; a separate grader
+sees only the question number and the answer.
+
+| who answered | answers | correct without the trace | with the trace | difference |
+|---|---|---|---|---|
+| `qwen3.5:4b` | 600 | 44.0% | 78.3% | **+34.3** |
+| `qwen2.5:14b-instruct` | 600 | 61.0% | 84.7% | **+23.7** |
+| `qwen3:32b` | 600 | 66.7% | 90.3% | **+23.6** |
+| a Claude Opus 5 subagent | 120 | 95.0% | 98.3% | +3.3 |
+
+**The weaker the reader, the more the trace buys.** On the strong one the
+interval starts at zero — no gain shown. The honest reading is not "an agent
+does not need this": twelve fifty-line programs are simply too easy for it, and
+it answers from the source.
+
+Two things matter more than the averages. The gain is **uneven** — questions
+about values that would have to be computed in the head go from 46% to 87%,
+while "was this function ever called" is 100% either way: the trace does not make
+a reader smarter, it removes the need to calculate. And on the smallest model the
+trace removed **refusals rather than errors** — "don't know" fell from 29.4% to
+4.0% while confidently wrong answers stayed where they were.
+
+The setup, the per-question breakdown, what happens when the trace no longer
+fits in the request, and what this experiment does not show —
+[in docs/measurements.md]({{repo}}/blob/main/docs/measurements.md#does-call-logging-help-you-understand-code-you-did-not-write).
+Re-take it with one command: `scripts/measure/trace-help/run.sh`.
+
 ## Before you decide to use it
 
 The honest version of this list is a whole page — [limits](limits.html) — and it

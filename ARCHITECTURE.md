@@ -187,7 +187,7 @@ headers: it declares the slice of libclang's ABI it uses in
 declarations are not trusted — a test builds the emitter both ways, against them
 and against the host's real `<clang-c/Index.h>`, and requires identical output.
 
-Suite: <!--state:tests-->1248<!--/state--> tests,
+Suite: <!--state:tests-->1257<!--/state--> tests,
 <!--state:coverage_percent-->100<!--/state-->% coverage (statements **and**
 branches), measured on every run: `--cov` and the threshold live in
 `pyproject.toml`, so a branch nothing visits makes that run red and names it. Validated languages: Python, JS/TS, C, C++, Elixir, Go, Java, C#
@@ -219,7 +219,7 @@ measurement until their refusal branches turned out to be code nothing had ever
 executed.
 
 What is left uncovered — <!--state:uncovered_units-->0<!--/state-->
-statement-and-branch units out of <!--state:total_units-->5491<!--/state-->.
+statement-and-branch units out of <!--state:total_units-->5583<!--/state-->.
 
 The last 15 closed in three different ways, and the ways are worth separating,
 because only one of them is "write a test".

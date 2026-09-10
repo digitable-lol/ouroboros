@@ -153,6 +153,11 @@ fi
 # The record-field table in docs/languages.md is printed by a run of five
 # languages. It once became a lie through an edit in the backends, not in the
 # page: see scripts/schema_facts.py.
+# The landing page repeats the experiment table, and a repeated number drifts.
+echo "== the landing page repeats the measurement, not its own numbers =="
+uv run python scripts/check_landing_claims.py --self-test
+uv run python scripts/check_landing_claims.py
+
 echo "== the record-field table =="
 uv run python scripts/schema_facts.py
 
