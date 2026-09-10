@@ -375,7 +375,7 @@ docs/ouroboros.flang: примеров 40, прошло 40, не прошло 0
 
 ## Состояние
 
-Версия <!--state:version-->0.6.0<!--/state-->. Проверки: <!--state:tests-->1257<!--/state--> из <!--state:tests-->1257<!--/state-->, покрытие с ветвями <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Установка
+Версия <!--state:version-->0.6.1<!--/state-->. Проверки: <!--state:tests-->1257<!--/state--> из <!--state:tests-->1257<!--/state-->, покрытие с ветвями <!--state:coverage_percent-->100<!--/state--> % (`ruff`, `mypy --strict`, `pytest`). Установка
 проверена целиком, а не «по виду правильно»: `uv tool install`;
 `brew install digitable-lol/tap/ouroboros` вместе с `brew test` — короткая строка
 подключает хранилище формул сама, проверено с пустого места: хранилище отцеплено,

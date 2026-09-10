@@ -17,10 +17,10 @@
 # и отдельно — версию, которую она раздаёт. Проверка висит в scripts/qa.sh и
 # ежедневно в .github/workflows/packaging-live.yml.
 #
-# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.6.0. Отпечаток
+# ЧТО ПРОСТАВЛЕНО. url и sha256 — настоящие, от выпуска v0.6.1. Отпечаток
 # посчитан с того самого архива, который отдаёт GitHub, и сверен двумя загрузками:
 #
-#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.6.0.tar.gz | sha256sum
+#     curl -sL https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.6.1.tar.gz | sha256sum
 #
 # Установка проверена целиком 30 августа 2026 года, на Homebrew 6.0.20. Прогон с
 # нуля: brew uninstall ouroboros (заодно снялся и Python 3.12), brew untap
@@ -56,8 +56,8 @@ class Ouroboros < Formula
 
   desc "Records how code actually ran: calls, arguments, results, exceptions"
   homepage "https://github.com/digitable-lol/ouroboros"
-  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.6.0.tar.gz"
-  sha256 "d06bcba41d7ead3359cff2606882ab2869035d3058403ab9bb1c1ea4f5c6edb2"
+  url "https://github.com/digitable-lol/ouroboros/archive/refs/tags/v0.6.1.tar.gz"
+  sha256 "6ad63e354bdf6968d0ace77baf2918e2b263b68f5a0b31cae7e3980049801e80"
   license "BSD-2-Clause"
 
   # Пакет требует Python 3.12 или новее (pyproject.toml, requires-python).
