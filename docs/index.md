@@ -94,6 +94,7 @@ explained](examples/trace-record.md).
 | [Measurements](measurements.md) | what each language records, what it costs, how to repeat it |
 | [Limits](limits.md) | what the tool does not do — the most important page |
 | [Why it exists](why.md) | what it is for and what work it takes off you |
+| [Where it is discussed](discussions.md) | public threads, and which page answers what |
 | [What it looks like](examples/index.md) | records, summary, configuration — in full |
 | [MCP tool reference](mcp-tools.md) | all 17 tools, recorded from a live conversation with the server |
 
